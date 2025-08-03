@@ -1127,7 +1127,7 @@ class MCPSettingTab extends PluginSettingTab {
 		
 		const configJson = this.plugin.settings.dangerouslyDisableAuth ? {
 			"mcpServers": {
-				"obsidian": {
+				[this.app.vault.getName()]: {
 					"transport": {
 						"type": "http",
 						"url": `http://localhost:${this.plugin.settings.httpPort}/mcp`
@@ -1136,7 +1136,7 @@ class MCPSettingTab extends PluginSettingTab {
 			}
 		} : {
 			"mcpServers": {
-				"obsidian": {
+				[this.app.vault.getName()]: {
 					"transport": {
 						"type": "http",
 						"url": `http://obsidian:${this.plugin.settings.apiKey}@localhost:${this.plugin.settings.httpPort}/mcp`
@@ -1160,7 +1160,7 @@ class MCPSettingTab extends PluginSettingTab {
 		
 		const remoteJson = this.plugin.settings.dangerouslyDisableAuth ? {
 			"mcpServers": {
-				"obsidian-vault": {
+				[this.app.vault.getName()]: {
 					"command": "npx",
 					"args": [
 						"mcp-remote",
@@ -1170,7 +1170,7 @@ class MCPSettingTab extends PluginSettingTab {
 			}
 		} : {
 			"mcpServers": {
-				"obsidian-vault": {
+				[this.app.vault.getName()]: {
 					"command": "npx",
 					"args": [
 						"mcp-remote",
@@ -1197,7 +1197,7 @@ class MCPSettingTab extends PluginSettingTab {
 		
 		const windowsJson = this.plugin.settings.dangerouslyDisableAuth ? {
 			"mcpServers": {
-				"obsidian-vault": {
+				[this.app.vault.getName()]: {
 					"command": "npx",
 					"args": [
 						"mcp-remote",
@@ -1207,7 +1207,7 @@ class MCPSettingTab extends PluginSettingTab {
 			}
 		} : {
 			"mcpServers": {
-				"obsidian-vault": {
+				[this.app.vault.getName()]: {
 					"command": "npx",
 					"args": [
 						"mcp-remote",
