@@ -124,3 +124,6 @@ data.json
 
 # Test scripts
 test-concurrent-sessions.js
+
+# Claude configuration directory
+.claude/

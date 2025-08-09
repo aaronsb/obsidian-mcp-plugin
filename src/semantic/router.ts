@@ -1724,8 +1724,25 @@ export class SemanticRouter {
         
         // Check if the content suggests it might have many connections
         const content = typeof result === 'string' ? result : result?.content || '';
-        const linkCount = (content.match(/\[\[.*?\]\]/g) || []).length;
-        const tagCount = (content.match(/#\w+/g) || []).length;
+        
+        // Safely count links and tags, handling both string content and Fragment arrays
+        let linkCount = 0;
+        let tagCount = 0;
+        
+        if (typeof content === 'string') {
+          linkCount = (content.match(/\[\[.*?\]\]/g) || []).length;
+          tagCount = (content.match(/#\w+/g) || []).length;
+        } else if (Array.isArray(content)) {
+          // Handle Fragment[] - extract content from each fragment
+          content.forEach(fragment => {
+            const fragmentText = typeof fragment === 'string' ? fragment : 
+                                (fragment?.content || fragment?.text || fragment?.data || '');
+            if (typeof fragmentText === 'string' && fragmentText.length > 0) {
+              linkCount += (fragmentText.match(/\[\[.*?\]\]/g) || []).length;
+              tagCount += (fragmentText.match(/#\w+/g) || []).length;
+            }
+          });
+        }
         
         if (linkCount > 2) {
           suggestions.push({
