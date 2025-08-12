@@ -6,10 +6,14 @@ import { MCPIgnoreManager } from './security/mcp-ignore-manager';
 import { randomBytes } from 'crypto';
 import { createSemanticTools } from './tools/semantic-tools';
 import { PluginDetector } from './utils/plugin-detector';
+import { CertificateConfig } from './utils/certificate-manager';
 
 interface MCPPluginSettings {
 	httpEnabled: boolean;
 	httpPort: number;
+	httpsEnabled: boolean;
+	httpsPort: number;
+	certificateConfig: CertificateConfig;
 	debugLogging: boolean;
 	showConnectionStatus: boolean;
 	autoDetectPortConflicts: boolean;
@@ -25,6 +29,15 @@ interface MCPPluginSettings {
 const DEFAULT_SETTINGS: MCPPluginSettings = {
 	httpEnabled: true, // Start enabled by default
 	httpPort: 3001,
+	httpsEnabled: false, // HTTPS disabled by default
+	httpsPort: 3443,
+	certificateConfig: {
+		enabled: false,
+		selfSigned: true,
+		autoGenerate: true,
+		rejectUnauthorized: false,
+		minTLSVersion: 'TLSv1.2'
+	},
 	debugLogging: false,
 	showConnectionStatus: true,
 	autoDetectPortConflicts: true,
@@ -488,6 +501,9 @@ class MCPSettingTab extends PluginSettingTab {
 		// Server Configuration Section
 		this.createServerConfigSection(containerEl);
 		
+		// HTTPS Configuration Section
+		this.createHTTPSConfigSection(containerEl);
+		
 		// Authentication Section
 		this.createAuthenticationSection(containerEl);
 		
@@ -635,6 +651,124 @@ class MCPSettingTab extends PluginSettingTab {
 					this.plugin.settings.autoDetectPortConflicts = value;
 					await this.plugin.saveSettings();
 				}));
+	}
+	
+	private createHTTPSConfigSection(containerEl: HTMLElement): void {
+		containerEl.createEl('h3', {text: 'HTTPS/TLS Configuration'});
+		
+		new Setting(containerEl)
+			.setName('Enable HTTPS')
+			.setDesc('Use HTTPS instead of HTTP (auto-generates self-signed certificate)')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.httpsEnabled)
+				.onChange(async (value) => {
+					this.plugin.settings.httpsEnabled = value;
+					this.plugin.settings.certificateConfig.enabled = value;
+					await this.plugin.saveSettings();
+					
+					// Show/hide HTTPS settings
+					this.display();
+					
+					// Restart server if running
+					if (this.plugin.mcpServer?.isServerRunning()) {
+						new Notice('Restarting server with new protocol...');
+						await this.plugin.stopMCPServer();
+						await this.plugin.startMCPServer();
+					}
+				}));
+		
+		if (this.plugin.settings.httpsEnabled) {
+			new Setting(containerEl)
+				.setName('HTTPS Port')
+				.setDesc('Port for HTTPS MCP server (default: 3443)')
+				.addText(text => text
+					.setPlaceholder('3443')
+					.setValue(this.plugin.settings.httpsPort.toString())
+					.onChange(async (value) => {
+						const port = parseInt(value);
+						if (!isNaN(port) && port > 0 && port < 65536) {
+							this.plugin.settings.httpsPort = port;
+							await this.plugin.saveSettings();
+						}
+					}));
+			
+			new Setting(containerEl)
+				.setName('Auto-generate Certificate')
+				.setDesc('Automatically generate a self-signed certificate if none exists')
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.certificateConfig.autoGenerate || false)
+					.onChange(async (value) => {
+						this.plugin.settings.certificateConfig.autoGenerate = value;
+						await this.plugin.saveSettings();
+					}));
+			
+			new Setting(containerEl)
+				.setName('Certificate Path')
+				.setDesc('Path to custom certificate file (.crt) - leave empty for auto-generated')
+				.addText(text => text
+					.setPlaceholder('Leave empty for auto-generated')
+					.setValue(this.plugin.settings.certificateConfig.certPath || '')
+					.onChange(async (value) => {
+						this.plugin.settings.certificateConfig.certPath = value || undefined;
+						await this.plugin.saveSettings();
+					}));
+			
+			new Setting(containerEl)
+				.setName('Key Path')
+				.setDesc('Path to private key file (.key) - leave empty for auto-generated')
+				.addText(text => text
+					.setPlaceholder('Leave empty for auto-generated')
+					.setValue(this.plugin.settings.certificateConfig.keyPath || '')
+					.onChange(async (value) => {
+						this.plugin.settings.certificateConfig.keyPath = value || undefined;
+						await this.plugin.saveSettings();
+					}));
+			
+			new Setting(containerEl)
+				.setName('Minimum TLS Version')
+				.setDesc('Minimum TLS version to accept')
+				.addDropdown(dropdown => dropdown
+					.addOption('TLSv1.2', 'TLS 1.2')
+					.addOption('TLSv1.3', 'TLS 1.3')
+					.setValue(this.plugin.settings.certificateConfig.minTLSVersion || 'TLSv1.2')
+					.onChange(async (value) => {
+						this.plugin.settings.certificateConfig.minTLSVersion = value as 'TLSv1.2' | 'TLSv1.3';
+						await this.plugin.saveSettings();
+					}));
+			
+			// Certificate status
+			const statusEl = containerEl.createDiv('mcp-cert-status');
+			statusEl.createEl('h4', {text: 'Certificate Status'});
+			
+			// Check certificate status asynchronously
+			import('./utils/certificate-manager').then(module => {
+				const certManager = new module.CertificateManager(this.app);
+			if (certManager.hasDefaultCertificate()) {
+				const paths = certManager.getDefaultPaths();
+				const loaded = certManager.loadCertificate(paths.certPath, paths.keyPath);
+				if (loaded) {
+					const info = certManager.getCertificateInfo(loaded.cert);
+					if (info) {
+						statusEl.createEl('p', {
+							text: `✅ Certificate valid until: ${info.validTo.toLocaleDateString()}`,
+							cls: 'setting-item-description'
+						});
+						if (info.daysUntilExpiry < 30) {
+							statusEl.createEl('p', {
+								text: `⚠️ Certificate expires in ${info.daysUntilExpiry} days`,
+								cls: 'setting-item-description mod-warning'
+							});
+						}
+					}
+				}
+			} else {
+				statusEl.createEl('p', {
+					text: '📝 No certificate found - will auto-generate on server start',
+					cls: 'setting-item-description'
+				});
+			}
+			});
+		}
 	}
 	
 	private createAuthenticationSection(containerEl: HTMLElement): void {

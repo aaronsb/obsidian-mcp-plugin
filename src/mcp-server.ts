@@ -1,7 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import { App, Notice } from 'obsidian';
-import { createServer, Server } from 'http';
+import { Server } from 'http';
+import { Server as HttpsServer } from 'https';
 import { Server as MCPServer } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { 
@@ -25,11 +26,12 @@ import { ConnectionPool, PooledRequest } from './utils/connection-pool';
 import { SessionManager } from './utils/session-manager';
 import { WorkerManager } from './utils/worker-manager';
 import { MCPServerPool } from './utils/mcp-server-pool';
+import { CertificateManager, CertificateConfig } from './utils/certificate-manager';
 
 
 export class MCPHttpServer {
   private app: express.Application;
-  private server?: Server;
+  private server?: Server | HttpsServer;
   private mcpServer?: MCPServer; // Single server for non-concurrent mode
   private mcpServerPool?: MCPServerPool; // Server pool for concurrent mode
   private transports: Map<string, StreamableHTTPServerTransport> = new Map();
@@ -41,11 +43,20 @@ export class MCPHttpServer {
   private plugin?: any; // Reference to the plugin
   private connectionPool?: ConnectionPool;
   private sessionManager?: SessionManager;
+  private certificateManager: CertificateManager;
+  private isHttps: boolean = false;
 
   constructor(obsidianApp: App, port: number = 3001, plugin?: any) {
     this.obsidianApp = obsidianApp;
     this.port = port;
     this.plugin = plugin;
+    this.certificateManager = new CertificateManager(obsidianApp);
+    
+    // Determine if we're using HTTPS
+    if (plugin?.settings?.httpsEnabled && plugin?.settings?.certificateConfig?.enabled) {
+      this.isHttps = true;
+      this.port = plugin.settings.httpsPort || 3443;
+    }
     
     // Always use SecureObsidianAPI with VaultSecurityManager as our firewall
     Debug.log('🔐 Initializing VaultSecurityManager firewall');
@@ -583,13 +594,23 @@ export class MCPHttpServer {
     }
 
     return new Promise<void>((resolve, reject) => {
-      this.server = createServer(this.app);
+      // Create HTTP or HTTPS server based on configuration
+      const certificateConfig = this.plugin?.settings?.certificateConfig || { enabled: false };
+      this.server = this.certificateManager.createServer(this.app, certificateConfig, this.port);
+      
+      const protocol = this.isHttps ? 'https' : 'http';
       
       this.server.listen(this.port, () => {
         this.isRunning = true;
-        Debug.log(`🚀 MCP server started on http://localhost:${this.port}`);
-        Debug.log(`📍 Health check: http://localhost:${this.port}/`);
-        Debug.log(`🔗 MCP endpoint: http://localhost:${this.port}/mcp`);
+        Debug.log(`🚀 MCP server started on ${protocol}://localhost:${this.port}`);
+        Debug.log(`📍 Health check: ${protocol}://localhost:${this.port}/`);
+        Debug.log(`🔗 MCP endpoint: ${protocol}://localhost:${this.port}/mcp`);
+        
+        if (this.isHttps) {
+          Debug.log('🔒 HTTPS enabled with certificate');
+          new Notice(`MCP server running on HTTPS port ${this.port}`);
+        }
+        
         resolve();
       });
 
