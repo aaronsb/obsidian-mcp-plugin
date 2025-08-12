@@ -43,19 +43,23 @@ export class MCPHttpServer {
   private plugin?: any; // Reference to the plugin
   private connectionPool?: ConnectionPool;
   private sessionManager?: SessionManager;
-  private certificateManager: CertificateManager;
+  private certificateManager: CertificateManager | null;
   private isHttps: boolean = false;
 
   constructor(obsidianApp: App, port: number = 3001, plugin?: any) {
     this.obsidianApp = obsidianApp;
     this.port = port;
     this.plugin = plugin;
-    this.certificateManager = new CertificateManager(obsidianApp);
     
-    // Determine if we're using HTTPS
+    // Only initialize certificate manager if HTTPS is enabled
+    // to avoid fs module issues in browser environment
     if (plugin?.settings?.httpsEnabled && plugin?.settings?.certificateConfig?.enabled) {
       this.isHttps = true;
       this.port = plugin.settings.httpsPort || 3443;
+      // Lazy initialize certificate manager only when needed
+      this.certificateManager = null; // Will be initialized when server starts
+    } else {
+      this.certificateManager = null;
     }
     
     // Always use SecureObsidianAPI with VaultSecurityManager as our firewall
@@ -598,9 +602,33 @@ export class MCPHttpServer {
     return new Promise<void>((resolve, reject) => {
       // Create HTTP or HTTPS server based on configuration
       const certificateConfig = this.plugin?.settings?.certificateConfig || { enabled: false };
-      this.server = this.certificateManager.createServer(this.app, certificateConfig, this.port);
+      
+      // Initialize certificate manager lazily if HTTPS is enabled
+      if (this.isHttps && !this.certificateManager) {
+        try {
+          this.certificateManager = new CertificateManager(this.obsidianApp);
+        } catch (error) {
+          Debug.error('Failed to initialize certificate manager:', error);
+          // Fall back to HTTP if certificate manager fails
+          this.isHttps = false;
+        }
+      }
+      
+      // Create server - use certificate manager if available and HTTPS is enabled
+      if (this.isHttps && this.certificateManager) {
+        this.server = this.certificateManager.createServer(this.app, certificateConfig, this.port);
+      } else {
+        // Create standard HTTP server
+        const http = require('http');
+        this.server = http.createServer(this.app);
+      }
       
       const protocol = this.isHttps ? 'https' : 'http';
+      
+      if (!this.server) {
+        reject(new Error('Failed to create server'));
+        return;
+      }
       
       this.server.listen(this.port, () => {
         this.isRunning = true;
