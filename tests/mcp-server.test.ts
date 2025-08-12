@@ -1,6 +1,14 @@
 import { MCPHttpServer } from '../src/mcp-server';
 import { App } from 'obsidian';
 
+// Mock the fs module to prevent file system operations in tests
+jest.mock('fs', () => ({
+  existsSync: jest.fn(() => false),
+  mkdirSync: jest.fn(),
+  readFileSync: jest.fn(),
+  writeFileSync: jest.fn()
+}));
+
 describe('MCPHttpServer', () => {
   let mockApp: App;
 
