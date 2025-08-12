@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { ensureStringContent } from './content-handler';
 
 /**
  * Configuration for response limiting
@@ -86,7 +87,9 @@ export function limitSearchResults(
     
     // Process content
     if (result.content || result.context) {
-      const fullContent = result.content || result.context;
+      const rawContent = result.content || result.context;
+      // Ensure content is a string for truncation and hashing
+      const fullContent = ensureStringContent(rawContent, 'response-limiter');
       const preview = truncateContent(fullContent, config.contentPreviewLength);
       minimalResult.preview = preview;
       
