@@ -43,9 +43,9 @@ export class NodeMCPServer {
       await new Promise<void>((resolve, reject) => {
         this.server.listen(this.port, () => {
           this.isRunning = true;
-          console.log(`🚀 MCP server started on http://localhost:${this.port}`);
-          console.log(`📍 Health check: http://localhost:${this.port}/`);
-          console.log(`🔗 MCP endpoint: http://localhost:${this.port}/mcp`);
+          console.log(`🚀 MCP server started on port ${this.port}`);
+          console.log(`📍 Health check: /`);
+          console.log(`🔗 MCP endpoint: /mcp`);
           resolve();
         });
 

@@ -1242,9 +1242,14 @@ class MCPSettingTab extends PluginSettingTab {
 		const codeEl = commandExample.createEl('code');
 		codeEl.classList.add('mcp-code-block');
 		
+		// Get correct protocol and port based on HTTPS setting
+		const protocol = this.plugin.settings.httpsEnabled ? 'https' : 'http';
+		const port = this.plugin.settings.httpsEnabled ? this.plugin.settings.httpsPort : this.plugin.settings.httpPort;
+		const baseUrl = `${protocol}://localhost:${port}`;
+		
 		const claudeCommand = this.plugin.settings.dangerouslyDisableAuth ? 
-			`claude mcp add --transport http obsidian http://localhost:${this.plugin.settings.httpPort}/mcp` :
-			`claude mcp add --transport http obsidian http://localhost:${this.plugin.settings.httpPort}/mcp --header "Authorization: Bearer ${this.plugin.settings.apiKey}"`;
+			`claude mcp add --transport http obsidian ${baseUrl}/mcp` :
+			`claude mcp add --transport http obsidian ${baseUrl}/mcp --header "Authorization: Bearer ${this.plugin.settings.apiKey}"`;
 		
 		codeEl.textContent = claudeCommand;
 		
@@ -1264,7 +1269,7 @@ class MCPSettingTab extends PluginSettingTab {
 				[this.app.vault.getName()]: {
 					"transport": {
 						"type": "http",
-						"url": `http://localhost:${this.plugin.settings.httpPort}/mcp`
+						"url": `${baseUrl}/mcp`
 					}
 				}
 			}
@@ -1273,7 +1278,7 @@ class MCPSettingTab extends PluginSettingTab {
 				[this.app.vault.getName()]: {
 					"transport": {
 						"type": "http",
-						"url": `http://obsidian:${this.plugin.settings.apiKey}@localhost:${this.plugin.settings.httpPort}/mcp`
+						"url": `${protocol}://obsidian:${this.plugin.settings.apiKey}@localhost:${port}/mcp`
 					}
 				}
 			}
@@ -1298,7 +1303,7 @@ class MCPSettingTab extends PluginSettingTab {
 					"command": "npx",
 					"args": [
 						"mcp-remote",
-						`http://localhost:${this.plugin.settings.httpPort}/mcp`
+						`${baseUrl}/mcp`
 					]
 				}
 			}
@@ -1308,7 +1313,7 @@ class MCPSettingTab extends PluginSettingTab {
 					"command": "npx",
 					"args": [
 						"mcp-remote",
-						`http://localhost:${this.plugin.settings.httpPort}/mcp`,
+						`${baseUrl}/mcp`,
 						"--header",
 						`Authorization: Bearer ${this.plugin.settings.apiKey}`
 					]
@@ -1335,7 +1340,7 @@ class MCPSettingTab extends PluginSettingTab {
 					"command": "npx",
 					"args": [
 						"mcp-remote",
-						`http://localhost:${this.plugin.settings.httpPort}/mcp`
+						`${baseUrl}/mcp`
 					]
 				}
 			}
@@ -1345,7 +1350,7 @@ class MCPSettingTab extends PluginSettingTab {
 					"command": "npx",
 					"args": [
 						"mcp-remote",
-						`http://localhost:${this.plugin.settings.httpPort}/mcp`,
+						`${baseUrl}/mcp`,
 						"--header",
 						"Authorization:Bearer ${OBSIDIAN_API_KEY}"  // No space around colon
 					],
@@ -1438,9 +1443,14 @@ class MCPSettingTab extends PluginSettingTab {
 		if (protocolSection) {
 			const codeBlock = protocolSection.querySelector('code');
 			if (codeBlock && info) {
+				// Get correct protocol and port based on HTTPS setting
+				const protocol = this.plugin.settings.httpsEnabled ? 'https' : 'http';
+				const port = this.plugin.settings.httpsEnabled ? this.plugin.settings.httpsPort : info.port;
+				const baseUrl = `${protocol}://localhost:${port}`;
+				
 				const claudeCommand = this.plugin.settings.dangerouslyDisableAuth ? 
-					`claude mcp add --transport http obsidian http://localhost:${info.port}/mcp` :
-					`claude mcp add --transport http obsidian http://localhost:${info.port}/mcp --header "Authorization: Bearer ${this.plugin.settings.apiKey}"`;
+					`claude mcp add --transport http obsidian ${baseUrl}/mcp` :
+					`claude mcp add --transport http obsidian ${baseUrl}/mcp --header "Authorization: Bearer ${this.plugin.settings.apiKey}"`;
 				
 				codeBlock.textContent = claudeCommand;
 			}

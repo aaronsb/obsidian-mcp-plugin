@@ -408,9 +408,11 @@ export class MCPHttpServer {
 
     // MCP discovery endpoints
     this.app.get('/.well-known/appspecific/com.mcp.obsidian-mcp', (req, res) => {
+      const isHttps = this.plugin?.settings?.httpsEnabled || false;
+      const protocol = isHttps ? 'https' : 'http';
       res.json({
-        endpoint: `http://localhost:${this.port}/mcp`,
-        protocol: 'http',
+        endpoint: `${protocol}://localhost:${this.port}/mcp`,
+        protocol: protocol,
         method: 'POST',
         contentType: 'application/json'
       });

@@ -49,9 +49,9 @@ export class BrowserMCPServer {
       this.setupMCPEndpoints();
 
       this.isRunning = true;
-      Debug.log(`🚀 MCP server started on http://localhost:${this.port}`);
-      Debug.log(`📍 Health check: http://localhost:${this.port}/`);
-      Debug.log(`🔗 MCP endpoint: http://localhost:${this.port}/mcp`);
+      Debug.log(`🚀 MCP server started on port ${this.port}`);
+      Debug.log(`📍 Health check: /`);
+      Debug.log(`🔗 MCP endpoint: /mcp`);
 
     } catch (error) {
       Debug.error('❌ Failed to start MCP server:', error);
