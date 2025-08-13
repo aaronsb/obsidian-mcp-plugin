@@ -539,6 +539,14 @@ npm run build
 - **Issues**: [GitHub Issues](https://github.com/aaronsb/obsidian-mcp-plugin/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/aaronsb/obsidian-mcp-plugin/discussions)
 
+## Sponsorship
+
+If you find this plugin useful, please consider supporting its development:
+
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-%E2%9D%A4-red?logo=github)](https://github.com/sponsors/aaronsb)
+
+Your support helps maintain and improve this plugin!
+
 ## License
 
 MIT
