@@ -224,20 +224,38 @@ Once this plugin is approved and available in the Obsidian Community Plugins dir
 
 ### HTTPS/TLS Configuration (v0.9.0+)
 
-The plugin supports secure HTTPS connections with automatic self-signed certificate generation:
+The plugin supports secure HTTPS connections with both self-signed and CA-signed certificates, making it ideal for various deployment scenarios including Docker containers and headless servers.
+
+#### Certificate Options
+
+1. **Self-Signed Certificates (Default)**:
+   - Auto-generated on first launch
+   - Stored in `.obsidian/plugins/semantic-vault-mcp/certificates/`
+   - Valid for 1 year with localhost/127.0.0.1 SANs
+   - Perfect for local development
+
+2. **Custom CA-Signed Certificates**:
+   - Provide your own certificate and key files
+   - Ideal for production environments, Docker containers, or headless servers
+   - No client-side certificate trust workarounds needed
+   - Supports standard PEM format certificates
+
+#### Configuration Steps
 
 1. **Enable HTTPS in Plugin Settings**:
    - Go to plugin settings in Obsidian
    - Find "HTTPS/TLS Settings" section
    - Toggle "Enable HTTPS Server"
-   - Default HTTPS port is 3443 (configurable)
-   - Certificates are auto-generated on first launch
+   - Default HTTPS port is 3443 (auto-increments if in use)
+   
+   **For Custom Certificates**:
+   - Clear the auto-generated certificate paths
+   - Enter paths to your certificate and key files
+   - Supported formats: `.pem`, `.crt`, `.key`
 
 2. **Configure Claude Code / MCP Client**:
-   
-   Since most MCP clients don't trust self-signed certificates by default, you'll need to use `mcp-remote` with environment variables:
 
-   **Manual JSON Configuration Required**:
+   **For Self-Signed Certificates**:
    ```json
    {
      "mcpServers": {
@@ -256,22 +274,86 @@ The plugin supports secure HTTPS connections with automatic self-signed certific
      }
    }
    ```
+   Note: The `env` section is required for self-signed certificates.
 
-   **Important Notes**:
-   - Replace `YOUR_API_KEY_HERE` with your actual API key from plugin settings
-   - The `env` section with `NODE_TLS_REJECT_UNAUTHORIZED` is required for self-signed certificates
-   - Command-line tools like `claude mcp add` don't support environment variables, so manual JSON editing is required
-   - Edit your configuration file directly at the locations listed above
+   **For CA-Signed Certificates**:
+   ```json
+   {
+     "mcpServers": {
+       "obsidian-vault-name": {
+         "command": "npx",
+         "args": [
+           "mcp-remote",
+           "https://your-domain.com:3443/mcp",
+           "--header",
+           "Authorization: Bearer YOUR_API_KEY_HERE"
+         ]
+       }
+     }
+   }
+   ```
+   Note: No `env` section needed - the certificate is trusted by default.
 
-3. **Certificate Storage**:
-   - Auto-generated certificates are stored in: `.obsidian/plugins/semantic-vault-mcp/certificates/`
-   - Certificate paths will auto-populate in settings after generation
-   - Certificates are valid for 1 year and include localhost/127.0.0.1 SANs
+#### Docker & Headless Deployment
+
+The HTTPS support is particularly useful for running Obsidian in headless environments:
+
+1. **Docker Container Setup**:
+   ```dockerfile
+   # Mount your certificates into the container
+   VOLUME ["/certs"]
+   
+   # Configure plugin to use mounted certificates
+   # Set certificate paths in plugin settings:
+   # - Certificate Path: /certs/server.crt
+   # - Key Path: /certs/server.key
+   ```
+
+2. **Benefits for Headless Environments**:
+   - Secure remote access to your Obsidian vault
+   - No GUI needed for certificate configuration
+   - Proper TLS encryption for production deployments
+   - Compatible with reverse proxies and load balancers
+
+3. **Example Docker Compose**:
+   ```yaml
+   services:
+     obsidian:
+       image: your-obsidian-image
+       ports:
+         - "3443:3443"
+       volumes:
+         - ./certs:/certs:ro
+         - ./vault:/vault
+       environment:
+         - OBSIDIAN_CERT_PATH=/certs/server.crt
+         - OBSIDIAN_KEY_PATH=/certs/server.key
+   ```
+
+#### Certificate Management Tips
+
+1. **Generate a Proper Certificate with Let's Encrypt**:
+   ```bash
+   certbot certonly --standalone -d your-domain.com
+   # Certificates will be in /etc/letsencrypt/live/your-domain.com/
+   ```
+
+2. **Create a Self-Signed Certificate Manually**:
+   ```bash
+   openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem \
+     -days 365 -nodes -subj "/CN=localhost"
+   ```
+
+3. **Certificate Requirements**:
+   - Must be in PEM format
+   - Private key should not be password-protected
+   - Include proper SANs for your domain/IP
 
 4. **Security Considerations**:
-   - Self-signed certificates are suitable for local development
-   - For production use, consider using proper certificates from a CA
-   - The `NODE_TLS_REJECT_UNAUTHORIZED=0` setting disables certificate validation - use only for local connections
+   - Use CA-signed certificates for production
+   - Self-signed certificates are suitable for local development only
+   - Keep private keys secure and never commit them to version control
+   - Rotate certificates before expiration
 
 ### Concurrent Sessions for Agent Swarms (v0.5.8+)
 
