@@ -170,6 +170,8 @@ Once this plugin is approved and available in the Obsidian Community Plugins dir
    ### Claude Desktop / Other Clients
    
    **Option 1: Direct HTTP Transport** (if your client supports it)
+   
+   For HTTP (default):
    ```json
    {
      "mcpServers": {
@@ -182,6 +184,21 @@ Once this plugin is approved and available in the Obsidian Community Plugins dir
      }
    }
    ```
+   
+   For HTTPS (requires proper certificate trust):
+   ```json
+   {
+     "mcpServers": {
+       "obsidian": {
+         "transport": {
+           "type": "http",
+           "url": "https://localhost:3443/mcp"
+         }
+       }
+     }
+   }
+   ```
+   Note: Direct HTTPS transport may not work with self-signed certificates. Use Option 2 with mcp-remote for HTTPS.
    
    **Option 2: Via mcp-remote** (recommended for Claude Desktop)
    
@@ -204,6 +221,57 @@ Once this plugin is approved and available in the Obsidian Community Plugins dir
    - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
    - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
    - Linux: `~/.config/Claude/claude_desktop_config.json`
+
+### HTTPS/TLS Configuration (v0.9.0+)
+
+The plugin supports secure HTTPS connections with automatic self-signed certificate generation:
+
+1. **Enable HTTPS in Plugin Settings**:
+   - Go to plugin settings in Obsidian
+   - Find "HTTPS/TLS Settings" section
+   - Toggle "Enable HTTPS Server"
+   - Default HTTPS port is 3443 (configurable)
+   - Certificates are auto-generated on first launch
+
+2. **Configure Claude Code / MCP Client**:
+   
+   Since most MCP clients don't trust self-signed certificates by default, you'll need to use `mcp-remote` with environment variables:
+
+   **Manual JSON Configuration Required**:
+   ```json
+   {
+     "mcpServers": {
+       "obsidian-vault-name": {
+         "command": "npx",
+         "args": [
+           "mcp-remote",
+           "https://localhost:3443/mcp",
+           "--header",
+           "Authorization: Bearer YOUR_API_KEY_HERE"
+         ],
+         "env": {
+           "NODE_TLS_REJECT_UNAUTHORIZED": "0"
+         }
+       }
+     }
+   }
+   ```
+
+   **Important Notes**:
+   - Replace `YOUR_API_KEY_HERE` with your actual API key from plugin settings
+   - The `env` section with `NODE_TLS_REJECT_UNAUTHORIZED` is required for self-signed certificates
+   - Command-line tools like `claude mcp add` don't support environment variables, so manual JSON editing is required
+   - Edit your configuration file directly at the locations listed above
+
+3. **Certificate Storage**:
+   - Auto-generated certificates are stored in: `.obsidian/plugins/semantic-vault-mcp/certificates/`
+   - Certificate paths will auto-populate in settings after generation
+   - Certificates are valid for 1 year and include localhost/127.0.0.1 SANs
+
+4. **Security Considerations**:
+   - Self-signed certificates are suitable for local development
+   - For production use, consider using proper certificates from a CA
+   - The `NODE_TLS_REJECT_UNAUTHORIZED=0` setting disables certificate validation - use only for local connections
 
 ### Concurrent Sessions for Agent Swarms (v0.5.8+)
 

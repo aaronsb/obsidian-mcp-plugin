@@ -152,44 +152,49 @@ export default class ObsidianMCPPlugin extends Plugin {
 
 	async startMCPServer(): Promise<void> {
 		try {
+			// Determine which port to check based on whether HTTPS is enabled
+			const isHttps = this.settings.httpsEnabled && this.settings.certificateConfig?.enabled;
+			const portToUse = isHttps ? this.settings.httpsPort : this.settings.httpPort;
+			const protocol = isHttps ? 'HTTPS' : 'HTTP';
+			
 			// Check for port conflicts and auto-switch if needed
 			if (this.settings.autoDetectPortConflicts) {
-				const status = await this.checkPortConflict(this.settings.httpPort);
+				const status = await this.checkPortConflict(portToUse);
 				if (status === 'in-use') {
-					const suggestedPort = await this.findAvailablePort(this.settings.httpPort);
+					const suggestedPort = await this.findAvailablePort(portToUse);
 					
 					if (suggestedPort === 0) {
 						// All alternate ports are busy
-						const portsChecked = `${this.settings.httpPort}, ${this.settings.httpPort + 1}, ${this.settings.httpPort + 2}, ${this.settings.httpPort + 3}`;
+						const portsChecked = `${portToUse}, ${portToUse + 1}, ${portToUse + 2}, ${portToUse + 3}`;
 						Debug.error(`❌ Failed to find available port after 3 attempts. Ports checked: ${portsChecked}`);
 						Debug.error('Please check for other applications using these ports or firewall/security software blocking access.');
-						new Notice(`Cannot start MCP server: Ports ${this.settings.httpPort}-${this.settings.httpPort + 3} are all in use. Check console for details.`);
+						new Notice(`Cannot start MCP server: Ports ${portToUse}-${portToUse + 3} are all in use. Check console for details.`);
 						this.updateStatusBar();
 						return;
 					}
 					
-					Debug.log(`⚠️ Port ${this.settings.httpPort} is in use, switching to port ${suggestedPort}`);
-					new Notice(`Port ${this.settings.httpPort} is in use. Switching to port ${suggestedPort}`);
+					Debug.log(`⚠️ ${protocol} Port ${portToUse} is in use, switching to port ${suggestedPort}`);
+					new Notice(`${protocol} Port ${portToUse} is in use. Switching to port ${suggestedPort}`);
 					
 					// Temporarily use the suggested port for this session
 					this.mcpServer = new MCPHttpServer(this.app, suggestedPort, this);
 					await this.mcpServer.start();
 					this.updateStatusBar();
-					Debug.log(`✅ MCP server started on alternate port ${suggestedPort}`);
+					Debug.log(`✅ MCP server started on alternate ${protocol} port ${suggestedPort}`);
 					if (this.settings.showConnectionStatus) {
-						new Notice(`MCP server started on port ${suggestedPort} (default port was in use)`);
+						new Notice(`MCP server started on ${protocol} port ${suggestedPort} (default port was in use)`);
 					}
 					return;
 				}
 			}
 
-			Debug.log(`🚀 Starting MCP server on port ${this.settings.httpPort}...`);
-			this.mcpServer = new MCPHttpServer(this.app, this.settings.httpPort, this);
+			Debug.log(`🚀 Starting MCP server on ${protocol} port ${portToUse}...`);
+			this.mcpServer = new MCPHttpServer(this.app, portToUse, this);
 			await this.mcpServer.start();
 			this.updateStatusBar();
 			Debug.log('✅ MCP server started successfully');
 			if (this.settings.showConnectionStatus) {
-				new Notice(`MCP server started on port ${this.settings.httpPort}`);
+				new Notice(`MCP server started on ${protocol} port ${portToUse}`);
 			}
 		} catch (error) {
 			Debug.error('❌ Failed to start MCP server:', error);
@@ -678,7 +683,7 @@ class MCPSettingTab extends PluginSettingTab {
 				}));
 		
 		if (this.plugin.settings.httpsEnabled) {
-			new Setting(containerEl)
+			const httpsPortSetting = new Setting(containerEl)
 				.setName('HTTPS Port')
 				.setDesc('Port for HTTPS MCP server (default: 3443)')
 				.addText(text => text
@@ -689,8 +694,13 @@ class MCPSettingTab extends PluginSettingTab {
 						if (!isNaN(port) && port > 0 && port < 65536) {
 							this.plugin.settings.httpsPort = port;
 							await this.plugin.saveSettings();
+							// Check port availability for HTTPS
+							this.checkHttpsPortAvailability(port, httpsPortSetting);
 						}
 					}));
+			
+			// Check HTTPS port availability on load
+			this.checkHttpsPortAvailability(this.plugin.settings.httpsPort, httpsPortSetting);
 			
 			new Setting(containerEl)
 				.setName('Auto-generate Certificate')
@@ -1391,6 +1401,26 @@ class MCPSettingTab extends PluginSettingTab {
 				break;
 			default:
 				setting.setDesc('Port for HTTP MCP server (default: 3001)');
+		}
+	}
+	
+	private async checkHttpsPortAvailability(port: number, setting: Setting): Promise<void> {
+		if (!this.plugin.settings.autoDetectPortConflicts) return;
+		
+		const status = await this.plugin.checkPortConflict(port);
+		
+		switch (status) {
+			case 'available':
+				setting.setDesc(`Port for HTTPS MCP server (default: 3443) ✅ Available`);
+				break;
+			case 'this-server':
+				setting.setDesc(`Port for HTTPS MCP server (default: 3443) 🟢 This server`);
+				break;
+			case 'in-use':
+				setting.setDesc(`Port for HTTPS MCP server (default: 3443) ⚠️ Port ${port} in use`);
+				break;
+			default:
+				setting.setDesc('Port for HTTPS MCP server (default: 3443)');
 		}
 	}
 
