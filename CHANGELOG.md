@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Project structure improved with proper open-source documentation
+- Search: `tag:` now also matches frontmatter tags as well as tags in content
 
 ## [0.5.14] - 2025-01-11
 
