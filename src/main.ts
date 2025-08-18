@@ -98,7 +98,7 @@ export default class ObsidianMCPPlugin extends Plugin {
 				callback: async () => {
 					Debug.log('🔄 MCP Server restart requested');
 					await this.stopMCPServer();
-					if (this.settings.httpEnabled) {
+					if (this.settings.httpEnabled || this.settings.httpsEnabled) {
 						await this.startMCPServer();
 					}
 				}
@@ -113,11 +113,11 @@ export default class ObsidianMCPPlugin extends Plugin {
 				this.registerContextMenu();
 			}
 
-			// Start MCP server by default (unless explicitly disabled)
-			if (this.settings.httpEnabled) {
+			// Start MCP server if either HTTP or HTTPS is enabled
+			if (this.settings.httpEnabled || this.settings.httpsEnabled) {
 				await this.startMCPServer();
 			} else {
-				Debug.log('⚠️ MCP server is disabled in settings');
+				Debug.log('⚠️ Both HTTP and HTTPS servers are disabled in settings');
 			}
 
 			// Add status bar item
@@ -226,12 +226,15 @@ export default class ObsidianMCPPlugin extends Plugin {
 
 		this.statusBarItem = this.addStatusBarItem();
 		
-		if (!this.settings.httpEnabled) {
+		if (!this.settings.httpEnabled && !this.settings.httpsEnabled) {
 			this.statusBarItem.setText('MCP: Disabled');
 			this.statusBarItem.setAttribute('style', 'color: var(--text-muted);');
 		} else if (this.mcpServer?.isServerRunning()) {
 			const vaultName = this.app.vault.getName();
-			this.statusBarItem.setText(`MCP: ${vaultName}:${this.settings.httpPort}`);
+			const protocols: string[] = [];
+			if (this.settings.httpEnabled) protocols.push(`HTTP:${this.settings.httpPort}`);
+			if (this.settings.httpsEnabled) protocols.push(`HTTPS:${this.settings.httpsPort}`);
+			this.statusBarItem.setText(`MCP: ${vaultName} (${protocols.join(', ')})`);
 			this.statusBarItem.setAttribute('style', 'color: var(--text-success);');
 		} else {
 			this.statusBarItem.setText('MCP: Error');
@@ -465,7 +468,7 @@ export default class ObsidianMCPPlugin extends Plugin {
 		}
 
 		// Restart MCP server to use new vault context
-		if (this.settings.httpEnabled && this.mcpServer?.isServerRunning()) {
+		if ((this.settings.httpEnabled || this.settings.httpsEnabled) && this.mcpServer?.isServerRunning()) {
 			Debug.log('🔄 Restarting MCP server for new vault context...');
 			
 			// Use a small delay to avoid rapid restarts
@@ -568,19 +571,28 @@ class MCPSettingTab extends PluginSettingTab {
 		containerEl.createEl('h3', {text: 'Server Configuration'});
 
 		new Setting(containerEl)
-			.setName('MCP Server')
-			.setDesc('The MCP server starts automatically when the plugin loads')
+			.setName('Enable HTTP Server')
+			.setDesc('Enable HTTP server on port ' + this.plugin.settings.httpPort + (this.plugin.settings.httpsEnabled ? ' (can be disabled when HTTPS is enabled)' : ' (required - at least one protocol must be enabled)'))
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.httpEnabled)
+				.setDisabled(!this.plugin.settings.httpsEnabled) // Can only disable HTTP if HTTPS is enabled
 				.onChange(async (value) => {
+					// Prevent disabling both protocols
+					if (!value && !this.plugin.settings.httpsEnabled) {
+						new Notice('Cannot disable HTTP when HTTPS is disabled. Enable HTTPS first.');
+						toggle.setValue(true);
+						return;
+					}
+					
 					this.plugin.settings.httpEnabled = value;
 					await this.plugin.saveSettings();
 					
-					// Apply changes immediately
-					if (value) {
-						await this.plugin.startMCPServer();
-					} else {
+					// Restart server with new settings
+					if (this.plugin.mcpServer?.isServerRunning()) {
 						await this.plugin.stopMCPServer();
+						await this.plugin.startMCPServer();
+					} else if (value) {
+						await this.plugin.startMCPServer();
 					}
 					
 					// Update the status display
@@ -662,22 +674,32 @@ class MCPSettingTab extends PluginSettingTab {
 		containerEl.createEl('h3', {text: 'HTTPS/TLS Configuration'});
 		
 		new Setting(containerEl)
-			.setName('Enable HTTPS')
-			.setDesc('Use HTTPS instead of HTTP (auto-generates self-signed certificate)')
+			.setName('Enable HTTPS Server')
+			.setDesc('Enable HTTPS server on port ' + this.plugin.settings.httpsPort + (this.plugin.settings.httpEnabled ? ' (optional when HTTP is enabled)' : ' (required - cannot be disabled when HTTP is disabled)'))
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.httpsEnabled)
+				.setDisabled(!this.plugin.settings.httpEnabled && this.plugin.settings.httpsEnabled) // Can't disable HTTPS if HTTP is disabled
 				.onChange(async (value) => {
+					// Prevent disabling both protocols
+					if (!value && !this.plugin.settings.httpEnabled) {
+						new Notice('Cannot disable HTTPS when HTTP is disabled. Enable HTTP first.');
+						toggle.setValue(true);
+						return;
+					}
+					
 					this.plugin.settings.httpsEnabled = value;
 					this.plugin.settings.certificateConfig.enabled = value;
 					await this.plugin.saveSettings();
 					
-					// Show/hide HTTPS settings
+					// Show/hide HTTPS settings and update HTTP toggle state
 					this.display();
 					
 					// Restart server if running
 					if (this.plugin.mcpServer?.isServerRunning()) {
-						new Notice('Restarting server with new protocol...');
+						new Notice('Restarting server with new protocol settings...');
 						await this.plugin.stopMCPServer();
+						await this.plugin.startMCPServer();
+					} else if (value && (this.plugin.settings.httpEnabled || this.plugin.settings.httpsEnabled)) {
 						await this.plugin.startMCPServer();
 					}
 				}));
