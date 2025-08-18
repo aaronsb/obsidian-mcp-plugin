@@ -644,8 +644,8 @@ class MCPSettingTab extends PluginSettingTab {
 				return button;
 			});
 		
-		// Check port availability on load
-		this.checkPortAvailability(this.plugin.settings.httpPort, portSetting);
+		// Don't check port availability on load - only when changed or server starts
+		// This avoids detecting our own running server as a conflict
 
 		new Setting(containerEl)
 			.setName('Auto-detect Port Conflicts')
@@ -699,8 +699,8 @@ class MCPSettingTab extends PluginSettingTab {
 						}
 					}));
 			
-			// Check HTTPS port availability on load
-			this.checkHttpsPortAvailability(this.plugin.settings.httpsPort, httpsPortSetting);
+			// Don't check HTTPS port availability on load - only when changed or server starts
+			// This avoids detecting our own running server as a conflict
 			
 			new Setting(containerEl)
 				.setName('Auto-generate Certificate')
