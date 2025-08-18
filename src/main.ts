@@ -1338,7 +1338,7 @@ class MCPSettingTab extends PluginSettingTab {
 		// Check if we're using self-signed certificates (HTTPS enabled and auto-generate is on)
 		const isUsingSelfSignedCert = this.plugin.settings.httpsEnabled && 
 			(this.plugin.settings.certificateConfig.autoGenerate !== false || 
-			 !this.plugin.settings.certificateConfig.certPath);
+			!this.plugin.settings.certificateConfig.certPath);
 		
 		let remoteJson: any;
 		if (this.plugin.settings.dangerouslyDisableAuth) {
@@ -1379,7 +1379,7 @@ class MCPSettingTab extends PluginSettingTab {
 					"NODE_TLS_REJECT_UNAUTHORIZED": "0"
 				};
 			}
-		};
+		}
 		
 		remoteEl.textContent = JSON.stringify(remoteJson, null, 2);
 		
