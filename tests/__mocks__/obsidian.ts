@@ -92,3 +92,34 @@ export function normalizePath(path: string): string {
   // Simple normalization for testing
   return path.replace(/\\/g, '/');
 }
+
+// Minimal implementation of Obsidian's getAllTags utility for tests
+// Accepts a metadata cache-like object and returns a flat list of tags with leading '#'
+export function getAllTags(cache: any): string[] {
+  if (!cache) return [];
+  const out = new Set<string>();
+
+  // From cache.tags: [{ tag: '#foo' }, { tag: '#foo/bar' }]
+  if (Array.isArray(cache.tags)) {
+    for (const t of cache.tags) {
+      const raw = typeof t === 'string' ? t : t?.tag;
+      if (!raw) continue;
+      const norm = raw.startsWith('#') ? raw : `#${raw}`;
+      out.add(norm);
+    }
+  }
+
+  // From frontmatter.tags: 'foo', ['foo', 'bar'], or ['#foo/bar']
+  const fmTags = cache.frontmatter?.tags;
+  if (fmTags) {
+    const list = Array.isArray(fmTags) ? fmTags : [fmTags];
+    for (const rawItem of list) {
+      if (!rawItem) continue;
+      const raw = String(rawItem).trim();
+      const norm = raw.startsWith('#') ? raw : `#${raw}`;
+      out.add(norm);
+    }
+  }
+
+  return Array.from(out);
+}

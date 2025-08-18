@@ -1,4 +1,4 @@
-import { App, TFile, TFolder, TAbstractFile, Vault, Workspace, Command } from 'obsidian';
+import { App, TFile, TFolder, TAbstractFile, Command, getAllTags } from 'obsidian';
 import { ObsidianConfig, ObsidianFile, ObsidianFileResponse } from '../types/obsidian';
 import { paginateResults, paginateFiles } from './response-limiter';
 import { isImageFile as checkIsImageFile, processImageResponse, IMAGE_PROCESSING_PRESETS } from './image-handler';
@@ -887,10 +887,16 @@ export class ObsidianAPI {
         if (this.isTextFile(file)) {
           try {
             const cache = this.app.metadataCache.getFileCache(file);
-            if (cache?.tags) {
-              const tagMatch = cache.tags.some(tagRef => 
-                tagRef.tag.toLowerCase().includes(termLower)
-              );
+            const tags = cache ? (getAllTags(cache) || []) : [];
+
+            if (tags.length > 0) {
+              // Normalize the search term to include leading '#'
+              const target = termLower.startsWith('#') ? termLower : `#${termLower}`;
+              const tagMatch = tags.some((t) => {
+                const tl = String(t).toLowerCase();
+                // Match exact tag or hierarchical descendants (e.g., #foo or #foo/bar)
+                return tl === target || tl.startsWith(`${target}/`);
+              });
               if (tagMatch) {
                 score = 1.0;
               }
