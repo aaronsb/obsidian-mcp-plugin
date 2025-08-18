@@ -704,12 +704,16 @@ class MCPSettingTab extends PluginSettingTab {
 			
 			new Setting(containerEl)
 				.setName('Auto-generate Certificate')
-				.setDesc('Automatically generate a self-signed certificate if none exists')
+				.setDesc(this.plugin.settings.certificateConfig.autoGenerate === false ? 
+					'📝 Note: Custom certificates should have a valid CA signing chain for seamless client connections' :
+					'Automatically generate a self-signed certificate if none exists')
 				.addToggle(toggle => toggle
 					.setValue(this.plugin.settings.certificateConfig.autoGenerate || false)
 					.onChange(async (value) => {
 						this.plugin.settings.certificateConfig.autoGenerate = value;
 						await this.plugin.saveSettings();
+						// Refresh the display to update the description
+						this.display();
 					}));
 			
 			new Setting(containerEl)
@@ -721,6 +725,8 @@ class MCPSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.certificateConfig.certPath = value || undefined;
 						await this.plugin.saveSettings();
+						// Refresh display to update configuration examples
+						this.display();
 					}));
 			
 			new Setting(containerEl)
@@ -1307,31 +1313,63 @@ class MCPSettingTab extends PluginSettingTab {
 		const remoteEl = remoteExample.createEl('pre');
 		remoteEl.classList.add('mcp-config-example');
 		
-		const remoteJson = this.plugin.settings.dangerouslyDisableAuth ? {
-			"mcpServers": {
-				[this.app.vault.getName()]: {
-					"command": "npx",
-					"args": [
-						"mcp-remote",
-						`${baseUrl}/mcp`
-					]
+		// Check if we're using self-signed certificates (HTTPS enabled and auto-generate is on)
+		const isUsingSelfSignedCert = this.plugin.settings.httpsEnabled && 
+			(this.plugin.settings.certificateConfig.autoGenerate !== false || 
+			 !this.plugin.settings.certificateConfig.certPath);
+		
+		let remoteJson: any;
+		if (this.plugin.settings.dangerouslyDisableAuth) {
+			remoteJson = {
+				"mcpServers": {
+					[this.app.vault.getName()]: {
+						"command": "npx",
+						"args": [
+							"mcp-remote",
+							`${baseUrl}/mcp`
+						]
+					}
 				}
+			};
+			// Add NODE_TLS env var if using self-signed cert
+			if (isUsingSelfSignedCert) {
+				remoteJson.mcpServers[this.app.vault.getName()].env = {
+					"NODE_TLS_REJECT_UNAUTHORIZED": "0"
+				};
 			}
-		} : {
-			"mcpServers": {
-				[this.app.vault.getName()]: {
-					"command": "npx",
-					"args": [
-						"mcp-remote",
-						`${baseUrl}/mcp`,
-						"--header",
-						`Authorization: Bearer ${this.plugin.settings.apiKey}`
-					]
+		} else {
+			remoteJson = {
+				"mcpServers": {
+					[this.app.vault.getName()]: {
+						"command": "npx",
+						"args": [
+							"mcp-remote",
+							`${baseUrl}/mcp`,
+							"--header",
+							`Authorization: Bearer ${this.plugin.settings.apiKey}`
+						]
+					}
 				}
+			};
+			// Add NODE_TLS env var if using self-signed cert
+			if (isUsingSelfSignedCert) {
+				remoteJson.mcpServers[this.app.vault.getName()].env = {
+					"NODE_TLS_REJECT_UNAUTHORIZED": "0"
+				};
 			}
 		};
 		
 		remoteEl.textContent = JSON.stringify(remoteJson, null, 2);
+		
+		// Add note about self-signed certificates if applicable
+		if (isUsingSelfSignedCert) {
+			const certNote = info.createEl('p', {
+				text: '📝 Self-signed certificate detected: NODE_TLS_REJECT_UNAUTHORIZED=0 is included to allow the secure connection.',
+				cls: 'setting-item-description'
+			});
+			certNote.style.fontStyle = 'italic';
+			certNote.style.color = 'var(--text-muted)';
+		}
 		
 		// Add note about Windows workaround
 		const windowsNote = info.createEl('p', {

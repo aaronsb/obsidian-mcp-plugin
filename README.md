@@ -221,6 +221,27 @@ Once this plugin is approved and available in the Obsidian Community Plugins dir
    - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
    - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
    - Linux: `~/.config/Claude/claude_desktop_config.json`
+   
+   **Windows Note**: If you encounter command line parsing errors with the Authorization header, use this format instead:
+   ```json
+   {
+     "mcpServers": {
+       "obsidian-vault-name": {
+         "command": "npx",
+         "args": [
+           "mcp-remote",
+           "http://localhost:3001/mcp",
+           "--header",
+           "Authorization:${AUTH}"
+         ],
+         "env": {
+           "AUTH": "Bearer YOUR_API_KEY_HERE"
+         }
+       }
+     }
+   }
+   ```
+   This avoids Windows command line issues with spaces in arguments.
 
 ### HTTPS/TLS Configuration (v0.9.0+)
 
@@ -265,16 +286,17 @@ The plugin supports secure HTTPS connections with both self-signed and CA-signed
            "mcp-remote",
            "https://localhost:3443/mcp",
            "--header",
-           "Authorization: Bearer YOUR_API_KEY_HERE"
+           "Authorization:${AUTH}"
          ],
          "env": {
-           "NODE_TLS_REJECT_UNAUTHORIZED": "0"
+           "NODE_TLS_REJECT_UNAUTHORIZED": "0",
+           "AUTH": "Bearer YOUR_API_KEY_HERE"
          }
        }
      }
    }
    ```
-   Note: The `env` section is required for self-signed certificates.
+   Note: The `env` section is required for self-signed certificates. The Authorization header uses `${AUTH}` to avoid Windows command line issues.
 
    **For CA-Signed Certificates**:
    ```json
@@ -286,13 +308,16 @@ The plugin supports secure HTTPS connections with both self-signed and CA-signed
            "mcp-remote",
            "https://your-domain.com:3443/mcp",
            "--header",
-           "Authorization: Bearer YOUR_API_KEY_HERE"
-         ]
+           "Authorization:${AUTH}"
+         ],
+         "env": {
+           "AUTH": "Bearer YOUR_API_KEY_HERE"
+         }
        }
      }
    }
    ```
-   Note: No `env` section needed - the certificate is trusted by default.
+   Note: No `NODE_TLS_REJECT_UNAUTHORIZED` needed - the certificate is trusted by default.
 
 #### Docker & Headless Deployment
 
