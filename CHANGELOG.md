@@ -13,16 +13,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🟠 HIGH: Identified missing input validation across all operations ([#11](https://github.com/aaronsb/obsidian-mcp-plugin/issues/11))
 - 🟠 HIGH: Identified insecure session management implementation ([#12](https://github.com/aaronsb/obsidian-mcp-plugin/issues/12))
 
+## [0.9.3] - 2025-01-19
+
 ### Added
+- **Enhanced Tag Search**: Search now includes frontmatter tags in addition to content tags (thanks @lukemt!) ([#28](https://github.com/aaronsb/obsidian-mcp-plugin/issues/28))
+- **Dynamic HTTPS Configuration**: Configuration examples automatically adapt based on certificate type
+  - NODE_TLS_REJECT_UNAUTHORIZED only shown when using self-signed certificates
+  - Informational notes guide users based on their certificate configuration
+- **Clearer Server Settings**: Separate "Enable HTTP Server" and "Enable HTTPS Server" toggles
+  - At least one protocol must always be enabled
+  - Dynamic descriptions explain when each can be disabled
+  - Status bar shows active protocols (HTTP/HTTPS/both)
+
+### Fixed
+- **Windows Configuration**: Added documentation for Windows-specific command line parsing issues ([#30](https://github.com/aaronsb/obsidian-mcp-plugin/issues/30))
+- **Port Conflict Detection**: Fixed false detection of own running server as a conflict
+  - Port availability only checked when changing ports or starting server
+  - No longer shows confusing "port in use" messages for running server
+
+### Changed
 - Security policy (SECURITY.md) for vulnerability reporting
 - Contributing guidelines (CONTRIBUTING.md)
 - Issue templates for bug reports and feature requests
 - GitHub labels for security, priority, and technical debt tracking
 - Comprehensive security audit documentation
-
-### Changed
 - Project structure improved with proper open-source documentation
-- Search: `tag:` now also matches frontmatter tags as well as tags in content
 
 ## [0.5.14] - 2025-01-11
 
