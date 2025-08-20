@@ -169,9 +169,66 @@ export class BasesAPI {
 
   // Private helper methods
 
+  /**
+   * Parse frontmatter from file content
+   */
+  private parseFrontmatter(content: string): Record<string, any> {
+    const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---/;
+    const match = content.match(frontmatterRegex);
+    
+    if (!match) {
+      return {};
+    }
+    
+    try {
+      // Parse YAML frontmatter
+      const frontmatterText = match[1];
+      const parsed = yaml.load(frontmatterText);
+      
+      // Ensure we return an object
+      if (typeof parsed === 'object' && parsed !== null) {
+        return parsed as Record<string, any>;
+      }
+      
+      return {};
+    } catch (error) {
+      Debug.log('Failed to parse frontmatter:', error);
+      return {};
+    }
+  }
+
   private async createNoteContext(file: TFile, baseConfig: BaseYAML): Promise<NoteContext> {
     const cache = this.app.metadataCache.getFileCache(file);
-    const frontmatter = cache?.frontmatter || {};
+    
+    // Debug logging to understand what's in the cache
+    if (Debug.isDebugMode()) {
+      Debug.log(`Cache for ${file.path}:`, {
+        hasCache: !!cache,
+        hasFrontmatter: !!(cache?.frontmatter),
+        frontmatterKeys: cache?.frontmatter ? Object.keys(cache.frontmatter) : [],
+        hasFrontmatterPosition: !!(cache?.frontmatterPosition),
+        cacheStructure: cache ? Object.keys(cache) : []
+      });
+    }
+    
+    // Try to get frontmatter from cache - it might be in a different property
+    let frontmatter = {};
+    if (cache) {
+      // Check different possible locations for frontmatter
+      if (cache.frontmatter && Object.keys(cache.frontmatter).length > 0) {
+        frontmatter = cache.frontmatter;
+      } else if (cache.frontmatterPosition) {
+        // If we have position but no parsed frontmatter, we might need to parse it manually
+        const content = await this.app.vault.read(file);
+        frontmatter = this.parseFrontmatter(content);
+      }
+    }
+    
+    // If still no frontmatter, try parsing the file directly
+    if (Object.keys(frontmatter).length === 0) {
+      const content = await this.app.vault.read(file);
+      frontmatter = this.parseFrontmatter(content);
+    }
 
     const context: NoteContext = {
       file,

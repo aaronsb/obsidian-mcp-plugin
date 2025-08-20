@@ -21,11 +21,30 @@ export class ExpressionEvaluator {
       // Create a safe evaluation context
       const evalContext = this.createEvalContext(context);
       
+      // Debug logging
+      if (Debug.isDebugMode()) {
+        Debug.log(`Evaluating expression: "${expression}"`);
+        Debug.log('Context frontmatter:', context.frontmatter);
+        Debug.log('Available context keys:', Object.keys(evalContext));
+        
+        // Log specific values that might be referenced in the expression
+        if (expression.includes('status')) {
+          Debug.log('status value:', evalContext.status || evalContext.note?.status);
+        }
+        if (expression.includes('priority')) {
+          Debug.log('priority value:', evalContext.priority || evalContext.note?.priority);
+        }
+      }
+      
       // Parse and evaluate the expression
       // For now, we'll use a simple approach with Function constructor
       // In production, consider using a proper expression parser like jsep
       const func = new Function(...Object.keys(evalContext), `return ${expression}`);
       const result = func(...Object.values(evalContext));
+      
+      if (Debug.isDebugMode()) {
+        Debug.log(`Expression result: ${result}`);
+      }
       
       return result;
     } catch (error) {
