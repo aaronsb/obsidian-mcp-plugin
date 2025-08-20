@@ -6,18 +6,31 @@ import { getVersion } from '../version';
 import { SearchResult } from './advanced-search';
 import { MCPIgnoreManager } from '../security/mcp-ignore-manager';
 import { Debug } from './debug';
+import { BasesAPI } from './bases-api';
+import {
+  BaseFile,
+  BaseConfig,
+  BaseQueryOptions,
+  BaseQueryResult,
+  BaseView,
+  BaseTemplate,
+  BaseExportOptions,
+  BaseCapabilities
+} from '../types/bases';
 
 export class ObsidianAPI {
   private app: App;
   private config: ObsidianConfig;
   private plugin?: any; // Reference to the plugin for accessing MCP server info
   private ignoreManager?: MCPIgnoreManager;
+  private basesAPI: BasesAPI;
   
   constructor(app: App, config?: ObsidianConfig, plugin?: any) {
     this.app = app;
     this.config = config || { apiKey: '', apiUrl: '' };
     this.plugin = plugin;
     this.ignoreManager = plugin?.ignoreManager;
+    this.basesAPI = new BasesAPI(app);
     Debug.log(`ObsidianAPI initialized with ignoreManager: ${!!this.ignoreManager}, enabled: ${this.ignoreManager?.getEnabled()}`);
   }
 
@@ -1136,6 +1149,80 @@ export class ObsidianAPI {
 
     // This should never be reached due to the loop logic, but TypeScript needs it
     throw new Error(`Failed ${operationType} after ${maxRetries} attempts`);
+  }
+
+  // ============================================
+  // Bases API Methods
+  // ============================================
+
+  /**
+   * Check if Bases functionality is available
+   */
+  async getBasesCapabilities(): Promise<BaseCapabilities> {
+    return await this.basesAPI.getCapabilities();
+  }
+
+  /**
+   * List all bases in the vault
+   */
+  async listBases(): Promise<BaseFile[]> {
+    return await this.basesAPI.listBases();
+  }
+
+  /**
+   * Get a specific base by path
+   */
+  async getBase(path: string): Promise<BaseFile> {
+    return await this.basesAPI.getBase(path);
+  }
+
+  /**
+   * Create a new base from configuration
+   */
+  async createBase(config: BaseConfig): Promise<BaseFile> {
+    return await this.basesAPI.createBase(config);
+  }
+
+  /**
+   * Update an existing base configuration
+   */
+  async updateBase(path: string, config: Partial<BaseConfig>): Promise<void> {
+    return await this.basesAPI.updateBase(path, config);
+  }
+
+  /**
+   * Delete a base
+   */
+  async deleteBase(path: string): Promise<void> {
+    return await this.basesAPI.deleteBase(path);
+  }
+
+  /**
+   * Query a base with filters and options
+   */
+  async queryBase(path: string, options?: BaseQueryOptions): Promise<BaseQueryResult> {
+    return await this.basesAPI.queryBase(path, options);
+  }
+
+  /**
+   * Get a specific view of a base
+   */
+  async getBaseView(path: string, viewName: string): Promise<BaseView> {
+    return await this.basesAPI.getBaseView(path, viewName);
+  }
+
+  /**
+   * Generate a note from base template
+   */
+  async generateFromBaseTemplate(basePath: string, template: BaseTemplate): Promise<TFile> {
+    return await this.basesAPI.generateFromTemplate(basePath, template);
+  }
+
+  /**
+   * Export base data in specified format
+   */
+  async exportBase(path: string, options: BaseExportOptions): Promise<string> {
+    return await this.basesAPI.exportBase(path, options);
   }
 
 }

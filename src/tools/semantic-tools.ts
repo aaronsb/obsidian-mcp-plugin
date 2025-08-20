@@ -270,7 +270,8 @@ function getOperationDescription(operation: string): string {
     workflow: '💡 Get contextual suggestions for next actions based on current state',
     system: 'ℹ️ System operations - info: server details, commands: available actions, fetch_web: retrieve and process web content',
     graph: '🕸️ Graph navigation - traverse: explore connections, neighbors: immediate links, path: find routes between notes, statistics: link counts, backlinks/forwardlinks: directional analysis, search-traverse: connected snippets',
-    dataview: '📊 Dataview operations - query: execute DQL queries (LIST FROM "folder", TABLE field FROM #tag WHERE condition), list: get pages with metadata and frontmatter, metadata: extract complete page metadata, validate: check DQL syntax, status: plugin availability. Supports LIST, TABLE, TASK, CALENDAR queries with WHERE filters, sorting, grouping.'
+    dataview: '📊 Dataview operations - query: execute DQL queries (LIST FROM "folder", TABLE field FROM #tag WHERE condition), list: get pages with metadata and frontmatter, metadata: extract complete page metadata, validate: check DQL syntax, status: plugin availability. Supports LIST, TABLE, TASK, CALENDAR queries with WHERE filters, sorting, grouping.',
+    bases: '🗃️ Bases operations - capabilities: check availability, list: show all bases, read: get base config, create: new base from config, update: modify base, delete: remove base, query: filter notes with properties, view: get specific view, template: generate notes, export: CSV/JSON/Markdown export'
   };
   return descriptions[operation] || 'Unknown operation';
 }
@@ -283,7 +284,8 @@ function getActionsForOperation(operation: string): string[] {
     workflow: ['suggest'],
     system: ['info', 'commands', 'fetch_web'],
     graph: ['traverse', 'neighbors', 'path', 'statistics', 'backlinks', 'forwardlinks', 'search-traverse', 'advanced-traverse', 'tag-traverse', 'tag-analysis', 'shared-tags'],
-    dataview: ['query', 'list', 'metadata', 'validate', 'status']
+    dataview: ['query', 'list', 'metadata', 'validate', 'status'],
+    bases: ['capabilities', 'list', 'read', 'create', 'update', 'delete', 'query', 'view', 'template', 'export']
   };
   return actions[operation] || [];
 }
@@ -598,6 +600,57 @@ function getParametersForOperation(operation: string): Record<string, any> {
         description: 'Source filter for pages. Examples: "folder/path" (folder), "#tag" (tag), "[[Note Name]]" (backlinks), "" (all pages)'
       },
       ...pathParam
+    },
+    bases: {
+      path: {
+        type: 'string',
+        description: 'Path to the .base file'
+      },
+      config: {
+        type: 'object',
+        description: 'Base configuration object with name, source, properties, and views'
+      },
+      viewName: {
+        type: 'string',
+        description: 'Name of the view to retrieve'
+      },
+      filters: {
+        type: 'array',
+        description: 'Array of filter objects with property, operator, and value'
+      },
+      sort: {
+        type: 'object',
+        description: 'Sort options with property and order (asc/desc)'
+      },
+      pagination: {
+        type: 'object',
+        description: 'Pagination options with page and pageSize'
+      },
+      includeContent: {
+        type: 'boolean',
+        description: 'Include note content in results'
+      },
+      properties: {
+        type: 'array',
+        description: 'Specific properties to include in results'
+      },
+      basePath: {
+        type: 'string',
+        description: 'Path to the base for template generation'
+      },
+      template: {
+        type: 'object',
+        description: 'Template configuration with name, folder, properties, and contentTemplate'
+      },
+      format: {
+        type: 'string',
+        enum: ['csv', 'json', 'markdown'],
+        description: 'Export format'
+      },
+      dateFormat: {
+        type: 'string',
+        description: 'Date format for export (e.g., YYYY-MM-DD)'
+      }
     }
   };
   
@@ -614,7 +667,8 @@ export function createSemanticTools(api?: ObsidianAPI): any[] {
     createSemanticTool('view'),
     createSemanticTool('workflow'),
     createSemanticTool('system'),
-    createSemanticTool('graph')
+    createSemanticTool('graph'),
+    createSemanticTool('bases')
   ];
 
   // Add Dataview tool if available
@@ -632,5 +686,6 @@ export const semanticTools = [
   createSemanticTool('view'),
   createSemanticTool('workflow'),
   createSemanticTool('system'),
-  createSemanticTool('graph')
+  createSemanticTool('graph'),
+  createSemanticTool('bases')
 ];

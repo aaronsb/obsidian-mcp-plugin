@@ -111,6 +111,8 @@ export class SemanticRouter {
         return this.executeSystemOperation(action, params);
       case 'graph':
         return this.executeGraphOperation(action, params);
+      case 'bases':
+        return this.executeBasesOperation(action, params);
       default:
         throw new Error(`Unknown operation: ${operation}`);
     }
@@ -1819,5 +1821,89 @@ export class SemanticRouter {
     }
     
     return suggestions.length > 0 ? { message, suggested_next: suggestions } : null;
+  }
+
+  private async executeBasesOperation(action: string, params: any): Promise<any> {
+    switch (action) {
+      case 'capabilities':
+        return await this.api.getBasesCapabilities();
+      
+      case 'list':
+        return await this.api.listBases();
+      
+      case 'read':
+        if (!params.path) {
+          throw new Error('Path parameter is required for reading a base');
+        }
+        return await this.api.getBase(params.path);
+      
+      case 'create':
+        if (!params.config) {
+          throw new Error('Config parameter is required for creating a base');
+        }
+        return await this.api.createBase(params.config);
+      
+      case 'update':
+        if (!params.path || !params.config) {
+          throw new Error('Path and config parameters are required for updating a base');
+        }
+        return await this.api.updateBase(params.path, params.config);
+      
+      case 'delete':
+        if (!params.path) {
+          throw new Error('Path parameter is required for deleting a base');
+        }
+        return await this.api.deleteBase(params.path);
+      
+      case 'query':
+        if (!params.path) {
+          throw new Error('Path parameter is required for querying a base');
+        }
+        return await this.api.queryBase(params.path, {
+          filters: params.filters,
+          sort: params.sort,
+          pagination: params.pagination,
+          includeContent: params.includeContent,
+          properties: params.properties
+        });
+      
+      case 'view':
+        if (!params.path || !params.viewName) {
+          throw new Error('Path and viewName parameters are required for getting a base view');
+        }
+        return await this.api.getBaseView(params.path, params.viewName);
+      
+      case 'template': {
+        if (!params.basePath || !params.template) {
+          throw new Error('BasePath and template parameters are required for generating from template');
+        }
+        const file = await this.api.generateFromBaseTemplate(params.basePath, params.template);
+        return {
+          success: true,
+          path: file.path,
+          message: `Generated new note from template: ${file.path}`
+        };
+      }
+      
+      case 'export': {
+        if (!params.path || !params.format) {
+          throw new Error('Path and format parameters are required for exporting a base');
+        }
+        const exportData = await this.api.exportBase(params.path, {
+          format: params.format,
+          properties: params.properties,
+          includeContent: params.includeContent,
+          dateFormat: params.dateFormat
+        });
+        return {
+          success: true,
+          data: exportData,
+          format: params.format
+        };
+      }
+      
+      default:
+        throw new Error(`Unknown bases action: ${action}`);
+    }
   }
 }
