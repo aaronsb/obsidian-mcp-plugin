@@ -37,10 +37,14 @@ export class ExpressionEvaluator {
       }
       
       // Parse and evaluate the expression
-      // For now, we'll use a simple approach with Function constructor
-      // In production, consider using a proper expression parser like jsep
-      const func = new Function(...Object.keys(evalContext), `return ${expression}`);
-      const result = func(...Object.values(evalContext));
+      // Use 'with' statement to avoid reserved word conflicts
+      // Note: 'with' is discouraged but safe in our controlled context
+      const func = new Function('context', `
+        with (context) {
+          return ${expression};
+        }
+      `);
+      const result = func(evalContext);
       
       if (Debug.isDebugMode()) {
         Debug.log(`Expression result: ${result}`);
@@ -115,8 +119,11 @@ export class ExpressionEvaluator {
       number: (val: any) => Number(val),
       string: (val: any) => String(val),
       
-      // Utility functions
-      if: (condition: any, trueVal: any, falseVal: any = null) => {
+      // Utility functions - renamed to avoid reserved word conflicts
+      iff: (condition: any, trueVal: any, falseVal: any = null) => {
+        return condition ? trueVal : falseVal;
+      },
+      choice: (condition: any, trueVal: any, falseVal: any = null) => {
         return condition ? trueVal : falseVal;
       },
       
