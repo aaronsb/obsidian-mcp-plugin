@@ -7,16 +7,7 @@ import { SearchResult } from './advanced-search';
 import { MCPIgnoreManager } from '../security/mcp-ignore-manager';
 import { Debug } from './debug';
 import { BasesAPI } from './bases-api';
-import {
-  BaseFile,
-  BaseConfig,
-  BaseQueryOptions,
-  BaseQueryResult,
-  BaseView,
-  BaseTemplate,
-  BaseExportOptions,
-  BaseCapabilities
-} from '../types/bases';
+import { BaseYAML, BaseQueryResult as BasesQueryResult } from '../types/bases-yaml';
 
 export class ObsidianAPI {
   private app: App;
@@ -1156,73 +1147,38 @@ export class ObsidianAPI {
   // ============================================
 
   /**
-   * Check if Bases functionality is available
-   */
-  async getBasesCapabilities(): Promise<BaseCapabilities> {
-    return await this.basesAPI.getCapabilities();
-  }
-
-  /**
    * List all bases in the vault
    */
-  async listBases(): Promise<BaseFile[]> {
+  async listBases(): Promise<Array<{ path: string; name: string; views: string[] }>> {
     return await this.basesAPI.listBases();
   }
 
   /**
-   * Get a specific base by path
+   * Read a base configuration
    */
-  async getBase(path: string): Promise<BaseFile> {
-    return await this.basesAPI.getBase(path);
+  async readBase(path: string): Promise<BaseYAML> {
+    return await this.basesAPI.readBase(path);
   }
 
   /**
-   * Create a new base from configuration
+   * Create a new base
    */
-  async createBase(config: BaseConfig): Promise<BaseFile> {
-    return await this.basesAPI.createBase(config);
+  async createBase(path: string, config: BaseYAML): Promise<void> {
+    return await this.basesAPI.createBase(path, config);
   }
 
   /**
-   * Update an existing base configuration
+   * Query a base with optional view
    */
-  async updateBase(path: string, config: Partial<BaseConfig>): Promise<void> {
-    return await this.basesAPI.updateBase(path, config);
+  async queryBase(path: string, viewName?: string): Promise<BasesQueryResult> {
+    return await this.basesAPI.queryBase(path, viewName);
   }
 
   /**
-   * Delete a base
+   * Export base data
    */
-  async deleteBase(path: string): Promise<void> {
-    return await this.basesAPI.deleteBase(path);
-  }
-
-  /**
-   * Query a base with filters and options
-   */
-  async queryBase(path: string, options?: BaseQueryOptions): Promise<BaseQueryResult> {
-    return await this.basesAPI.queryBase(path, options);
-  }
-
-  /**
-   * Get a specific view of a base
-   */
-  async getBaseView(path: string, viewName: string): Promise<BaseView> {
-    return await this.basesAPI.getBaseView(path, viewName);
-  }
-
-  /**
-   * Generate a note from base template
-   */
-  async generateFromBaseTemplate(basePath: string, template: BaseTemplate): Promise<TFile> {
-    return await this.basesAPI.generateFromTemplate(basePath, template);
-  }
-
-  /**
-   * Export base data in specified format
-   */
-  async exportBase(path: string, options: BaseExportOptions): Promise<string> {
-    return await this.basesAPI.exportBase(path, options);
+  async exportBase(path: string, format: 'csv' | 'json' | 'markdown', viewName?: string): Promise<string> {
+    return await this.basesAPI.exportBase(path, format, viewName);
   }
 
 }

@@ -271,7 +271,7 @@ function getOperationDescription(operation: string): string {
     system: 'ℹ️ System operations - info: server details, commands: available actions, fetch_web: retrieve and process web content',
     graph: '🕸️ Graph navigation - traverse: explore connections, neighbors: immediate links, path: find routes between notes, statistics: link counts, backlinks/forwardlinks: directional analysis, search-traverse: connected snippets',
     dataview: '📊 Dataview operations - query: execute DQL queries (LIST FROM "folder", TABLE field FROM #tag WHERE condition), list: get pages with metadata and frontmatter, metadata: extract complete page metadata, validate: check DQL syntax, status: plugin availability. Supports LIST, TABLE, TASK, CALENDAR queries with WHERE filters, sorting, grouping.',
-    bases: '🗃️ Bases operations - capabilities: check availability, list: show all bases, read: get base config, create: new base from config, update: modify base, delete: remove base, query: filter notes with properties, view: get specific view, template: generate notes, export: CSV/JSON/Markdown export'
+    bases: '🗃️ Bases operations - list: show all .base files, read: get YAML config, create: new base with views/filters/formulas, query: execute filters on vault notes, view: get table/card view data, evaluate: test formulas, export: CSV/JSON/Markdown. Bases use YAML format with expression-based filters like status == "active" and file.hasTag("project")'
   };
   return descriptions[operation] || 'Unknown operation';
 }
@@ -285,7 +285,7 @@ function getActionsForOperation(operation: string): string[] {
     system: ['info', 'commands', 'fetch_web'],
     graph: ['traverse', 'neighbors', 'path', 'statistics', 'backlinks', 'forwardlinks', 'search-traverse', 'advanced-traverse', 'tag-traverse', 'tag-analysis', 'shared-tags'],
     dataview: ['query', 'list', 'metadata', 'validate', 'status'],
-    bases: ['capabilities', 'list', 'read', 'create', 'update', 'delete', 'query', 'view', 'template', 'export']
+    bases: ['list', 'read', 'create', 'query', 'view', 'export']
   };
   return actions[operation] || [];
 }

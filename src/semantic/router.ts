@@ -1825,9 +1825,6 @@ export class SemanticRouter {
 
   private async executeBasesOperation(action: string, params: any): Promise<any> {
     switch (action) {
-      case 'capabilities':
-        return await this.api.getBasesCapabilities();
-      
       case 'list':
         return await this.api.listBases();
       
@@ -1835,66 +1832,33 @@ export class SemanticRouter {
         if (!params.path) {
           throw new Error('Path parameter is required for reading a base');
         }
-        return await this.api.getBase(params.path);
+        return await this.api.readBase(params.path);
       
       case 'create':
-        if (!params.config) {
-          throw new Error('Config parameter is required for creating a base');
-        }
-        return await this.api.createBase(params.config);
-      
-      case 'update':
         if (!params.path || !params.config) {
-          throw new Error('Path and config parameters are required for updating a base');
+          throw new Error('Path and config parameters are required for creating a base');
         }
-        return await this.api.updateBase(params.path, params.config);
-      
-      case 'delete':
-        if (!params.path) {
-          throw new Error('Path parameter is required for deleting a base');
-        }
-        return await this.api.deleteBase(params.path);
+        await this.api.createBase(params.path, params.config);
+        return { success: true, path: params.path };
       
       case 'query':
         if (!params.path) {
           throw new Error('Path parameter is required for querying a base');
         }
-        return await this.api.queryBase(params.path, {
-          filters: params.filters,
-          sort: params.sort,
-          pagination: params.pagination,
-          includeContent: params.includeContent,
-          properties: params.properties
-        });
+        return await this.api.queryBase(params.path, params.viewName);
       
       case 'view':
         if (!params.path || !params.viewName) {
           throw new Error('Path and viewName parameters are required for getting a base view');
         }
-        return await this.api.getBaseView(params.path, params.viewName);
-      
-      case 'template': {
-        if (!params.basePath || !params.template) {
-          throw new Error('BasePath and template parameters are required for generating from template');
-        }
-        const file = await this.api.generateFromBaseTemplate(params.basePath, params.template);
-        return {
-          success: true,
-          path: file.path,
-          message: `Generated new note from template: ${file.path}`
-        };
-      }
+        // View is handled by query with viewName
+        return await this.api.queryBase(params.path, params.viewName);
       
       case 'export': {
         if (!params.path || !params.format) {
           throw new Error('Path and format parameters are required for exporting a base');
         }
-        const exportData = await this.api.exportBase(params.path, {
-          format: params.format,
-          properties: params.properties,
-          includeContent: params.includeContent,
-          dateFormat: params.dateFormat
-        });
+        const exportData = await this.api.exportBase(params.path, params.format, params.viewName);
         return {
           success: true,
           data: exportData,
