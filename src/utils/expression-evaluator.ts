@@ -1,6 +1,7 @@
 import { App, TFile, getAllTags } from 'obsidian';
 import { NoteContext } from '../types/bases-yaml';
 import { Debug } from './debug';
+import { BasesReference } from './bases-reference';
 
 /**
  * Evaluates Bases filter and formula expressions
@@ -52,7 +53,20 @@ export class ExpressionEvaluator {
       
       return result;
     } catch (error) {
-      Debug.log(`Expression evaluation failed for: ${expression}`, error);
+      const errorHint = BasesReference.getErrorHint(error as Error, { expression });
+      
+      Debug.log(`Expression evaluation failed for: ${expression}`);
+      Debug.log(`Error: ${errorHint.error}`);
+      Debug.log(`Hint: ${errorHint.hint}`);
+      
+      if (errorHint.suggestions.length > 0) {
+        Debug.log('Suggestions:', errorHint.suggestions);
+      }
+      
+      if (errorHint.examples && errorHint.examples.length > 0) {
+        Debug.log('Examples:', errorHint.examples);
+      }
+      
       return false;
     }
   }
@@ -107,7 +121,17 @@ export class ExpressionEvaluator {
     // Global functions
     const globalFunctions = {
       // Date/time functions
-      date: (str: string) => new Date(str),
+      date: (str: string | Date) => {
+        // If already a Date, return it
+        if (str instanceof Date) return str;
+        // Parse string to Date
+        const parsed = new Date(str);
+        if (isNaN(parsed.getTime())) {
+          Debug.log(`Failed to parse date: ${str}`);
+          return null;
+        }
+        return parsed;
+      },
       now: () => new Date(),
       today: () => {
         const d = new Date();
@@ -140,15 +164,35 @@ export class ExpressionEvaluator {
       list: (val: any) => Array.isArray(val) ? val : [val]
     };
 
+    // Pre-process frontmatter to auto-convert date-like strings
+    const processedFrontmatter: Record<string, any> = {};
+    for (const [key, value] of Object.entries(frontmatter)) {
+      // Auto-convert date-like properties
+      if (typeof value === 'string' && 
+          (key.includes('date') || key.includes('Date') || 
+           key === 'due' || key === 'start' || key === 'end' || 
+           key === 'created' || key === 'modified')) {
+        // Try to parse as date
+        const parsed = new Date(value);
+        if (!isNaN(parsed.getTime())) {
+          processedFrontmatter[key] = parsed;
+        } else {
+          processedFrontmatter[key] = value;
+        }
+      } else {
+        processedFrontmatter[key] = value;
+      }
+    }
+
     // Build the complete context
     const evalContext: Record<string, any> = {
       ...globalFunctions,
       file: fileObj,
-      note: frontmatter, // note properties
+      note: processedFrontmatter, // note properties with dates parsed
       formula: formulas || {}, // formula results
       
       // Allow direct access to frontmatter properties
-      ...frontmatter
+      ...processedFrontmatter
     };
 
     return evalContext;

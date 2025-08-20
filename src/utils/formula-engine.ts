@@ -2,6 +2,7 @@ import { App } from 'obsidian';
 import { NoteContext } from '../types/bases-yaml';
 import { ExpressionEvaluator } from './expression-evaluator';
 import { Debug } from './debug';
+import { BasesReference } from './bases-reference';
 
 /**
  * Evaluates formula expressions for Bases
@@ -36,7 +37,16 @@ export class FormulaEngine {
       
       return result;
     } catch (error) {
-      Debug.log(`Formula evaluation failed: ${expression}`, error);
+      const errorHint = BasesReference.getErrorHint(error as Error, { expression });
+      
+      Debug.log(`Formula evaluation failed: ${expression}`);
+      Debug.log(`Error: ${errorHint.error}`);
+      Debug.log(`Hint: ${errorHint.hint}`);
+      
+      if (errorHint.suggestions.length > 0) {
+        Debug.log('Suggestions:', errorHint.suggestions);
+      }
+      
       return null;
     }
   }
