@@ -216,6 +216,8 @@ Once this plugin is approved and available in the Obsidian Community Plugins dir
      }
    }
    ```
+   
+   **⚠️ Important for HTTPS**: If using HTTPS (port 3443) with self-signed certificates, you MUST add the `NODE_TLS_REJECT_UNAUTHORIZED` environment variable. See the [HTTPS/TLS Configuration](#httpstls-configuration-v090) section below for details.
 
    Configuration file locations:
    - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
@@ -558,6 +560,57 @@ npm run dev
 # Build for production
 npm run build
 ```
+
+## Troubleshooting
+
+### Tools Not Appearing in Claude Desktop
+
+If the MCP server connects but no tools appear in Claude Desktop:
+
+1. **Check your configuration URL**: Make sure you're using the correct protocol and port
+   - HTTP: `http://localhost:3001/mcp`
+   - HTTPS: `https://localhost:3443/mcp`
+
+2. **For HTTPS with self-signed certificates**: You MUST add `NODE_TLS_REJECT_UNAUTHORIZED`:
+   ```json
+   {
+     "mcpServers": {
+       "obsidian-vault": {
+         "command": "npx",
+         "args": ["mcp-remote", "https://localhost:3443/mcp"],
+         "env": {
+           "NODE_TLS_REJECT_UNAUTHORIZED": "0"
+         }
+       }
+     }
+   }
+   ```
+
+3. **Restart Claude Desktop** after any configuration changes
+
+### Windows: "Program is not recognized" Error
+
+If you see `'D:\Program' is not recognized...` on Windows with Node.js in Program Files:
+
+**Solution**: Use the full path to npx.cmd from your npm global directory:
+```json
+{
+  "mcpServers": {
+    "obsidian-vault": {
+      "command": "C:\\Users\\[YOUR_USERNAME]\\AppData\\Roaming\\npm\\npx.cmd",
+      "args": ["mcp-remote", "http://localhost:3001/mcp"]
+    }
+  }
+}
+```
+
+### Connection Timeouts
+
+If you experience connection timeouts:
+- Ensure the plugin is enabled in Obsidian settings
+- Check that the MCP server is running (look for the status in plugin settings)
+- Verify no firewall is blocking the ports (3001 for HTTP, 3443 for HTTPS)
+- Try using HTTP first to rule out certificate issues
 
 ## Support
 
