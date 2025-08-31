@@ -2,9 +2,12 @@
 
 **Give AI semantic agency over your knowledge graph**
 
-This plugin connects your Obsidian vault to AI assistants like Claude Desktop, giving them the ability to understand and navigate your notes as a connected knowledge graph, not just isolated files. Through semantic hints and graph traversal, AI gains the agency to explore concepts, follow connections, and synthesize information across your entire vault.
+This plugin connects your Obsidian vault to AI assistants through MCP (Model Context Protocol), giving them the ability to understand and navigate your notes as a connected knowledge graph, not just isolated files. Through semantic hints and graph traversal, AI gains the agency to explore concepts, follow connections, and synthesize information across your entire vault.
 
-**MCP (Model Context Protocol)** is the open standard that lets AI assistants interact with external tools and data sources - this plugin makes your Obsidian vault one of those sources.
+**MCP (Model Context Protocol)** is the open standard that lets AI assistants interact with external tools and data sources. This plugin works with any MCP-compatible client including:
+- Claude Desktop (Anthropic)
+- Claude Code/Continue.dev (VS Code)
+- Any platform that supports local MCP servers
 
 ## Why Semantic MCP?
 
@@ -17,7 +20,7 @@ Traditional file access gives AI a narrow view - one document at a time. This pl
 
 ## Quick Start
 
-**Prerequisites:** You need Claude Desktop or another MCP-compatible AI client installed.
+**Prerequisites:** You need an MCP-compatible AI client like Claude Desktop, Claude Code, or Continue.dev.
 
 ### 1. Install the Plugin
 
@@ -32,7 +35,7 @@ Traditional file access gives AI a narrow view - one document at a time. This pl
 
 ### 2. Configure Your AI Client
 
-**Claude Desktop**
+**For Claude Desktop / Claude Code**
 ```json
 {
   "mcpServers": {
@@ -67,7 +70,7 @@ Traditional file access gives AI a narrow view - one document at a time. This pl
 
 ### 3. Start Using
 
-Once connected, simply chat with Claude Desktop about your notes! For example:
+Once connected, simply chat with your AI assistant about your notes! For example:
 - "What are my recent thoughts on project X?"
 - "Find connections between my psychology and philosophy notes"
 - "Summarize my meeting notes from this week"
