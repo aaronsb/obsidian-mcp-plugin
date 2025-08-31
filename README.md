@@ -2,7 +2,9 @@
 
 **Give AI semantic agency over your knowledge graph**
 
-This plugin enables AI assistants (Claude, ChatGPT, etc.) to understand and navigate your Obsidian vault as a connected knowledge graph, not just isolated files. Through semantic hints and graph traversal, AI gains the agency to explore concepts, follow connections, and synthesize information across your entire vault.
+This plugin connects your Obsidian vault to AI assistants like Claude Desktop, giving them the ability to understand and navigate your notes as a connected knowledge graph, not just isolated files. Through semantic hints and graph traversal, AI gains the agency to explore concepts, follow connections, and synthesize information across your entire vault.
+
+**MCP (Model Context Protocol)** is the open standard that lets AI assistants interact with external tools and data sources - this plugin makes your Obsidian vault one of those sources.
 
 ## Why Semantic MCP?
 
@@ -14,6 +16,8 @@ Traditional file access gives AI a narrow view - one document at a time. This pl
 - **Intelligent Synthesis**: Combine fragments from multiple notes to answer complex questions
 
 ## Quick Start
+
+**Prerequisites:** You need Claude Desktop or another MCP-compatible AI client installed.
 
 ### 1. Install the Plugin
 
@@ -63,12 +67,18 @@ Traditional file access gives AI a narrow view - one document at a time. This pl
 
 ### 3. Start Using
 
-Once connected, your AI can:
+Once connected, simply chat with Claude Desktop about your notes! For example:
+- "What are my recent thoughts on project X?"
+- "Find connections between my psychology and philosophy notes"
+- "Summarize my meeting notes from this week"
+- "Create a new note linking my ideas about Y"
+
+Your AI assistant now has these capabilities:
 - Navigate your vault's link structure
 - Search across all notes semantically
 - Read, edit, and create notes
 - Analyze your knowledge graph
-- Work with Dataview queries
+- Work with Dataview queries (if installed)
 - Manage Obsidian Bases (database views)
 
 ## Core Tools
