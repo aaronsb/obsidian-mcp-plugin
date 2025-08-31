@@ -211,23 +211,25 @@ export class BasesAPI {
       });
     }
     
-    // Try to get frontmatter from cache - it might be in a different property
-    let frontmatter = {};
-    if (cache) {
-      // Check different possible locations for frontmatter
-      if (cache.frontmatter && Object.keys(cache.frontmatter).length > 0) {
-        frontmatter = cache.frontmatter;
-      } else if (cache.frontmatterPosition) {
-        // If we have position but no parsed frontmatter, we might need to parse it manually
+    // Use Obsidian's cached frontmatter when available
+    // The metadata cache should have already parsed this for us
+    let frontmatter = cache?.frontmatter || {};
+    
+    // Only parse manually if cache is unavailable (rare edge case)
+    // This might happen if the file was just created or cache is stale
+    if (!cache || Object.keys(frontmatter).length === 0) {
+      // Force a cache refresh first
+      await this.app.metadataCache.trigger('resolve', file);
+      
+      // Try cache again after refresh
+      const refreshedCache = this.app.metadataCache.getFileCache(file);
+      frontmatter = refreshedCache?.frontmatter || {};
+      
+      // Last resort: manual parse (should rarely happen)
+      if (Object.keys(frontmatter).length === 0) {
         const content = await this.app.vault.read(file);
         frontmatter = this.parseFrontmatter(content);
       }
-    }
-    
-    // If still no frontmatter, try parsing the file directly
-    if (Object.keys(frontmatter).length === 0) {
-      const content = await this.app.vault.read(file);
-      frontmatter = this.parseFrontmatter(content);
     }
 
     const context: NoteContext = {
