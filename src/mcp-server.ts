@@ -462,9 +462,74 @@ export class MCPHttpServer {
       // Get or create session ID
       const sessionId = req.headers['mcp-session-id'] as string | undefined;
       Debug.log(`📨 MCP Request: ${request.method}${sessionId ? ` [Session: ${sessionId}]` : ''}`, request.params);
-      let transport: StreamableHTTPServerTransport;
-      let effectiveSessionId = sessionId;
+      // Quick path: lightweight ping to keep session alive
+      if (request?.method === 'session/ping' || request?.method === 'status/ping') {
+        if (sessionId && this.sessionManager) {
+          this.sessionManager.touchSession(sessionId);
+        }
+        if (sessionId) {
+          res.setHeader('Mcp-Session-Id', sessionId);
+        }
+        res.status(200).json({ jsonrpc: '2.0', id: request?.id ?? null, result: { ok: true, sessionId: sessionId || null } });
+        return;
+      }
+      let transport: StreamableHTTPServerTransport | undefined;
+      let effectiveSessionId!: string; // will be set in the branches below
+      if (sessionId) {
+        effectiveSessionId = sessionId;
+      }
       let mcpServer: MCPServer;
+
+      // Helper: create a null response shim so we can send an internal initialize
+      const createNullRes = () => {
+        const headers: Record<string, string> = {};
+        let sent = false;
+        let code = 200;
+        const resp: any = {
+          // Node-style response interface (minimal no-op implementation)
+          writeHead: (_status: number, _headers?: Record<string, string>) => { code = _status; sent = true; },
+          setHeader: (k: string, v: string) => { headers[k] = v; },
+          getHeader: (k: string) => headers[k],
+          get statusCode() { return code; },
+          set statusCode(v: number) { code = v; },
+          get headersSent() { return sent; },
+          write: (_chunk: any) => { /* no-op */ },
+          end: (_data?: any) => { sent = true; },
+          on: (_event: string, _handler: (...args: any[]) => void) => { /* no-op */ },
+          once: (_event: string, _handler: (...args: any[]) => void) => { /* no-op */ },
+          // Express-like helpers (used by some wrappers)
+          status: (v: number) => { code = v; return resp; },
+          json: (_body: any) => { sent = true; },
+          send: (_body?: any) => { sent = true; },
+        };
+        return resp as any;
+      };
+      // When a non-initialize request arrives without an active transport,
+      // we return a JSON-RPC error instructing the client to initialize using
+      // the provided session ID. This avoids fragile internal auto-initialize.
+      let requireInitializeNotice = false;
+
+      // Helper: register transport with lifecycle hooks
+      const attachTransportHandlers = (sessId: string, tr: StreamableHTTPServerTransport) => {
+        try {
+          // @ts-ignore optional event emitter API on transport
+          tr.on?.('close', () => {
+            if (this.transports.has(sessId)) {
+              this.transports.delete(sessId);
+              this.connectionCount = Math.max(0, this.connectionCount - 1);
+              Debug.log(`🔌 Transport closed for session ${sessId}. Connections: ${this.connectionCount}`);
+            }
+          });
+          // @ts-ignore optional event emitter API on transport
+          tr.on?.('error', (e: any) => {
+            Debug.error(`Transport error for session ${sessId}:`, e);
+            if (this.transports.has(sessId)) {
+              this.transports.delete(sessId);
+              this.connectionCount = Math.max(0, this.connectionCount - 1);
+            }
+          });
+        } catch {}
+      };
 
       // Determine which server to use
       if (this.mcpServerPool) {
@@ -481,23 +546,34 @@ export class MCPHttpServer {
             this.sessionManager.touchSession(sessionId);
           }
         } else if (sessionId && this.sessionManager) {
-          // Session ID provided but transport not found - check if it's a valid reused session
-          const session = this.sessionManager.getOrCreateSession(sessionId);
-          
-          // Get or create server for this session
-          mcpServer = this.mcpServerPool.getOrCreateServer(sessionId);
-          
-          // Create new transport for the reused session
-          effectiveSessionId = sessionId;
-          transport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: () => effectiveSessionId!
-          });
-          
-          await mcpServer.connect(transport);
-          this.transports.set(effectiveSessionId, transport);
-          this.connectionCount++;
-          
-          Debug.log(`♻️ Reused session ${sessionId} (requests: ${session.requestCount})`);
+          // Session ID provided but no active transport
+          // Only allow re-create on initialize; otherwise signal explicit session expiration
+          if (isInitializeRequest(request)) {
+            const session = this.sessionManager.getOrCreateSession(sessionId);
+            mcpServer = this.mcpServerPool.getOrCreateServer(sessionId);
+            effectiveSessionId = sessionId;
+            transport = new StreamableHTTPServerTransport({
+              sessionIdGenerator: () => effectiveSessionId!
+            });
+            await mcpServer.connect(transport);
+            this.transports.set(effectiveSessionId as string, transport);
+            attachTransportHandlers(effectiveSessionId as string, transport);
+            this.connectionCount++;
+            Debug.log(`♻️ Recreated transport for session ${sessionId} (requests: ${session.requestCount})`);
+          } else {
+            // Create transport and require client initialize on next call
+            const newSessionId = sessionId!; // reuse provided id (guaranteed by branch)
+            mcpServer = this.mcpServerPool.getOrCreateServer(newSessionId);
+            effectiveSessionId = newSessionId;
+            transport = new StreamableHTTPServerTransport({
+              sessionIdGenerator: () => effectiveSessionId!
+            });
+            await mcpServer.connect(transport);
+            this.transports.set(effectiveSessionId, transport);
+            attachTransportHandlers(effectiveSessionId, transport);
+            this.connectionCount++;
+            requireInitializeNotice = true;
+          }
         } else if (!sessionId && isInitializeRequest(request)) {
           // New initialization request - create new transport with session
           effectiveSessionId = randomUUID();
@@ -514,62 +590,153 @@ export class MCPHttpServer {
           
           // Store the transport for future requests
           this.transports.set(effectiveSessionId, transport);
+          attachTransportHandlers(effectiveSessionId, transport);
           this.connectionCount++;
           
           // Register session with manager if enabled
           if (this.sessionManager) {
             this.sessionManager.getOrCreateSession(effectiveSessionId);
           }
-          
-          Debug.log(`🔗 Created new MCP session: ${effectiveSessionId} (Total: ${this.connectionCount})`);
         } else {
-          // Handle stateless requests or create temporary transport
-          // Use a temporary session ID for stateless requests
-          const tempSessionId = `temp-${randomUUID()}`;
-          mcpServer = this.mcpServerPool.getOrCreateServer(tempSessionId);
-          
-          transport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: undefined // Stateless mode
-          });
-          await mcpServer.connect(transport);
-        }
-      } else {
-        // Non-concurrent mode - use single server
-        if (!this.mcpServer) {
-          throw new Error('MCP server not initialized');
-        }
-        mcpServer = this.mcpServer;
-        
-        if (sessionId && this.transports.has(sessionId)) {
-          // Use existing transport for this session
-          transport = this.transports.get(sessionId)!;
-        } else if (!sessionId && isInitializeRequest(request)) {
-          // New initialization request - create new transport with session
-          effectiveSessionId = randomUUID();
+          // No or unknown session on non-initialize request.
+          // Generate a session (or reuse provided) and require client initialize next.
+          const newSessionId = sessionId ?? randomUUID();
+          mcpServer = this.mcpServerPool.getOrCreateServer(newSessionId);
+          effectiveSessionId = newSessionId;
           transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => effectiveSessionId!
           });
-          
-          // Connect the MCP server to this transport
           await mcpServer.connect(transport);
-          
-          // Store the transport for future requests
           this.transports.set(effectiveSessionId, transport);
+          attachTransportHandlers(effectiveSessionId, transport);
           this.connectionCount++;
-          
-          Debug.log(`🔗 Created new MCP session: ${effectiveSessionId} (Total: ${this.connectionCount})`);
-        } else {
-          // Handle stateless requests or create temporary transport
-          transport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: undefined // Stateless mode
-          });
+          requireInitializeNotice = true;
+        }
+      } else {
+        // Non-concurrent mode - use single MCP server
+        mcpServer = this.mcpServer!;
+        if (sessionId && this.transports.has(sessionId)) {
+          // Use existing transport
+          transport = this.transports.get(sessionId)!;
+          effectiveSessionId = sessionId;
+          if (this.sessionManager) this.sessionManager.touchSession(sessionId);
+        } else if (sessionId) {
+          // No active transport for provided session
+          if (isInitializeRequest(request)) {
+            effectiveSessionId = sessionId;
+            transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId! });
+            await mcpServer.connect(transport);
+            this.transports.set(effectiveSessionId, transport);
+            attachTransportHandlers(effectiveSessionId, transport);
+            this.connectionCount++;
+          } else {
+            effectiveSessionId = sessionId;
+            transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId! });
+            await mcpServer.connect(transport);
+            this.transports.set(effectiveSessionId, transport);
+            attachTransportHandlers(effectiveSessionId, transport);
+            this.connectionCount++;
+            requireInitializeNotice = true;
+          }
+        } else if (!sessionId && isInitializeRequest(request)) {
+          // New initialization request - create new session and transport
+          effectiveSessionId = randomUUID();
+          transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId! });
           await mcpServer.connect(transport);
+          this.transports.set(effectiveSessionId, transport);
+          attachTransportHandlers(effectiveSessionId, transport);
+          this.connectionCount++;
+          if (this.sessionManager) {
+            this.sessionManager.getOrCreateSession(effectiveSessionId);
+          }
+        } else {
+          // No session header and not an initialize request: pre-provision session and require initialize
+          effectiveSessionId = randomUUID();
+          transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId! });
+          await mcpServer.connect(transport);
+          this.transports.set(effectiveSessionId, transport);
+          attachTransportHandlers(effectiveSessionId, transport);
+          this.connectionCount++;
+          if (this.sessionManager) {
+            this.sessionManager.getOrCreateSession(effectiveSessionId);
+          }
+          requireInitializeNotice = true;
         }
       }
 
-      // Set session header if we have one
-      if (effectiveSessionId) {
-        res.setHeader('Mcp-Session-Id', effectiveSessionId);
+      // Compatibility: if we just created a transport for a non-initialize call,
+      // attempt a safe, internal initialize to avoid client retry loops.
+      if (requireInitializeNotice && transport && !isInitializeRequest(request)) {
+        // Clone req to ensure session header is present for compat initialize
+        const compatReq = {
+          ...req,
+          headers: {
+            ...req.headers,
+            'mcp-session-id': effectiveSessionId
+          }
+        };
+        const versionsToTry = ['2025-06-18', '2024-11-05', '1.0'];
+        let initOk = false;
+        let lastErr: any;
+        for (const ver of versionsToTry) {
+          try {
+            const initReq = {
+              jsonrpc: '2.0',
+              id: '__compat_init__',
+              method: 'initialize',
+              params: {
+                protocolVersion: ver,
+                capabilities: {},
+                clientInfo: { name: 'obsidian-mcp-compat', version: getVersion() }
+              }
+            } as any;
+            await transport.handleRequest(compatReq, createNullRes(), initReq);
+            initOk = true;
+            Debug.log(`Compat initialize succeeded with protocolVersion=${ver}`);
+            break;
+          } catch (e) {
+            lastErr = e;
+            Debug.error(`Compat initialize attempt failed (protocolVersion=${ver}):`, e);
+          }
+        }
+        // Fail-open: even if initialize failed, proceed with the original request
+        // to avoid client retry loops. The transport/server may still reject it,
+        // but this gives us a concrete server error to act on.
+        requireInitializeNotice = false;
+        if (!initOk) {
+          Debug.log('Compat initialize failed; proceeding without explicit initialize (fail-open).');
+        }
+      }
+
+      // If initialization is still required and this isn't an initialize request,
+      // instruct the client to initialize for this session.
+      if (requireInitializeNotice && !isInitializeRequest(request)) {
+        const id = request?.id ?? null;
+        res.setHeader('Mcp-Session-Id', effectiveSessionId as string);
+        res.status(400).json({
+          jsonrpc: '2.0',
+          error: {
+            code: -32000,
+            message: 'Bad Request: Server not initialized',
+            data: { sessionId: effectiveSessionId }
+          },
+          id
+        });
+        return;
+      }
+
+      // Safety: ensure we have a transport before forwarding
+      if (!transport) {
+        const id = request?.id ?? null;
+        if (effectiveSessionId) {
+          res.setHeader('Mcp-Session-Id', effectiveSessionId);
+        }
+        res.status(200).json({
+          jsonrpc: '2.0',
+          error: { code: -32001, message: 'No active transport/session. Please initialize and retry.', data: effectiveSessionId ? { sessionId: effectiveSessionId } : undefined },
+          id
+        });
+        return;
       }
 
       // Handle the request using the transport
