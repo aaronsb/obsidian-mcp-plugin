@@ -630,6 +630,23 @@ export class MCPHttpServer {
         return;
       }
       
+      // Configure server timeouts to keep connections healthy and prevent hangs
+      try {
+        // Keep connections alive long enough for clients, but not indefinitely
+        (this.server as any).keepAliveTimeout = 60_000; // 60s
+        // Headers timeout should exceed keepAliveTimeout slightly
+        (this.server as any).headersTimeout = 65_000; // 65s
+        // Per-request timeout; 0 to disable, or a generous value
+        (this.server as any).requestTimeout = 120_000; // 120s
+        // Legacy idle timeout fallback
+        if (typeof (this.server as any).setTimeout === 'function') {
+          (this.server as any).setTimeout(120_000);
+        }
+        Debug.log('⏱️ Server timeouts configured (keepAlive=60s, headers=65s, request=120s)');
+      } catch (e) {
+        Debug.error('Failed to configure server timeouts:', e);
+      }
+      
       this.server.listen(this.port, () => {
         this.isRunning = true;
         Debug.log(`🚀 MCP server started on ${protocol}://localhost:${this.port}`);
