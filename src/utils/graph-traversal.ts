@@ -177,7 +177,41 @@ export class GraphTraversal {
 
     const visited = new Map<string, GraphNode>();
     const edges: GraphEdge[] = [];
-    const queue: Array<{ path: string; depth: number }> = [{ path: startPath, depth: 0 }];
+
+    // Handle root path "/" by starting from all root-level files
+    let initialPaths: Array<{ path: string; depth: number }> = [];
+
+    if (startPath === '/' || startPath === '') {
+      // Get all files in the vault and start with a subset
+      const allFiles = this.app.vault.getFiles();
+
+      // Sort by modification time to get most relevant files first
+      const sortedFiles = allFiles.sort((a, b) => b.stat.mtime - a.stat.mtime);
+
+      // Take up to 10 most recently modified files as starting points
+      const startingFiles = sortedFiles.slice(0, Math.min(10, sortedFiles.length));
+
+      initialPaths = startingFiles.map(file => ({ path: file.path, depth: 0 }));
+
+      if (initialPaths.length === 0) {
+        // No files in vault
+        return {
+          nodes: visited,
+          edges,
+          stats: {
+            totalNodes: 0,
+            totalEdges: 0,
+            maxDepthReached: 0,
+            traversalTime: Date.now() - startTime
+          }
+        };
+      }
+    } else {
+      // Normal single file starting point
+      initialPaths = [{ path: startPath, depth: 0 }];
+    }
+
+    const queue: Array<{ path: string; depth: number }> = [...initialPaths];
     let maxDepthReached = 0;
 
     while (queue.length > 0 && visited.size < maxNodes) {
@@ -336,6 +370,43 @@ export class GraphTraversal {
     neighbors: GraphNode[];
     edges: GraphEdge[];
   } {
+    // Handle root path "/" specially
+    if (filePath === '/' || filePath === '') {
+      // For root, return a virtual node representing the vault with recent files as neighbors
+      const allFiles = this.app.vault.getFiles();
+      const sortedFiles = allFiles.sort((a, b) => b.stat.mtime - a.stat.mtime);
+      const recentFiles = sortedFiles.slice(0, Math.min(20, sortedFiles.length));
+
+      const neighbors: GraphNode[] = recentFiles.map(file => ({
+        file,
+        path: file.path,
+        title: file.basename,
+        metadata: this.app.metadataCache.getFileCache(file) || undefined
+      }));
+
+      // Create a virtual root node
+      const rootNode: GraphNode = {
+        file: null as any, // Virtual node, no actual file
+        path: '/',
+        title: 'Vault Root',
+        metadata: undefined
+      };
+
+      // Create edges from root to recent files
+      const edges: GraphEdge[] = neighbors.map(n => ({
+        source: '/',
+        target: n.path,
+        type: 'link' as const,
+        count: 1
+      }));
+
+      return {
+        node: rootNode,
+        neighbors,
+        edges
+      };
+    }
+
     const file = this.app.vault.getAbstractFileByPath(filePath);
     if (!(file instanceof TFile)) {
       throw new Error(`File not found: ${filePath}`);

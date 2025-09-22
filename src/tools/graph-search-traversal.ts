@@ -53,8 +53,26 @@ export class GraphSearchTraversal {
         const traversalChain: TraversalNode[] = [];
         let totalNodesVisited = 0;
 
+        // Handle root path "/" by starting from multiple files
+        let initialPaths: [string, number, string | undefined][] = [];
+
+        if (startPath === '/' || startPath === '') {
+            // Get all files in the vault
+            const allFiles = this.app.vault.getFiles();
+
+            // Sort by modification time to get most relevant files
+            const sortedFiles = allFiles.sort((a, b) => b.stat.mtime - a.stat.mtime);
+
+            // Take up to 10 most recently modified files as starting points
+            const startingFiles = sortedFiles.slice(0, Math.min(10, sortedFiles.length));
+
+            initialPaths = startingFiles.map(file => [file.path, 0, undefined]);
+        } else {
+            initialPaths = [[startPath, 0, undefined]];
+        }
+
         // Queue for BFS traversal: [path, depth, parentPath]
-        const queue: [string, number, string | undefined][] = [[startPath, 0, undefined]];
+        const queue: [string, number, string | undefined][] = [...initialPaths];
         
         while (queue.length > 0) {
             const [currentPath, depth, parentPath] = queue.shift()!;
@@ -100,7 +118,7 @@ export class GraphSearchTraversal {
         const executionTime = performance.now() - startTime;
 
         return {
-            startNode: startPath,
+            startNode: startPath === '/' || startPath === '' ? '/' : startPath,
             searchQuery,
             maxDepth,
             traversalChain,

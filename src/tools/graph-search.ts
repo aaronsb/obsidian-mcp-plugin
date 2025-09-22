@@ -116,7 +116,7 @@ export class GraphSearchTool {
    * Perform graph traversal from a starting point
    */
   private async performTraversal(params: GraphSearchParams): Promise<GraphSearchResult> {
-    if (!params.sourcePath) {
+    if (!params.sourcePath && params.sourcePath !== '') {
       throw new Error('Source path is required for traversal operation');
     }
 
@@ -161,7 +161,9 @@ export class GraphSearchTool {
       nodes,
       edges: result.edges,
       graphStats: result.stats,
-      message: `Found ${result.stats.totalNodes} connected nodes within ${params.maxDepth} degrees of separation`,
+      message: params.sourcePath === '/' || params.sourcePath === ''
+        ? `Traversed from ${Math.min(10, this.app.vault.getFiles().length)} most recent files: Found ${result.stats.totalNodes} connected nodes within ${params.maxDepth} degrees`
+        : `Found ${result.stats.totalNodes} connected nodes within ${params.maxDepth} degrees of separation`,
       workflow: {
         message: 'Graph traversal complete. You can explore individual nodes or find paths between them.',
         suggested_next: [
