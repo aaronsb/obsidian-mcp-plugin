@@ -455,6 +455,54 @@ export class MCPHttpServer {
     });
   }
 
+  /**
+   * Attempt compatibility initialization with multiple protocol versions
+   * to avoid client retry loops when transport is created for non-initialize requests
+   */
+  private async attemptCompatibilityInitialize(
+    transport: StreamableHTTPServerTransport,
+    sessionId: string,
+    req: any,
+    createNullRes: () => any
+  ): Promise<boolean> {
+    // Clone req to ensure session header is present for compat initialize
+    const compatReq = {
+      ...req,
+      headers: {
+        ...req.headers,
+        'mcp-session-id': sessionId
+      }
+    };
+
+    // Protocol versions to try - could be made configurable via settings
+    const versionsToTry = this.plugin?.settings?.mcpProtocolVersions || ['2025-06-18', '2024-11-05', '1.0'];
+
+    for (const protocolVersion of versionsToTry) {
+      try {
+        const initReq = {
+          jsonrpc: '2.0',
+          id: '__compat_init__',
+          method: 'initialize',
+          params: {
+            protocolVersion,
+            capabilities: {},
+            clientInfo: { name: 'obsidian-mcp-compat', version: getVersion() }
+          }
+        };
+
+        await transport.handleRequest(compatReq, createNullRes(), initReq);
+        Debug.log(`Compatibility initialize succeeded with protocolVersion=${protocolVersion}`);
+        return true;
+      } catch (e) {
+        Debug.error(`Compatibility initialize attempt failed (protocolVersion=${protocolVersion}):`, e);
+      }
+    }
+
+    // Fail-open: even if initialize failed, proceed to avoid client retry loops
+    Debug.log('Compatibility initialize failed for all versions; proceeding without explicit initialize (fail-open).');
+    return false;
+  }
+
   private async handleMCPRequest(req: any, res: any): Promise<void> {
     try {
       const request = req.body;
@@ -667,45 +715,13 @@ export class MCPHttpServer {
       // Compatibility: if we just created a transport for a non-initialize call,
       // attempt a safe, internal initialize to avoid client retry loops.
       if (requireInitializeNotice && transport && !isInitializeRequest(request)) {
-        // Clone req to ensure session header is present for compat initialize
-        const compatReq = {
-          ...req,
-          headers: {
-            ...req.headers,
-            'mcp-session-id': effectiveSessionId
-          }
-        };
-        const versionsToTry = ['2025-06-18', '2024-11-05', '1.0'];
-        let initOk = false;
-        let lastErr: any;
-        for (const ver of versionsToTry) {
-          try {
-            const initReq = {
-              jsonrpc: '2.0',
-              id: '__compat_init__',
-              method: 'initialize',
-              params: {
-                protocolVersion: ver,
-                capabilities: {},
-                clientInfo: { name: 'obsidian-mcp-compat', version: getVersion() }
-              }
-            } as any;
-            await transport.handleRequest(compatReq, createNullRes(), initReq);
-            initOk = true;
-            Debug.log(`Compat initialize succeeded with protocolVersion=${ver}`);
-            break;
-          } catch (e) {
-            lastErr = e;
-            Debug.error(`Compat initialize attempt failed (protocolVersion=${ver}):`, e);
-          }
-        }
-        // Fail-open: even if initialize failed, proceed with the original request
-        // to avoid client retry loops. The transport/server may still reject it,
-        // but this gives us a concrete server error to act on.
-        requireInitializeNotice = false;
-        if (!initOk) {
-          Debug.log('Compat initialize failed; proceeding without explicit initialize (fail-open).');
-        }
+        const initSuccess = await this.attemptCompatibilityInitialize(
+          transport,
+          effectiveSessionId,
+          req,
+          createNullRes
+        );
+        requireInitializeNotice = !initSuccess; // Only require notice if compat init failed
       }
 
       // If initialization is still required and this isn't an initialize request,
