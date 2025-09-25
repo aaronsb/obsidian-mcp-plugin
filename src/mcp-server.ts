@@ -528,7 +528,9 @@ export class MCPHttpServer {
               this.connectionCount = Math.max(0, this.connectionCount - 1);
             }
           });
-        } catch {}
+        } catch {
+          // Transport may not support event emitters, which is fine
+        }
       };
 
       // Determine which server to use
