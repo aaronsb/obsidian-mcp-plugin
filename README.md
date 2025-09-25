@@ -1,5 +1,11 @@
 # Obsidian MCP Plugin
 
+![GitHub stars](https://img.shields.io/github/stars/aaronsb/obsidian-mcp-plugin?style=social)
+![GitHub forks](https://img.shields.io/github/forks/aaronsb/obsidian-mcp-plugin?style=social)
+![Downloads](https://img.shields.io/github/downloads/aaronsb/obsidian-mcp-plugin/total?color=blue)
+![Latest Release](https://img.shields.io/github/v/release/aaronsb/obsidian-mcp-plugin?include_prereleases&label=version)
+![License](https://img.shields.io/github/license/aaronsb/obsidian-mcp-plugin)
+
 **Give AI semantic agency over your knowledge graph**
 
 This plugin connects your Obsidian vault to AI assistants through MCP (Model Context Protocol), giving them the ability to understand and navigate your notes as a connected knowledge graph, not just isolated files. Through semantic hints and graph traversal, AI gains the agency to explore concepts, follow connections, and synthesize information across your entire vault.
@@ -8,6 +14,10 @@ This plugin connects your Obsidian vault to AI assistants through MCP (Model Con
 - Claude Desktop (Anthropic)
 - Claude Code/Continue.dev (VS Code)
 - Any platform that supports local MCP servers
+
+<!-- STATS:START -->
+<!-- Repository statistics will be automatically updated here daily -->
+<!-- STATS:END -->
 
 ## Why Semantic MCP?
 
