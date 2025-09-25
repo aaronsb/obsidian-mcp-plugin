@@ -144,21 +144,70 @@ export class SemanticRouter {
         });
       case 'fragments': {
         // Dedicated fragment search across multiple files
-        // First, index all markdown files if not done
-        if (this.fragmentRetriever.getIndexedDocumentCount() === 0) {
-          await this.indexVaultFiles();
-        }
-        
-        // Default query to path if no query provided
         const fragmentQuery = params.query || params.path || '';
-        
-        // Search for fragments
-        const fragmentResponse = await this.fragmentRetriever.retrieveFragments(fragmentQuery, {
-          strategy: params.strategy || 'auto',
-          maxFragments: params.maxFragments || 5
-        });
-        
-        return fragmentResponse;
+
+        // Skip indexing if no query provided
+        if (!fragmentQuery || fragmentQuery.trim().length === 0) {
+          return {
+            result: [],
+            context: {
+              operation: 'vault',
+              action: 'fragments',
+              error: 'No query provided for fragment search'
+            }
+          };
+        }
+
+        try {
+          // Only index files that match the query to avoid indexing entire vault
+          // This is a lazy indexing approach - index on demand
+          const searchResults = await this.api.searchPaginated(fragmentQuery, 1, 20, 'combined', false);
+
+          // Index only the files that match the search
+          if (searchResults && searchResults.results && searchResults.results.length > 0) {
+            for (const result of searchResults.results.slice(0, 20)) { // Limit to first 20 files
+              try {
+                const filePath = result.path;
+                if (filePath && filePath.endsWith('.md')) {
+                  const fileResponse = await this.api.getFile(filePath);
+                  let content: string;
+
+                  if (typeof fileResponse === 'string') {
+                    content = fileResponse;
+                  } else if (fileResponse && typeof fileResponse === 'object' && 'content' in fileResponse) {
+                    content = fileResponse.content;
+                  } else {
+                    continue;
+                  }
+
+                  const docId = `file:${filePath}`;
+                  await this.fragmentRetriever.indexDocument(docId, filePath, content);
+                }
+              } catch (e) {
+                // Skip files that can't be indexed
+                console.debug(`Skipping file during fragment indexing:`, e);
+              }
+            }
+          }
+
+          // Search for fragments in indexed documents
+          const fragmentResponse = await this.fragmentRetriever.retrieveFragments(fragmentQuery, {
+            strategy: params.strategy || 'auto',
+            maxFragments: params.maxFragments || 5
+          });
+
+          return fragmentResponse;
+        } catch (error) {
+          console.error('Fragment search failed:', error);
+          return {
+            result: [],
+            context: {
+              operation: 'vault',
+              action: 'fragments',
+              error: error instanceof Error ? error.message : String(error)
+            }
+          };
+        }
       }
       case 'create':
         return await this.api.createFile(params.path, params.content || '');
@@ -167,26 +216,67 @@ export class SemanticRouter {
       case 'delete':
         return await this.api.deleteFile(params.path);
       case 'search': {
+        // Validate query
+        if (!params.query || params.query.trim().length === 0) {
+          return {
+            query: params.query || '',
+            page: 1,
+            pageSize: 10,
+            totalResults: 0,
+            totalPages: 0,
+            results: [],
+            method: 'error',
+            error: 'Search query is required',
+            hint: 'Please provide a search query. Examples: "keyword", "tag:#example", "file:name.md"'
+          };
+        }
+
         // Use advanced search with ranking and snippets
         try {
           const page = parseInt(params.page) || 1;
           const pageSize = parseInt(params.pageSize) || 10;
           const strategy = params.strategy || 'combined'; // filename, content, combined
           const includeContent = params.includeContent !== false; // Default to true
-          
+
           const searchResults = await this.api.searchPaginated(
-            params.query, 
-            page, 
-            pageSize, 
+            params.query,
+            page,
+            pageSize,
             strategy,
             includeContent
           );
-          
+
+          // Check if results are valid
+          if (!searchResults || typeof searchResults !== 'object') {
+            throw new Error('Invalid search response from API');
+          }
+
           return searchResults;
         } catch (searchError) {
           console.error('Search failed:', searchError);
-          
-          // Return empty results if search completely fails
+
+          // Try fallback with basic search strategy
+          try {
+            const fallbackResults = await this.api.searchPaginated(
+              params.query,
+              1,
+              10,
+              'filename', // Use simple filename search as fallback
+              false // Don't include content to avoid errors
+            );
+
+            if (fallbackResults && fallbackResults.results && fallbackResults.results.length > 0) {
+              return {
+                ...fallbackResults,
+                method: 'filename_fallback',
+                warning: 'Using filename-only search due to advanced search failure'
+              };
+            }
+          } catch (fallbackError) {
+            console.error('Fallback search also failed:', fallbackError);
+          }
+
+          // Return error with helpful information
           return {
             query: params.query,
             page: 1,
@@ -195,7 +285,8 @@ export class SemanticRouter {
             totalPages: 0,
             results: [],
             method: 'error',
-            error: searchError instanceof Error ? searchError.message : String(searchError)
+            error: searchError instanceof Error ? searchError.message : String(searchError),
+            hint: 'Try simplifying your query or check if the vault is accessible'
           };
         }
       }
