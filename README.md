@@ -16,23 +16,151 @@ This plugin connects your Obsidian vault to AI assistants through MCP (Model Con
 - Any platform that supports local MCP servers
 
 <!-- STATS:START -->
-<!-- Last updated: 2025-10-01 -->
+<!-- Last updated: 2025-10-02 -->
 
 ### 🌟 Community Engagement
 | Metric | Count |
 |--------|-------|
-| ⭐ Stars | 101 |
-| 🍴 Forks | 6 |
-| 👀 Watchers | 101 |
+| ⭐ Stars | 104 |
+| 🍴 Forks | 7 |
+| 👀 Watchers | 104 |
 | 👁️ Views (14 days) | 0 (0 unique) |
 | 📥 Clones (14 days) | 0 (0 unique) |
 
 ### 📦 Release Downloads
 | Version | Downloads |
 |---------|-----------|
-| **Total All Versions** | **6447** |
-| Latest (0.9.13) | 600 |
+| **Total All Versions** | **6564** |
+| Latest (0.9.13) | 714 |
 
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
+<!-- STATS:END -->
 <!-- STATS:END -->
 <!-- STATS:END -->
 <!-- STATS:END -->
