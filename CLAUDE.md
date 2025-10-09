@@ -330,21 +330,49 @@ async getFile(path: string): Promise<ObsidianFileResponse> {
 
 While waiting for Obsidian team review (typically 2-6 weeks), keep the PR active:
 
-#### Periodic PR Refresh
-```bash
-# Pull latest upstream changes
-git -C /home/aaron/Projects/app/obsidian-releases fetch upstream
-git -C /home/aaron/Projects/app/obsidian-releases rebase upstream/master
+#### "I'm Not Dead Yet" PR Refresh Procedure
 
-# Push to trigger re-validation
-git -C /home/aaron/Projects/app/obsidian-releases push --force origin master
+When the PR has been idle and needs to show activity, or when validation checks need to be refreshed:
+
+```bash
+# 1. Navigate to the obsidian-releases fork
+cd /home/aaron/Projects/app/obsidian-releases
+
+# 2. Fetch latest upstream changes
+git fetch upstream
+
+# 3. Hard reset to upstream (clean slate)
+git reset --hard upstream/master
+
+# 4. Edit community-plugins.json to add plugin entry at the END
+# Add your plugin entry after the LAST plugin in the current list
+# (The bot checks that new entries are at the end)
+
+# 5. Commit and push to trigger validation
+git add community-plugins.json
+git commit -m "chore: Update PR with latest upstream changes"
+git push --force origin master
 ```
+
+**Key Points:**
+- Always add your plugin entry at the **END** of `community-plugins.json` (after the current last plugin)
+- Do NOT try to preserve your original queue position - the bot now requires entries at the end
+- The validation bot triggers automatically within a few minutes after pushing
+- This shows the PR is actively maintained and not abandoned
+- Can be done periodically (e.g., monthly) to keep PR visible
+
+#### Validation Bot Requirements
+- Plugin entry MUST be at the end of the list
+- `authorUrl` should be your GitHub profile (not Obsidian website)
+- `fundingUrl` should be your sponsors page or removed if not applicable
+- All checks must pass before human review begins
 
 #### Benefits of Active Development During Review
 - Shows ongoing maintenance and commitment
 - Allows continuous improvement based on BRAT user feedback
 - Keeps PR current with upstream changes
 - Demonstrates plugin stability through multiple versions
+- Prevents PR from being auto-closed due to inactivity
 
 #### Release Tag Format
 - **Important**: Obsidian requires release tags WITHOUT 'v' prefix
