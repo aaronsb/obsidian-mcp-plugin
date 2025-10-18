@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, Notice, TFolder, Menu } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Notice, TFolder, Menu, setIcon } from 'obsidian';
 import { MCPHttpServer } from './mcp-server';
 import { getVersion } from './version';
 import { Debug } from './utils/debug';
@@ -1285,11 +1285,14 @@ class MCPSettingTab extends PluginSettingTab {
 		const port = this.plugin.settings.httpsEnabled ? this.plugin.settings.httpsPort : this.plugin.settings.httpPort;
 		const baseUrl = `${protocol}://localhost:${port}`;
 		
-		const claudeCommand = this.plugin.settings.dangerouslyDisableAuth ? 
+		const claudeCommand = this.plugin.settings.dangerouslyDisableAuth ?
 			`claude mcp add --transport http obsidian ${baseUrl}/mcp` :
 			`claude mcp add --transport http obsidian ${baseUrl}/mcp --header "Authorization: Bearer ${this.plugin.settings.apiKey}"`;
-		
+
 		codeEl.textContent = claudeCommand;
+
+		// Add copy button
+		this.addCopyButton(commandExample, claudeCommand);
 		
 		info.createEl('h4', {text: 'Client Configuration (Claude Desktop, Cline, etc.)'});
 		const desktopDesc = info.createEl('p', {
@@ -1321,9 +1324,13 @@ class MCPSettingTab extends PluginSettingTab {
 				}
 			}
 		};
-		
-		configEl.textContent = JSON.stringify(configJson, null, 2);
-		
+
+		const configJsonText = JSON.stringify(configJson, null, 2);
+		configEl.textContent = configJsonText;
+
+		// Add copy button
+		this.addCopyButton(configExample, configJsonText);
+
 		// Option 2: Via mcp-remote
 		info.createEl('p', {text: 'Option 2: Via mcp-remote (for Claude Desktop):'}).style.fontWeight = 'bold';
 		const remoteDesc = info.createEl('p', {
@@ -1380,9 +1387,13 @@ class MCPSettingTab extends PluginSettingTab {
 				};
 			}
 		}
-		
-		remoteEl.textContent = JSON.stringify(remoteJson, null, 2);
-		
+
+		const remoteJsonText = JSON.stringify(remoteJson, null, 2);
+		remoteEl.textContent = remoteJsonText;
+
+		// Add copy button
+		this.addCopyButton(remoteExample, remoteJsonText);
+
 		// Add note about self-signed certificates if applicable
 		if (isUsingSelfSignedCert) {
 			const certNote = info.createEl('p', {
@@ -1437,9 +1448,13 @@ class MCPSettingTab extends PluginSettingTab {
 			}
 			windowsJson.mcpServers[this.app.vault.getName()].env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0";
 		}
-		
-		windowsEl.textContent = JSON.stringify(windowsJson, null, 2);
-		
+
+		const windowsJsonText = JSON.stringify(windowsJson, null, 2);
+		windowsEl.textContent = windowsJsonText;
+
+		// Add copy button
+		this.addCopyButton(windowsExample, windowsJsonText);
+
 		const configPath = info.createEl('p', {
 			text: 'Configuration file location:'
 		});
@@ -1449,6 +1464,61 @@ class MCPSettingTab extends PluginSettingTab {
 		pathList.createEl('li', {text: 'macOS: ~/Library/Application Support/Claude/claude_desktop_config.json'});
 		pathList.createEl('li', {text: 'Windows: %APPDATA%\\Claude\\claude_desktop_config.json'});
 		pathList.createEl('li', {text: 'Linux: ~/.config/Claude/claude_desktop_config.json'});
+	}
+
+	private addCopyButton(container: HTMLElement, textToCopy: string): void {
+		// Ensure container has relative positioning for absolute button placement
+		container.style.position = 'relative';
+
+		// Create copy button
+		const copyButton = container.createEl('button', {
+			cls: 'mcp-copy-button'
+		});
+		copyButton.setAttribute('aria-label', 'Copy to clipboard');
+		setIcon(copyButton, 'copy');
+
+		// Style the button
+		copyButton.style.position = 'absolute';
+		copyButton.style.top = '8px';
+		copyButton.style.right = '8px';
+		copyButton.style.padding = '4px';
+		copyButton.style.background = 'var(--interactive-normal)';
+		copyButton.style.border = '1px solid var(--background-modifier-border)';
+		copyButton.style.borderRadius = '4px';
+		copyButton.style.cursor = 'pointer';
+		copyButton.style.opacity = '0.7';
+		copyButton.style.transition = 'opacity 0.2s, background 0.2s';
+
+		// Hover effect
+		copyButton.addEventListener('mouseenter', () => {
+			copyButton.style.opacity = '1';
+			copyButton.style.background = 'var(--interactive-hover)';
+		});
+
+		copyButton.addEventListener('mouseleave', () => {
+			copyButton.style.opacity = '0.7';
+			copyButton.style.background = 'var(--interactive-normal)';
+		});
+
+		// Click handler
+		copyButton.addEventListener('click', async () => {
+			try {
+				await navigator.clipboard.writeText(textToCopy);
+
+				// Show success feedback
+				setIcon(copyButton, 'check');
+				copyButton.style.background = 'var(--interactive-success)';
+
+				// Reset after 2 seconds
+				setTimeout(() => {
+					setIcon(copyButton, 'copy');
+					copyButton.style.background = 'var(--interactive-normal)';
+				}, 2000);
+			} catch (error) {
+				new Notice('Failed to copy to clipboard');
+				Debug.error('Failed to copy to clipboard:', error);
+			}
+		});
 	}
 
 	private async checkPortAvailability(port: number, setting: Setting): Promise<void> {
