@@ -1404,7 +1404,7 @@ class MCPSettingTab extends PluginSettingTab {
 		const windowsEl = windowsExample.createEl('pre');
 		windowsEl.classList.add('mcp-config-example');
 		
-		let windowsJson: any = {
+		const windowsJson: any = {
 			"mcpServers": {
 				[this.app.vault.getName()]: {
 					"command": "npx",
