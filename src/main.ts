@@ -1393,43 +1393,50 @@ class MCPSettingTab extends PluginSettingTab {
 			certNote.style.color = 'var(--text-muted)';
 		}
 		
-		// Add note about Windows workaround
+		// Option 2a: Windows Configuration
+		info.createEl('p', {text: 'Option 2a: Windows Configuration (via mcp-remote):'}).style.fontWeight = 'bold';
 		const windowsNote = info.createEl('p', {
-			text: 'Windows Users: If you have issues with spaces, use environment variables instead:',
+			text: 'Windows has issues with spaces in npx arguments. Use environment variables to work around this:',
 			cls: 'setting-item-description'
 		});
-		windowsNote.style.fontStyle = 'italic';
 		
 		const windowsExample = info.createDiv('desktop-config-example');
 		const windowsEl = windowsExample.createEl('pre');
 		windowsEl.classList.add('mcp-config-example');
 		
-		const windowsJson = this.plugin.settings.dangerouslyDisableAuth ? {
+		let windowsJson: any = {
 			"mcpServers": {
 				[this.app.vault.getName()]: {
 					"command": "npx",
-					"args": [
-						"mcp-remote",
-						`${baseUrl}/mcp`
-					]
-				}
-			}
-		} : {
-			"mcpServers": {
-				[this.app.vault.getName()]: {
-					"command": "npx",
-					"args": [
-						"mcp-remote",
-						`${baseUrl}/mcp`,
-						"--header",
-						"Authorization:Bearer ${OBSIDIAN_API_KEY}"  // No space around colon
-					],
-					"env": {
-						"OBSIDIAN_API_KEY": this.plugin.settings.apiKey
-					}
+					"args": this.plugin.settings.dangerouslyDisableAuth ?
+						[
+							"mcp-remote",
+							`${baseUrl}/mcp`
+						] :
+						[
+							"mcp-remote",
+							`${baseUrl}/mcp`,
+							"--header",
+							"Authorization: Bearer ${OBSIDIAN_API_KEY}"
+						]
 				}
 			}
 		};
+
+		// Add env section if auth is enabled
+		if (!this.plugin.settings.dangerouslyDisableAuth) {
+			windowsJson.mcpServers[this.app.vault.getName()].env = {
+				"OBSIDIAN_API_KEY": this.plugin.settings.apiKey
+			};
+		}
+
+		// Add NODE_TLS env var if using self-signed cert
+		if (isUsingSelfSignedCert) {
+			if (!windowsJson.mcpServers[this.app.vault.getName()].env) {
+				windowsJson.mcpServers[this.app.vault.getName()].env = {};
+			}
+			windowsJson.mcpServers[this.app.vault.getName()].env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0";
+		}
 		
 		windowsEl.textContent = JSON.stringify(windowsJson, null, 2);
 		
