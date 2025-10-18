@@ -1428,7 +1428,7 @@ class MCPSettingTab extends PluginSettingTab {
 							"mcp-remote",
 							`${baseUrl}/mcp`,
 							"--header",
-							"Authorization: Bearer ${OBSIDIAN_API_KEY}"
+							"Authorization:${OBSIDIAN_API_KEY}"
 						]
 				}
 			}
@@ -1437,7 +1437,7 @@ class MCPSettingTab extends PluginSettingTab {
 		// Add env section if auth is enabled
 		if (!this.plugin.settings.dangerouslyDisableAuth) {
 			windowsJson.mcpServers[this.app.vault.getName()].env = {
-				"OBSIDIAN_API_KEY": this.plugin.settings.apiKey
+				"OBSIDIAN_API_KEY": `Bearer ${this.plugin.settings.apiKey}`
 			};
 		}
 
