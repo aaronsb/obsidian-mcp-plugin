@@ -66,11 +66,8 @@ jobs:
 
       - name: Update README with statistics
         run: |
-          # Create the stats section content
-          cat > stats.md << 'EOF'
-          ## 📊 Repository Statistics
-
-          <!-- STATS:START -->
+          # Create the stats section content (without the markers, we'll handle those separately)
+          cat > stats_content.md << 'EOF'
           <!-- Last updated: ${{ steps.stats.outputs.date }} -->
 
           ### 🌟 Community Engagement
@@ -87,23 +84,38 @@ jobs:
           |---------|-----------|
           | **Total All Versions** | **${{ steps.stats.outputs.total_downloads }}** |
           | Latest (${{ steps.stats.outputs.latest_version }}) | ${{ steps.stats.outputs.latest_downloads }} |
-
-          <!-- STATS:END -->
           EOF
 
           # Check if README has stats section
           if grep -q "<!-- STATS:START -->" README.md; then
-            # Update existing stats section
+            # Update existing stats section - replace content between markers
             awk '
-              /<!-- STATS:START -->/ {print; system("cat stats.md | sed \"1,/<!-- STATS:START -->/d\" | sed \"/<!-- STATS:END -->/,\\$d\""); f=1}
-              /<!-- STATS:END -->/ {if(f) {print; f=0} else print}
-              !f {print}
+              BEGIN { in_stats=0 }
+              /<!-- STATS:START -->/ {
+                print
+                if (!stats_done) {
+                  system("cat stats_content.md")
+                  stats_done=1
+                }
+                in_stats=1
+                next
+              }
+              /<!-- STATS:END -->/ {
+                if (in_stats) {
+                  print
+                  in_stats=0
+                  next
+                }
+              }
+              !in_stats { print }
             ' README.md > README.tmp && mv README.tmp README.md
           else
-            # Add stats section before the first ## heading or at the end
+            # Add stats section before the first ## heading
             awk '
               !added && /^## / {
-                system("cat stats.md")
+                print "<!-- STATS:START -->"
+                system("cat stats_content.md")
+                print "<!-- STATS:END -->"
                 print ""
                 added=1
               }
@@ -111,13 +123,15 @@ jobs:
               END {
                 if (!added) {
                   print ""
-                  system("cat stats.md")
+                  print "<!-- STATS:START -->"
+                  system("cat stats_content.md")
+                  print "<!-- STATS:END -->"
                 }
               }
             ' README.md > README.tmp && mv README.tmp README.md
           fi
 
-          rm stats.md
+          rm stats_content.md
 
       - name: Check for changes
         id: check_changes
