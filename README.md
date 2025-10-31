@@ -16,22 +16,22 @@ This plugin connects your Obsidian vault to AI assistants through MCP (Model Con
 - Any platform that supports local MCP servers
 
 <!-- STATS:START -->
-<!-- Last updated: 2025-10-30 -->
+<!-- Last updated: 2025-10-31 -->
 
 ### 🌟 Community Engagement
 | Metric | Count |
 |--------|-------|
-| ⭐ Stars | 119 |
+| ⭐ Stars | 121 |
 | 🍴 Forks | 7 |
-| 👀 Watchers | 119 |
+| 👀 Watchers | 121 |
 | 👁️ Views (14 days) | 0 (0 unique) |
 | 📥 Clones (14 days) | 0 (0 unique) |
 
 ### 📦 Release Downloads
 | Version | Downloads |
 |---------|-----------|
-| **Total All Versions** | **9351** |
-| Latest (0.9.14b) | 1362 |
+| **Total All Versions** | **9425** |
+| Latest (0.9.14b) | 1433 |
 <!-- STATS:END -->
 
 ## Why Semantic MCP?
