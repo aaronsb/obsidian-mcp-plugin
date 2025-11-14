@@ -1,3 +1,4 @@
+import { Debug } from '../utils/debug';
 import { ObsidianAPI } from '../utils/obsidian-api';
 import { 
   SemanticResponse, 
@@ -185,7 +186,7 @@ export class SemanticRouter {
                 }
               } catch (e) {
                 // Skip files that can't be indexed
-                console.debug(`Skipping file during fragment indexing:`, e);
+                Debug.log(`Skipping file during fragment indexing:`, e);
               }
             }
           }
@@ -198,7 +199,7 @@ export class SemanticRouter {
 
           return fragmentResponse;
         } catch (error) {
-          console.error('Fragment search failed:', error);
+          Debug.error('Fragment search failed:', error);
           return {
             result: [],
             context: {
@@ -253,7 +254,7 @@ export class SemanticRouter {
 
           return searchResults;
         } catch (searchError) {
-          console.error('Search failed:', searchError);
+          Debug.error('Search failed:', searchError);
 
           // Try fallback with basic search strategy
           try {
@@ -273,7 +274,7 @@ export class SemanticRouter {
               };
             }
           } catch (fallbackError) {
-            console.error('Fallback search also failed:', fallbackError);
+            Debug.error('Fallback search also failed:', fallbackError);
           }
 
           // Return error with helpful information
@@ -971,7 +972,7 @@ export class SemanticRouter {
             // File - copy
             const sourceFile = await this.api.getFile(srcPath);
             if (isImageFile(sourceFile)) {
-              console.warn(`Skipping image file: ${srcPath}`);
+              Debug.warn(`Skipping image file: ${srcPath}`);
               skippedFiles.push(srcPath);
               continue;
             }
@@ -1001,7 +1002,7 @@ export class SemanticRouter {
               throw error; // Re-throw destination exists errors
             }
             // Log other errors but continue
-            console.warn(`Failed to copy ${srcPath}: ${error.message}`);
+            Debug.warn(`Failed to copy ${srcPath}: ${error.message}`);
             skippedFiles.push(srcPath);
           }
         }
@@ -1143,13 +1144,13 @@ export class SemanticRouter {
               }
             } catch (e) {
               // Skip unreadable files
-              console.warn(`Failed to search file ${filePath}:`, e);
+              Debug.warn(`Failed to search file ${filePath}:`, e);
             }
           }
         }
       } catch (e) {
         // Skip unreadable directories
-        console.warn(`Failed to search directory ${directory}:`, e);
+        Debug.warn(`Failed to search directory ${directory}:`, e);
       }
     };
     
@@ -1224,13 +1225,13 @@ export class SemanticRouter {
               await this.fragmentRetriever.indexDocument(docId, filePath, content);
             } catch (e) {
               // Skip unreadable files
-              console.warn(`Failed to index ${filePath}:`, e);
+              Debug.warn(`Failed to index ${filePath}:`, e);
             }
           }
         }
       } catch (e) {
         // Skip unreadable directories
-        console.warn(`Failed to index directory ${directory}:`, e);
+        Debug.warn(`Failed to index directory ${directory}:`, e);
       }
     };
     

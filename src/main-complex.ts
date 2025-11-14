@@ -1,3 +1,4 @@
+import { Debug } from './utils/debug';
 import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import { MCPHttpServer } from './mcp-server';
 
@@ -24,7 +25,7 @@ export default class ObsidianMCPPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		console.log('Loading Obsidian MCP Plugin v0.1.2');
+		Debug.log('Loading Obsidian MCP Plugin v0.1.2');
 
 		// Add settings tab
 		this.addSettingTab(new MCPSettingTab(this.app, this));
@@ -34,7 +35,7 @@ export default class ObsidianMCPPlugin extends Plugin {
 			id: 'restart-mcp-server',
 			name: 'Restart MCP Server',
 			callback: () => {
-				console.log('MCP Server restart requested');
+				Debug.log('MCP Server restart requested');
 				// TODO: Implement server restart
 			}
 		});
@@ -47,11 +48,11 @@ export default class ObsidianMCPPlugin extends Plugin {
 		// Add status bar item
 		this.updateStatusBar();
 
-		console.log('Obsidian MCP Plugin loaded successfully');
+		Debug.log('Obsidian MCP Plugin loaded successfully');
 	}
 
 	async onunload() {
-		console.log('Unloading Obsidian MCP Plugin');
+		Debug.log('Unloading Obsidian MCP Plugin');
 		await this.stopMCPServer();
 	}
 
@@ -61,7 +62,7 @@ export default class ObsidianMCPPlugin extends Plugin {
 			await this.mcpServer.start();
 			this.updateStatusBar();
 		} catch (error) {
-			console.error('Failed to start MCP server:', error);
+			Debug.error('Failed to start MCP server:', error);
 			this.updateStatusBar();
 		}
 	}

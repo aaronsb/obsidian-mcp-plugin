@@ -789,7 +789,7 @@ class MCPSettingTab extends PluginSettingTab {
 					if (info) {
 						statusEl.createEl('p', {
 							text: `✅ Certificate valid until: ${info.validTo.toLocaleDateString()}`,
-							cls: 'setting-item-description'
+							cls: 'setting-item-description mcp-security-note'
 						});
 						if (info.daysUntilExpiry < 30) {
 							statusEl.createEl('p', {
@@ -802,7 +802,7 @@ class MCPSettingTab extends PluginSettingTab {
 			} else {
 				statusEl.createEl('p', {
 					text: '📝 No certificate found - will auto-generate on server start',
-					cls: 'setting-item-description'
+					cls: 'setting-item-description mcp-security-note'
 				});
 			}
 			});
@@ -821,12 +821,8 @@ class MCPSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.apiKey)
 					.setDisabled(true);
 				
-				// Make the text input wider to accommodate the key
-				input.inputEl.style.width = '300px';
-				input.inputEl.style.fontFamily = 'monospace';
-				
-				// Add a class for styling
-				input.inputEl.classList.add('mcp-api-key-input');
+				// Add classes for styling
+				input.inputEl.classList.add('mcp-api-key-input', 'mcp-monospace-input');
 				
 				return input;
 			})
@@ -856,18 +852,14 @@ class MCPSettingTab extends PluginSettingTab {
 		// Add a note about security
 		const securityNote = containerEl.createEl('p', {
 			text: 'Note: The API key is stored in the plugin settings file. Anyone with access to your vault can read it.',
-			cls: 'setting-item-description'
+			cls: 'setting-item-description mcp-security-note'
 		});
-		securityNote.style.marginTop = '-10px';
-		securityNote.style.marginBottom = '10px';
 		
 		// Add note about auth methods
 		const authNote = containerEl.createEl('p', {
 			text: 'Supports both Bearer token (recommended) and Basic authentication.',
-			cls: 'setting-item-description'
+			cls: 'setting-item-description mcp-security-note'
 		});
-		authNote.style.marginTop = '-10px';
-		authNote.style.marginBottom = '20px';
 		
 		// Add dangerous disable auth toggle
 		new Setting(containerEl)
@@ -981,19 +973,19 @@ class MCPSettingTab extends PluginSettingTab {
 			const statusEl = exclusionSection.createDiv('mcp-exclusion-status');
 			statusEl.createEl('p', {
 				text: `Current exclusions: ${stats.patternCount} patterns active`,
-				cls: 'setting-item-description'
+				cls: 'setting-item-description mcp-security-note'
 			});
 			
 			// Helper text
 			statusEl.createEl('p', {
 				text: 'Save patterns in .mcpignore file before reloading',
-				cls: 'setting-item-description'
+				cls: 'setting-item-description mcp-security-note'
 			});
 			
 			if (stats.lastModified > 0) {
 				statusEl.createEl('p', {
 					text: `Last modified: ${new Date(stats.lastModified).toLocaleString()}`,
-					cls: 'setting-item-description'
+					cls: 'setting-item-description mcp-security-note'
 				});
 			}
 
@@ -1135,13 +1127,13 @@ class MCPSettingTab extends PluginSettingTab {
 			examples.forEach(example => {
 				examplesList.createEl('li', {
 					text: example,
-					cls: 'setting-item-description'
+					cls: 'setting-item-description mcp-security-note'
 				});
 			});
 
 			helpEl.createEl('p', {
 				text: 'Full syntax documentation: https://git-scm.com/docs/gitignore',
-				cls: 'setting-item-description'
+				cls: 'setting-item-description mcp-security-note'
 			});
 		}
 	}
@@ -1211,14 +1203,8 @@ class MCPSettingTab extends PluginSettingTab {
 		if (this.plugin.settings.dangerouslyDisableAuth) {
 			const warningEl = info.createEl('div', {
 				text: '⚠️ WARNING: Authentication is disabled. Your vault is accessible without credentials!',
-				cls: 'mcp-auth-warning'
+				cls: 'mcp-warning-box'
 			});
-			warningEl.style.backgroundColor = 'var(--background-modifier-error)';
-			warningEl.style.color = 'var(--text-error)';
-			warningEl.style.padding = '10px';
-			warningEl.style.borderRadius = '5px';
-			warningEl.style.marginBottom = '15px';
-			warningEl.style.fontWeight = 'bold';
 		}
 		
 		// Dynamic tools list based on plugin availability
@@ -1254,17 +1240,11 @@ class MCPSettingTab extends PluginSettingTab {
 				text: `🔌 Plugin Integrations: Dataview v${dataviewStatus.version} (enabled)`,
 				cls: 'plugin-integration-status'
 			});
-			statusEl.style.color = 'var(--text-success)';
-			statusEl.style.fontSize = '0.9em';
-			statusEl.style.marginTop = '10px';
 		} else {
 			const statusEl = info.createEl('p', {
 				text: '🔌 Plugin Integrations: None detected (install Dataview for additional functionality)',
 				cls: 'plugin-integration-status'
 			});
-			statusEl.style.color = 'var(--text-muted)';
-			statusEl.style.fontSize = '0.9em';
-			statusEl.style.marginTop = '10px';
 		}
 		
 		const resourceCount = this.plugin.settings.enableConcurrentSessions ? 2 : 1;
@@ -1300,7 +1280,7 @@ class MCPSettingTab extends PluginSettingTab {
 		});
 		
 		// Option 1: Direct HTTP Transport
-		info.createEl('p', {text: 'Option 1: Direct HTTP Transport (if supported by your client):'}).style.fontWeight = 'bold';
+		info.createEl('p', {text: 'Option 1: Direct HTTP Transport (if supported by your client):', cls: 'mcp-section-header'});
 		const configExample = info.createDiv('desktop-config-example');
 		const configEl = configExample.createEl('pre');
 		configEl.classList.add('mcp-config-example');
@@ -1332,10 +1312,10 @@ class MCPSettingTab extends PluginSettingTab {
 		this.addCopyButton(configExample, configJsonText);
 
 		// Option 2: Via mcp-remote
-		info.createEl('p', {text: 'Option 2: Via mcp-remote (for Claude Desktop):'}).style.fontWeight = 'bold';
+		info.createEl('p', {text: 'Option 2: Via mcp-remote (for Claude Desktop):', cls: 'mcp-section-header'});
 		const remoteDesc = info.createEl('p', {
 			text: 'mcp-remote supports authentication headers via the --header flag:',
-			cls: 'setting-item-description'
+			cls: 'setting-item-description mcp-security-note'
 		});
 		
 		const remoteExample = info.createDiv('desktop-config-example');
@@ -1398,17 +1378,15 @@ class MCPSettingTab extends PluginSettingTab {
 		if (isUsingSelfSignedCert) {
 			const certNote = info.createEl('p', {
 				text: '📝 Self-signed certificate detected: NODE_TLS_REJECT_UNAUTHORIZED=0 is included to allow the secure connection.',
-				cls: 'setting-item-description'
+				cls: 'setting-item-description mcp-cert-note'
 			});
-			certNote.style.fontStyle = 'italic';
-			certNote.style.color = 'var(--text-muted)';
 		}
 		
 		// Option 2a: Windows Configuration
-		info.createEl('p', {text: 'Option 2a: Windows Configuration (via mcp-remote):'}).style.fontWeight = 'bold';
+		info.createEl('p', {text: 'Option 2a: Windows Configuration (via mcp-remote):', cls: 'mcp-section-header'});
 		const windowsNote = info.createEl('p', {
 			text: 'Windows has issues with spaces in npx arguments. Use environment variables to work around this:',
-			cls: 'setting-item-description'
+			cls: 'setting-item-description mcp-security-note'
 		});
 		
 		const windowsExample = info.createDiv('desktop-config-example');
@@ -1468,7 +1446,7 @@ class MCPSettingTab extends PluginSettingTab {
 
 	private addCopyButton(container: HTMLElement, textToCopy: string): void {
 		// Ensure container has relative positioning for absolute button placement
-		container.style.position = 'relative';
+		container.classList.add('mcp-config-container');
 
 		// Create copy button
 		const copyButton = container.createEl('button', {
@@ -1476,28 +1454,15 @@ class MCPSettingTab extends PluginSettingTab {
 		});
 		copyButton.setAttribute('aria-label', 'Copy to clipboard');
 		setIcon(copyButton, 'copy');
+				copyButton.classList.remove('success');
 
 		// Style the button
-		copyButton.style.position = 'absolute';
-		copyButton.style.top = '8px';
-		copyButton.style.right = '8px';
-		copyButton.style.padding = '4px';
-		copyButton.style.background = 'var(--interactive-normal)';
-		copyButton.style.border = '1px solid var(--background-modifier-border)';
-		copyButton.style.borderRadius = '4px';
-		copyButton.style.cursor = 'pointer';
-		copyButton.style.opacity = '0.7';
-		copyButton.style.transition = 'opacity 0.2s, background 0.2s';
 
 		// Hover effect
 		copyButton.addEventListener('mouseenter', () => {
-			copyButton.style.opacity = '1';
-			copyButton.style.background = 'var(--interactive-hover)';
 		});
 
 		copyButton.addEventListener('mouseleave', () => {
-			copyButton.style.opacity = '0.7';
-			copyButton.style.background = 'var(--interactive-normal)';
 		});
 
 		// Click handler
@@ -1506,13 +1471,13 @@ class MCPSettingTab extends PluginSettingTab {
 				await navigator.clipboard.writeText(textToCopy);
 
 				// Show success feedback
+			copyButton.classList.add('success');
 				setIcon(copyButton, 'check');
-				copyButton.style.background = 'var(--interactive-success)';
 
 				// Reset after 2 seconds
 				setTimeout(() => {
 					setIcon(copyButton, 'copy');
-					copyButton.style.background = 'var(--interactive-normal)';
+				copyButton.classList.remove('success');
 				}, 2000);
 			} catch (error) {
 				new Notice('Failed to copy to clipboard');

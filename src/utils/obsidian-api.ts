@@ -575,19 +575,19 @@ export class ObsidianAPI {
         };
       }
     } catch (error) {
-      console.warn('Internal search failed, using official API:', error);
+      Debug.warn('Internal search failed, using official API:', error);
     }
 
     // Fallback to our official API implementation
     const searchResults = await this.performVaultSearch(query, strategy, includeContent);
-    console.log(`Search found ${searchResults.length} results for query: ${query}`);
+    Debug.log(`Search found ${searchResults.length} results for query: ${query}`);
     if (searchResults.length > 0) {
-      console.log('First few results:', searchResults.slice(0, 3).map(r => ({ path: r.path, score: r.score })));
+      Debug.log('First few results:', searchResults.slice(0, 3).map(r => ({ path: r.path, score: r.score })));
     }
     
     // Apply pagination
     const paginatedResponse = paginateResults(searchResults, page, pageSize);
-    console.log(`After pagination: ${paginatedResponse.results.length} results shown, ${paginatedResponse.totalResults} total`);
+    Debug.log(`After pagination: ${paginatedResponse.results.length} results shown, ${paginatedResponse.totalResults} total`);
     
     const response: {
       query: string;
@@ -667,25 +667,25 @@ export class ObsidianAPI {
   private async tryInternalSearch(query: string): Promise<any[] | null> {
     // Check if app has a search method directly
     if ((this.app as any).search) {
-      console.log('Found app.search method');
+      Debug.log('Found app.search method');
       return (this.app as any).search(query);
     }
 
     // Try internal plugins
     const internalPlugins = (this.app as any).internalPlugins;
     if (internalPlugins) {
-      console.log('Available internal plugins:', Object.keys(internalPlugins.plugins || {}));
+      Debug.log('Available internal plugins:', Object.keys(internalPlugins.plugins || {}));
       
       // Try different plugin names
       const searchPluginNames = ['global-search', 'search', 'core-search', 'file-search'];
       for (const name of searchPluginNames) {
         const plugin = internalPlugins.plugins?.[name];
         if (plugin?.instance?.search) {
-          console.log(`Found search method in ${name} plugin`);
+          Debug.log(`Found search method in ${name} plugin`);
           return plugin.instance.search(query);
         }
         if (plugin?.instance?.searchIndex?.search) {
-          console.log(`Found searchIndex.search in ${name} plugin`);
+          Debug.log(`Found searchIndex.search in ${name} plugin`);
           return plugin.instance.searchIndex.search(query);
         }
       }
@@ -693,11 +693,11 @@ export class ObsidianAPI {
 
     // Try workspace search
     if ((this.app as any).workspace?.search) {
-      console.log('Found workspace.search method');
+      Debug.log('Found workspace.search method');
       return (this.app as any).workspace.search(query);
     }
 
-    console.log('No internal search API found');
+    Debug.log('No internal search API found');
     return null;
   }
 
@@ -773,7 +773,7 @@ export class ObsidianAPI {
         return { type: 'general', term: pattern, originalQuery: query, isRegex: true, regex };
       } catch (e) {
         // Invalid regex, treat as normal search
-        console.warn('Invalid regex pattern:', e);
+        Debug.warn('Invalid regex pattern:', e);
       }
     }
     
@@ -988,13 +988,13 @@ export class ObsidianAPI {
             }
           } catch (error) {
             // If we can't read the file, skip snippet generation
-            console.warn(`Could not read file for snippet: ${file.path}`, error);
+            Debug.warn(`Could not read file for snippet: ${file.path}`, error);
           }
         }
         
         results.push(result);
       } catch (error) {
-        console.warn('Error processing native search result:', error);
+        Debug.warn('Error processing native search result:', error);
         continue;
       }
     }
@@ -1128,7 +1128,7 @@ export class ObsidianAPI {
         if (isSyncConflictError && attempt < maxRetries - 1) {
           // Exponential backoff: allow time for sync processes to stabilize
           const delay = Math.pow(2, attempt) * baseDelayMs;
-          console.log(`${operationType} failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delay}ms... Error: ${error.message}`);
+          Debug.log(`${operationType} failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delay}ms... Error: ${error.message}`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }

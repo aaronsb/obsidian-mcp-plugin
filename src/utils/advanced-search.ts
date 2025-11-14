@@ -1,3 +1,4 @@
+import { Debug } from './debug';
 import { TFile, App } from 'obsidian';
 import { estimateTokens, truncateContent } from './response-limiter';
 
@@ -169,7 +170,7 @@ export class AdvancedSearchService {
       
       return result;
     } catch (error) {
-      console.warn(`Error reading file ${file.path}:`, error);
+      Debug.warn(`Error reading file ${file.path}:`, error);
       return null;
     }
   }

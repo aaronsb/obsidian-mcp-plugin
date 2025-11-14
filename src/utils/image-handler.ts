@@ -1,3 +1,4 @@
+import { Debug } from './debug';
 import path from 'path';
 
 export interface ImageFile {
@@ -69,9 +70,9 @@ export async function processImageResponse(
   
   try {
     // Use Obsidian's DOM APIs for image processing
-    console.log(`Processing image ${filePath} with config:`, config);
+    Debug.log(`Processing image ${filePath} with config:`, config);
     const resizedBuffer = await resizeImageWithCanvas(buffer, mimeType, config);
-    console.log(`Successfully resized image from ${buffer.length} to ${resizedBuffer.length} bytes`);
+    Debug.log(`Successfully resized image from ${buffer.length} to ${resizedBuffer.length} bytes`);
     
     return {
       path: filePath,
@@ -80,8 +81,8 @@ export async function processImageResponse(
     };
   } catch (error) {
     // If processing fails, return original
-    console.warn('Failed to process image with Canvas:', error);
-    console.log(`Returning original image (${buffer.length} bytes)`);
+    Debug.warn('Failed to process image with Canvas:', error);
+    Debug.log(`Returning original image (${buffer.length} bytes)`);
     return {
       path: filePath,
       mimeType: mimeType,

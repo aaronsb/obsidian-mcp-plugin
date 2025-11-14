@@ -1,3 +1,4 @@
+import { Debug } from '../utils/debug';
 import { ObsidianAPI } from '../utils/obsidian-api';
 import { SemanticRouter } from '../semantic/router';
 import { SemanticRequest } from '../types/semantic';
@@ -215,7 +216,7 @@ const createSemanticTool = (operation: string) => ({
       };
     } catch (error) {
       // Handle JSON serialization errors
-      console.error('JSON serialization failed:', error);
+      Debug.error('JSON serialization failed:', error);
       return {
         content: [{
           type: 'text' as const,

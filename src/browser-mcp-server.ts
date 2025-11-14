@@ -143,7 +143,7 @@ export class BrowserMCPServer {
       };
 
     } catch (error) {
-      console.error('MCP request error:', error);
+      Debug.error('MCP request error:', error);
       return {
         status: 500,
         headers: {

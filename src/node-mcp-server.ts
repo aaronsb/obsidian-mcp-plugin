@@ -1,3 +1,4 @@
+import { Debug } from './utils/debug';
 import { App } from 'obsidian';
 
 interface MCPRequest {
@@ -28,7 +29,7 @@ export class NodeMCPServer {
 
   async start(): Promise<void> {
     if (this.isRunning) {
-      console.log(`MCP server already running on port ${this.port}`);
+      Debug.log(`MCP server already running on port ${this.port}`);
       return;
     }
 
@@ -43,20 +44,20 @@ export class NodeMCPServer {
       await new Promise<void>((resolve, reject) => {
         this.server.listen(this.port, () => {
           this.isRunning = true;
-          console.log(`🚀 MCP server started on port ${this.port}`);
-          console.log(`📍 Health check: /`);
-          console.log(`🔗 MCP endpoint: /mcp`);
+          Debug.log(`🚀 MCP server started on port ${this.port}`);
+          Debug.log(`📍 Health check: /`);
+          Debug.log(`🔗 MCP endpoint: /mcp`);
           resolve();
         });
 
         this.server.on('error', (error: any) => {
-          console.error('❌ Failed to start MCP server:', error);
+          Debug.error('❌ Failed to start MCP server:', error);
           reject(error);
         });
       });
 
     } catch (error) {
-      console.error('❌ Node.js HTTP not available, server cannot start:', error);
+      Debug.error('❌ Node.js HTTP not available, server cannot start:', error);
       throw error;
     }
   }
@@ -70,7 +71,7 @@ export class NodeMCPServer {
       this.server.close(() => {
         this.isRunning = false;
         this.server = undefined;
-        console.log('👋 MCP server stopped');
+        Debug.log('👋 MCP server stopped');
         resolve();
       });
     });
@@ -99,7 +100,7 @@ export class NodeMCPServer {
         res.end(JSON.stringify({ error: 'Not found' }));
       }
     } catch (error) {
-      console.error('Request handling error:', error);
+      Debug.error('Request handling error:', error);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         error: 'Internal server error',
@@ -133,7 +134,7 @@ export class NodeMCPServer {
         const request: MCPRequest = JSON.parse(body);
         let response: MCPResponse;
 
-        console.log('📨 MCP Request:', request.method, request.params);
+        Debug.log('📨 MCP Request:', request.method, request.params);
 
         switch (request.method) {
           case 'tools/list':
@@ -154,12 +155,12 @@ export class NodeMCPServer {
             };
         }
 
-        console.log('📤 MCP Response:', response);
+        Debug.log('📤 MCP Response:', response);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(response));
 
       } catch (error) {
-        console.error('MCP request parsing error:', error);
+        Debug.error('MCP request parsing error:', error);
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           error: {

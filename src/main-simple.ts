@@ -1,3 +1,4 @@
+import { Debug } from './utils/debug';
 import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 
 interface MCPPluginSettings {
@@ -20,25 +21,25 @@ export default class ObsidianMCPPlugin extends Plugin {
 	settings!: MCPPluginSettings;
 
 	async onload() {
-		console.log('🚀 Starting Obsidian MCP Plugin v0.1.2');
+		Debug.log('🚀 Starting Obsidian MCP Plugin v0.1.2');
 		
 		try {
 			await this.loadSettings();
-			console.log('✅ Settings loaded');
+			Debug.log('✅ Settings loaded');
 
 			// Add settings tab
 			this.addSettingTab(new MCPSettingTab(this.app, this));
-			console.log('✅ Settings tab added');
+			Debug.log('✅ Settings tab added');
 
 			// Add command
 			this.addCommand({
 				id: 'restart-mcp-server',
 				name: 'Restart MCP Server',
 				callback: () => {
-					console.log('MCP Server restart requested');
+					Debug.log('MCP Server restart requested');
 				}
 			});
-			console.log('✅ Command added');
+			Debug.log('✅ Command added');
 
 			// Add status bar item
 			const statusBarItemEl = this.addStatusBarItem();
@@ -47,17 +48,17 @@ export default class ObsidianMCPPlugin extends Plugin {
 			} else {
 				statusBarItemEl.setText('MCP: Disabled');
 			}
-			console.log('✅ Status bar added');
+			Debug.log('✅ Status bar added');
 
-			console.log('🎉 Obsidian MCP Plugin loaded successfully');
+			Debug.log('🎉 Obsidian MCP Plugin loaded successfully');
 		} catch (error) {
-			console.error('❌ Error loading Obsidian MCP Plugin:', error);
+			Debug.error('❌ Error loading Obsidian MCP Plugin:', error);
 			throw error; // Re-throw to show in Obsidian's plugin list
 		}
 	}
 
 	async onunload() {
-		console.log('👋 Unloading Obsidian MCP Plugin');
+		Debug.log('👋 Unloading Obsidian MCP Plugin');
 	}
 
 	async loadSettings() {

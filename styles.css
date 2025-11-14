@@ -151,3 +151,80 @@
     color: var(--text-normal);
     opacity: 1;
 }
+
+/* Settings Input Styling */
+.mcp-monospace-input {
+    width: 300px;
+    font-family: monospace;
+}
+
+/* Notes and Warnings */
+.mcp-security-note,
+.mcp-auth-note {
+    margin-top: -10px;
+    margin-bottom: 10px;
+}
+
+.mcp-auth-note {
+    margin-bottom: 20px;
+}
+
+.mcp-warning-box {
+    background-color: var(--background-modifier-error);
+    color: var(--text-error);
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 15px;
+    font-weight: bold;
+}
+
+/* Status Elements */
+.mcp-status-active {
+    color: var(--text-success);
+    font-size: 0.9em;
+    margin-top: 10px;
+}
+
+.mcp-status-inactive {
+    color: var(--text-muted);
+    font-size: 0.9em;
+    margin-top: 10px;
+}
+
+/* Section Headers */
+.mcp-section-header {
+    font-weight: bold;
+}
+
+/* Certificate Note */
+.mcp-cert-note {
+    font-style: italic;
+    color: var(--text-muted);
+}
+
+/* Copy Button Styling */
+.mcp-config-container {
+    position: relative;
+}
+
+.mcp-copy-button {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 4px;
+    background: var(--interactive-normal);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s, background 0.2s;
+}
+
+.mcp-copy-button:hover {
+    opacity: 1;
+    background: var(--interactive-hover);
+}
+
+.mcp-copy-button.success {
+    background: var(--interactive-success);
+}

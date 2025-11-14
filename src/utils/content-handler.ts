@@ -1,3 +1,4 @@
+import { Debug } from './debug';
 import { Fragment } from '../types/fragment';
 
 /**
@@ -55,7 +56,7 @@ export function ensureStringContent(content: unknown, context?: string): string 
     return String(content);
     
   } catch (error) {
-    console.warn(`Content conversion failed${context ? ` in ${context}` : ''}:`, {
+    Debug.warn(`Content conversion failed${context ? ` in ${context}` : ''}:`, {
       contentType: typeof content,
       contentConstructor: content?.constructor?.name,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -83,7 +84,7 @@ export function safeContentMatch(
     return stringContent.match(pattern);
     
   } catch (error) {
-    console.warn(`Match operation failed${context ? ` in ${context}` : ''}:`, {
+    Debug.warn(`Match operation failed${context ? ` in ${context}` : ''}:`, {
       pattern: pattern.toString(),
       error: error instanceof Error ? error.message : 'Unknown error'
     });
@@ -135,7 +136,7 @@ export function countFragmentMatches(
     return totalCount;
     
   } catch (error) {
-    console.warn(`Fragment match counting failed${context ? ` in ${context}` : ''}:`, {
+    Debug.warn(`Fragment match counting failed${context ? ` in ${context}` : ''}:`, {
       fragmentsLength: Array.isArray(fragments) ? fragments.length : 'not array',
       pattern: pattern.toString(),
       error: error instanceof Error ? error.message : 'Unknown error'
