@@ -225,20 +225,23 @@ export default class ObsidianMCPPlugin extends Plugin {
 		}
 
 		this.statusBarItem = this.addStatusBarItem();
-		
+
+		// Remove any existing status classes
+		this.statusBarItem.removeClass('mcp-statusbar-disabled', 'mcp-statusbar-running', 'mcp-statusbar-error');
+
 		if (!this.settings.httpEnabled && !this.settings.httpsEnabled) {
 			this.statusBarItem.setText('MCP: Disabled');
-			this.statusBarItem.setAttribute('style', 'color: var(--text-muted);');
+			this.statusBarItem.addClass('mcp-statusbar-disabled');
 		} else if (this.mcpServer?.isServerRunning()) {
 			const vaultName = this.app.vault.getName();
 			const protocols: string[] = [];
 			if (this.settings.httpEnabled) protocols.push(`HTTP:${this.settings.httpPort}`);
 			if (this.settings.httpsEnabled) protocols.push(`HTTPS:${this.settings.httpsPort}`);
 			this.statusBarItem.setText(`MCP: ${vaultName} (${protocols.join(', ')})`);
-			this.statusBarItem.setAttribute('style', 'color: var(--text-success);');
+			this.statusBarItem.addClass('mcp-statusbar-running');
 		} else {
 			this.statusBarItem.setText('MCP: Error');
-			this.statusBarItem.setAttribute('style', 'color: var(--text-error);');
+			this.statusBarItem.addClass('mcp-statusbar-error');
 		}
 	}
 

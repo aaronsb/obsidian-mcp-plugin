@@ -191,6 +191,19 @@
     margin-top: 10px;
 }
 
+/* Status Bar Item States */
+.mcp-statusbar-disabled {
+    color: var(--text-muted);
+}
+
+.mcp-statusbar-running {
+    color: var(--text-success);
+}
+
+.mcp-statusbar-error {
+    color: var(--text-error);
+}
+
 /* Section Headers */
 .mcp-section-header {
     font-weight: bold;
