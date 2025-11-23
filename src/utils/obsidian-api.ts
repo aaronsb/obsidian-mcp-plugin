@@ -9,13 +9,21 @@ import { Debug } from './debug';
 import { BasesAPI } from './bases-api';
 import { BaseYAML, BaseQueryResult as BasesQueryResult } from '../types/bases-yaml';
 
+interface SearchCondition {
+  type: 'filename' | 'path' | 'content' | 'tag' | 'general';
+  term: string;
+  originalQuery: string;
+  isRegex?: boolean;
+  regex?: RegExp;
+}
+
 export class ObsidianAPI {
   private app: App;
   private config: ObsidianConfig;
   private plugin?: any; // Reference to the plugin for accessing MCP server info
   private ignoreManager?: MCPIgnoreManager;
   private basesAPI: BasesAPI;
-  
+
   constructor(app: App, config?: ObsidianConfig, plugin?: any) {
     this.app = app;
     this.config = config || { apiKey: '', apiUrl: '' };
@@ -68,7 +76,7 @@ export class ObsidianAPI {
 
     const content = await this.app.vault.read(activeFile);
     const stat = await this.app.vault.adapter.stat(activeFile.path);
-    
+
     return {
       path: activeFile.path,
       content,
@@ -121,7 +129,7 @@ export class ObsidianAPI {
   async listFiles(directory?: string): Promise<string[]> {
     const vault = this.app.vault;
     let files: TAbstractFile[];
-    
+
     if (directory && directory !== '/') {
       const folder = vault.getAbstractFileByPath(directory);
       if (!folder || !(folder instanceof TFolder)) {
@@ -137,14 +145,14 @@ export class ObsidianAPI {
       .filter(file => file instanceof TFile)
       .map(file => file.path)
       .sort();
-    
+
     // Filter out excluded paths
     return this.ignoreManager ? this.ignoreManager.filterPaths(filePaths) : filePaths;
   }
 
   async listFilesPaginated(
-    directory?: string, 
-    page: number = 1, 
+    directory?: string,
+    page: number = 1,
     pageSize: number = 20
   ): Promise<{
     files: Array<{
@@ -163,7 +171,7 @@ export class ObsidianAPI {
   }> {
     const vault = this.app.vault;
     let files: TAbstractFile[];
-    
+
     if (directory && directory !== '/') {
       const folder = vault.getAbstractFileByPath(directory);
       if (!folder || !(folder instanceof TFolder)) {
@@ -182,13 +190,13 @@ export class ObsidianAPI {
         name: file.name,
         type: isFile ? 'file' : 'folder'
       };
-      
+
       if (isFile) {
         result.size = file.stat.size;
         result.extension = file.extension;
         result.modified = file.stat.mtime;
       }
-      
+
       return result;
     }).sort((a, b) => {
       // Sort folders first, then files, alphabetically
@@ -206,7 +214,7 @@ export class ObsidianAPI {
     if (this.ignoreManager && this.ignoreManager.isExcluded(path)) {
       throw new Error(`File not found: ${path}`);
     }
-    
+
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!file || !(file instanceof TFile)) {
       throw new Error(`File not found: ${path}`);
@@ -220,7 +228,7 @@ export class ObsidianAPI {
 
     // Regular text file
     const content = await this.app.vault.read(file);
-    
+
     return {
       path: file.path,
       content,
@@ -234,7 +242,7 @@ export class ObsidianAPI {
     if (this.ignoreManager && this.ignoreManager.isExcluded(path)) {
       throw new Error(`Access denied: ${path}`);
     }
-    
+
     // Ensure directory exists
     const dirPath = path.substring(0, path.lastIndexOf('/'));
     if (dirPath && !this.app.vault.getAbstractFileByPath(dirPath)) {
@@ -244,10 +252,10 @@ export class ObsidianAPI {
     const result = await this.withVaultRetry(
       async () => {
         const file = await this.app.vault.create(path, content);
-        return { 
-          success: true, 
+        return {
+          success: true,
           path: file.path,
-          name: file.name 
+          name: file.name
         };
       },
       'file creation',
@@ -294,11 +302,11 @@ export class ObsidianAPI {
     }
 
     let content = await this.app.vault.read(file);
-    
+
     // Handle structured targeting (heading, block, frontmatter)
     if (params.targetType && params.target) {
       content = await this.applyStructuredPatch(content, params);
-    } 
+    }
     // Handle legacy patch operations
     else if (params.operation === 'replace') {
       if (params.old_text && params.new_text) {
@@ -320,7 +328,7 @@ export class ObsidianAPI {
 
   private async applyStructuredPatch(content: string, params: any): Promise<string> {
     const { targetType, target, operation, content: patchContent } = params;
-    
+
     switch (targetType) {
       case 'heading':
         return this.patchHeading(content, target, operation, patchContent);
@@ -336,25 +344,25 @@ export class ObsidianAPI {
   private patchHeading(content: string, headingPath: string, operation: string, patchContent: string): string {
     const lines = content.split('\n');
     const headingHierarchy = headingPath.split('::').map(h => h.trim());
-    
+
     // Find the target heading
     let currentLevel = 0;
     let targetLineIndex = -1;
     let endLineIndex = -1;
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
-      
+
       if (headingMatch) {
         const level = headingMatch[1].length;
         const headingText = headingMatch[2].trim();
-        
+
         // Check if we're at the right level in hierarchy
-        if (currentLevel < headingHierarchy.length && 
-            headingText === headingHierarchy[currentLevel]) {
+        if (currentLevel < headingHierarchy.length &&
+          headingText === headingHierarchy[currentLevel]) {
           currentLevel++;
-          
+
           if (currentLevel === headingHierarchy.length) {
             targetLineIndex = i;
             // Find where this section ends
@@ -376,11 +384,11 @@ export class ObsidianAPI {
         }
       }
     }
-    
+
     if (targetLineIndex === -1) {
       throw new Error(`Heading not found: ${headingPath}`);
     }
-    
+
     // Apply the operation
     switch (operation) {
       case 'append':
@@ -398,14 +406,14 @@ export class ObsidianAPI {
         break;
       }
     }
-    
+
     return lines.join('\n');
   }
 
   private patchBlock(content: string, blockId: string, operation: string, patchContent: string): string {
     const lines = content.split('\n');
     let blockLineIndex = -1;
-    
+
     // Find the block by ID (blocks end with ^blockId)
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].trim().endsWith(`^${blockId}`)) {
@@ -413,11 +421,11 @@ export class ObsidianAPI {
         break;
       }
     }
-    
+
     if (blockLineIndex === -1) {
       throw new Error(`Block not found: ^${blockId}`);
     }
-    
+
     // Apply the operation
     switch (operation) {
       case 'append':
@@ -432,7 +440,7 @@ export class ObsidianAPI {
         lines[blockLineIndex] = `${patchContent} ^${blockId}`;
         break;
     }
-    
+
     return lines.join('\n');
   }
 
@@ -441,7 +449,7 @@ export class ObsidianAPI {
     let inFrontmatter = false;
     let frontmatterStart = -1;
     let frontmatterEnd = -1;
-    
+
     // Find frontmatter boundaries
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].trim() === '---') {
@@ -454,13 +462,13 @@ export class ObsidianAPI {
         }
       }
     }
-    
+
     // If no frontmatter exists, create it
     if (frontmatterStart === -1) {
       lines.unshift('---', `${field}: ${patchContent}`, '---', '');
       return lines.join('\n');
     }
-    
+
     // Find the field in frontmatter
     let fieldLineIndex = -1;
     for (let i = frontmatterStart + 1; i < frontmatterEnd; i++) {
@@ -469,7 +477,7 @@ export class ObsidianAPI {
         break;
       }
     }
-    
+
     switch (operation) {
       case 'append':
         if (fieldLineIndex !== -1) {
@@ -495,7 +503,7 @@ export class ObsidianAPI {
         }
         break;
     }
-    
+
     return lines.join('\n');
   }
 
@@ -504,7 +512,7 @@ export class ObsidianAPI {
    */
   private isTextFile(file: any): boolean {
     const textExtensions = new Set([
-      'md', 'txt', 'json', 'js', 'ts', 'css', 'html', 'xml', 'yaml', 'yml', 
+      'md', 'txt', 'json', 'js', 'ts', 'css', 'html', 'xml', 'yaml', 'yml',
       'csv', 'log', 'py', 'java', 'cpp', 'c', 'h', 'php', 'rb', 'go', 'rs',
       'sql', 'sh', 'bat', 'ps1', 'ini', 'conf', 'config', 'env'
     ]);
@@ -514,8 +522,8 @@ export class ObsidianAPI {
   // Search operations
 
   async searchPaginated(
-    query: string, 
-    page: number = 1, 
+    query: string,
+    page: number = 1,
     pageSize: number = 10,
     strategy: 'filename' | 'content' | 'combined' = 'combined',
     includeContent: boolean = true
@@ -558,7 +566,7 @@ export class ObsidianAPI {
         // Process internal search results
         const processedResults = await this.processNativeSearchResults(searchResults, query, strategy, includeContent);
         const paginatedResponse = paginateResults(processedResults, page, pageSize);
-        
+
         return {
           query,
           page: paginatedResponse.page,
@@ -584,11 +592,11 @@ export class ObsidianAPI {
     if (searchResults.length > 0) {
       Debug.log('First few results:', searchResults.slice(0, 3).map(r => ({ path: r.path, score: r.score })));
     }
-    
+
     // Apply pagination
     const paginatedResponse = paginateResults(searchResults, page, pageSize);
     Debug.log(`After pagination: ${paginatedResponse.results.length} results shown, ${paginatedResponse.totalResults} total`);
-    
+
     const response: {
       query: string;
       page: number;
@@ -622,7 +630,7 @@ export class ObsidianAPI {
         message: paginatedResponse.message
       })
     };
-    
+
     // Add workflow hints if results were found
     if (response.results.length > 0) {
       const suggestions = [
@@ -642,7 +650,7 @@ export class ObsidianAPI {
           reason: 'To modify content in text files'
         }
       ];
-      
+
       // Add pagination suggestion only for first few pages (later pages have lower relevance)
       if (response.page < response.totalPages && response.page <= 3) {
         suggestions.push({
@@ -651,13 +659,13 @@ export class ObsidianAPI {
           reason: `View page ${response.page + 1} of ${response.totalPages} (use page: ${response.page + 1})`
         });
       }
-      
+
       response.workflow = {
         message: `Found ${response.totalResults} results${response.totalPages > 1 ? ` (page ${response.page} of ${response.totalPages})` : ''}. You can read, view, or edit these files.`,
         suggested_next: suggestions
       };
     }
-    
+
     return response;
   }
 
@@ -675,7 +683,7 @@ export class ObsidianAPI {
     const internalPlugins = (this.app as any).internalPlugins;
     if (internalPlugins) {
       Debug.log('Available internal plugins:', Object.keys(internalPlugins.plugins || {}));
-      
+
       // Try different plugin names
       const searchPluginNames = ['global-search', 'search', 'core-search', 'file-search'];
       for (const name of searchPluginNames) {
@@ -709,18 +717,18 @@ export class ObsidianAPI {
     strategy: string,
     includeContent: boolean
   ): Promise<SearchResult[]> {
-    const searchTerm = this.parseSearchQuery(query);
+    const conditions = this.parseSearchQuery(query);
     const allFiles = this.app.vault.getFiles();
-    
+
     // Filter out excluded files before searching
-    const files = this.ignoreManager ? 
-      allFiles.filter(file => !this.ignoreManager!.isExcluded(file.path)) : 
+    const files = this.ignoreManager ?
+      allFiles.filter(file => !this.ignoreManager!.isExcluded(file.path)) :
       allFiles;
-    
+
     const results: SearchResult[] = [];
 
     for (const file of files) {
-      const matchResult = await this.checkFileMatch(file, searchTerm, includeContent);
+      const matchResult = await this.checkFileMatch(file, conditions, includeContent);
       if (matchResult) {
         results.push(matchResult);
       }
@@ -731,213 +739,241 @@ export class ObsidianAPI {
   }
 
   /**
-   * Extract quoted phrases from a search string
+   * Parse search query into multiple conditions (AND logic)
    */
-  private extractQuotedPhrases(text: string): { phrases: string[], remaining: string } {
-    const phrases: string[] = [];
-    let remaining = text;
-    
-    // Match quoted strings, handling escaped quotes
-    const quoteRegex = /"([^"\\]*(\\.[^"\\]*)*)"/g;
-    let match;
-    
-    while ((match = quoteRegex.exec(text)) !== null) {
-      phrases.push(match[1]);
-      remaining = remaining.replace(match[0], `__PHRASE_${phrases.length - 1}__`);
-    }
-    
-    return { phrases, remaining };
-  }
-
-  /**
-   * Parse search query to handle operators like file:, path:, content:
-   */
-  private parseSearchQuery(query: string): {
-    type: 'filename' | 'path' | 'content' | 'tag' | 'general';
-    term: string;
-    originalQuery: string;
-    isRegex?: boolean;
-    regex?: RegExp;
-    isOr?: boolean;
-    orTerms?: string[];
-  } {
+  private parseSearchQuery(query: string): SearchCondition[] {
+    const conditions: SearchCondition[] = [];
     const trimmed = query.trim();
-    
+
     // Check for regex pattern /pattern/flags
+    // Regex is treated as a single condition for the whole query
     if (trimmed.startsWith('/') && trimmed.lastIndexOf('/') > 0) {
       const lastSlash = trimmed.lastIndexOf('/');
       const pattern = trimmed.substring(1, lastSlash);
       const flags = trimmed.substring(lastSlash + 1);
       try {
         const regex = new RegExp(pattern, flags);
-        return { type: 'general', term: pattern, originalQuery: query, isRegex: true, regex };
+        return [{ type: 'general', term: pattern, originalQuery: query, isRegex: true, regex }];
       } catch (e) {
-        // Invalid regex, treat as normal search
         Debug.warn('Invalid regex pattern:', e);
+        // Fall through to normal parsing
       }
     }
-    
-    // Check for operators
-    if (trimmed.startsWith('file:')) {
-      return { type: 'filename', term: trimmed.substring(5).trim(), originalQuery: query };
+
+    // Tokenize the query respecting quotes
+    const tokens: string[] = [];
+    let currentToken = '';
+    let inQuote = false;
+
+    for (let i = 0; i < trimmed.length; i++) {
+      const char = trimmed[i];
+
+      if (char === '"') {
+        inQuote = !inQuote;
+        // Don't add the quote char itself to the token
+        continue;
+      }
+
+      if (char === ' ' && !inQuote) {
+        if (currentToken.length > 0) {
+          tokens.push(currentToken);
+          currentToken = '';
+        }
+      } else {
+        currentToken += char;
+      }
     }
-    if (trimmed.startsWith('path:')) {
-      return { type: 'path', term: trimmed.substring(5).trim(), originalQuery: query };
+
+    if (currentToken.length > 0) {
+      tokens.push(currentToken);
     }
-    if (trimmed.startsWith('content:')) {
-      return { type: 'content', term: trimmed.substring(8).trim(), originalQuery: query };
+
+    // Parse tokens into conditions
+    for (const token of tokens) {
+      if (token.includes(':')) {
+        const firstColon = token.indexOf(':');
+        const operator = token.substring(0, firstColon).toLowerCase();
+        const value = token.substring(firstColon + 1);
+
+        if (value.length === 0) continue;
+
+        switch (operator) {
+          case 'file':
+            conditions.push({ type: 'filename', term: value, originalQuery: token });
+            break;
+          case 'path':
+            conditions.push({ type: 'path', term: value, originalQuery: token });
+            break;
+          case 'content':
+            conditions.push({ type: 'content', term: value, originalQuery: token });
+            break;
+          case 'tag':
+            conditions.push({ type: 'tag', term: value, originalQuery: token });
+            break;
+          default:
+            // Unknown operator, treat as general text including the operator
+            conditions.push({ type: 'general', term: token, originalQuery: token });
+        }
+      } else {
+        conditions.push({ type: 'general', term: token, originalQuery: token });
+      }
     }
-    if (trimmed.startsWith('tag:')) {
-      return { type: 'tag', term: trimmed.substring(4).trim(), originalQuery: query };
-    }
-    
-    // Check for OR operator (handle quoted phrases)
-    if (trimmed.includes(' OR ')) {
-      const { phrases, remaining } = this.extractQuotedPhrases(trimmed);
-      
-      // Split on OR, then restore phrases
-      const orParts = remaining.split(' OR ').map(part => {
-        let restored = part.trim();
-        phrases.forEach((phrase, i) => {
-          restored = restored.replace(`__PHRASE_${i}__`, phrase);
-        });
-        return restored;
-      });
-      
-      return { type: 'general', term: trimmed, originalQuery: query, isOr: true, orTerms: orParts };
-    }
-    
-    // Check for quoted phrases in single terms
-    const { phrases } = this.extractQuotedPhrases(trimmed);
-    if (phrases.length === 1 && trimmed === `"${phrases[0]}"`) {
-      // Single quoted phrase
-      return { type: 'general', term: phrases[0], originalQuery: query };
-    }
-    
-    return { type: 'general', term: trimmed, originalQuery: query };
+
+    return conditions;
   }
 
   /**
-   * Check if a file matches the search criteria
+   * Check if a file matches ALL search conditions (AND logic)
    */
   private async checkFileMatch(
     file: TFile,
-    searchTerm: { type: string; term: string; originalQuery: string; isRegex?: boolean; regex?: RegExp; isOr?: boolean; orTerms?: string[] },
+    conditions: SearchCondition[],
     includeContent: boolean
   ): Promise<SearchResult | null> {
-    const termLower = searchTerm.term.toLowerCase();
-    let score = 0;
-    let snippet = undefined;
+    let totalScore = 0;
+    let snippet: { content: string; lineStart: number; lineEnd: number; score: number } | undefined;
+    let matchCount = 0;
 
-    // Helper function to check if text matches the search term
-    const textMatches = (text: string): boolean => {
-      if (searchTerm.isOr && searchTerm.orTerms) {
-        // Check if any of the OR terms match
-        return searchTerm.orTerms.some(term => 
-          text.toLowerCase().includes(term.toLowerCase())
-        );
-      }
-      if (searchTerm.isRegex && searchTerm.regex) {
-        return searchTerm.regex.test(text);
-      }
-      return text.toLowerCase().includes(termLower);
+    // Helper to check text match
+    const textMatches = (text: string, term: string): boolean => {
+      return text.toLowerCase().includes(term.toLowerCase());
     };
 
-    switch (searchTerm.type) {
-      case 'filename': {
-        // Support searching by extension (e.g., file:.png)
-        const fileName = file.name.toLowerCase();
-        const baseName = file.basename.toLowerCase();
-        
-        if (termLower.startsWith('.')) {
-          // Extension search
-          if (fileName.endsWith(termLower)) {
-            score = 1.5;
-          }
-        } else {
-          // Regular filename search
-          if (baseName.includes(termLower)) {
-            score = baseName === termLower ? 2.0 : 1.0;
-          } else if (fileName.includes(termLower)) {
-            score = 0.8; // Lower score for extension matches
-          }
+    // Cache content reading so we only read once per file
+    let cachedContent: string | null = null;
+    const getContent = async (): Promise<string | null> => {
+      if (cachedContent !== null) return cachedContent;
+      if (this.isTextFile(file)) {
+        try {
+          cachedContent = await this.app.vault.read(file);
+          return cachedContent;
+        } catch (e) {
+          return null;
         }
-        break;
       }
-        
-      case 'path':
-        if (file.path.toLowerCase().includes(termLower)) {
-          score = file.path.toLowerCase() === termLower ? 2.0 : 1.0;
-        }
-        break;
-        
-      case 'content':
-        if (this.isTextFile(file)) {
-          try {
-            const content = await this.app.vault.read(file);
-            if (content.toLowerCase().includes(termLower)) {
-              score = 1.0;
-              if (includeContent) {
-                snippet = this.extractSnippet(content, searchTerm.term, 200);
-              }
-            }
-          } catch (error) {
-            // Skip files that can't be read
-          }
-        }
-        break;
-        
-      case 'tag':
-        if (this.isTextFile(file)) {
-          try {
-            const cache = this.app.metadataCache.getFileCache(file);
-            const tags = cache ? (getAllTags(cache) || []) : [];
+      return null;
+    };
 
-            if (tags.length > 0) {
-              // Normalize the search term to include leading '#'
+    for (const condition of conditions) {
+      let conditionMatched = false;
+      let conditionScore = 0;
+
+      switch (condition.type) {
+        case 'filename': {
+          const fileName = file.name.toLowerCase();
+          const baseName = file.basename.toLowerCase();
+          const termLower = condition.term.toLowerCase();
+
+          if (termLower.startsWith('.')) {
+            // Extension search
+            if (fileName.endsWith(termLower)) {
+              conditionMatched = true;
+              conditionScore = 1.5;
+            }
+          } else {
+            // Filename search
+            if (baseName.includes(termLower)) {
+              conditionMatched = true;
+              conditionScore = baseName === termLower ? 2.0 : 1.0;
+            } else if (fileName.includes(termLower)) {
+              conditionMatched = true;
+              conditionScore = 0.8;
+            }
+          }
+          break;
+        }
+
+        case 'path': {
+          if (file.path.toLowerCase().includes(condition.term.toLowerCase())) {
+            conditionMatched = true;
+            conditionScore = file.path.toLowerCase() === condition.term.toLowerCase() ? 2.0 : 1.0;
+          }
+          break;
+        }
+
+        case 'content': {
+          const content = await getContent();
+          if (content && textMatches(content, condition.term)) {
+            conditionMatched = true;
+            conditionScore = 1.0;
+            if (includeContent && !snippet) {
+              snippet = this.extractSnippet(content, condition.term, 200);
+            }
+          }
+          break;
+        }
+
+        case 'tag': {
+          if (this.isTextFile(file)) {
+            try {
+              const cache = this.app.metadataCache.getFileCache(file);
+              const tags = cache ? (getAllTags(cache) || []) : [];
+              const termLower = condition.term.toLowerCase();
               const target = termLower.startsWith('#') ? termLower : `#${termLower}`;
+
               const tagMatch = tags.some((t) => {
                 const tl = String(t).toLowerCase();
-                // Match exact tag or hierarchical descendants (e.g., #foo or #foo/bar)
                 return tl === target || tl.startsWith(`${target}/`);
               });
+
               if (tagMatch) {
-                score = 1.0;
+                conditionMatched = true;
+                conditionScore = 1.0;
+              }
+            } catch (e) {
+              // Ignore metadata errors
+            }
+          }
+          break;
+        }
+
+        case 'general': {
+          const term = condition.term;
+          // Check filename
+          if (textMatches(file.name, term) || textMatches(file.basename, term)) {
+            conditionMatched = true;
+            conditionScore = 1.5;
+          }
+          // Check content
+          else {
+            const content = await getContent();
+            if (content && textMatches(content, term)) {
+              conditionMatched = true;
+              conditionScore = 1.0;
+              if (includeContent && !snippet) {
+                snippet = this.extractSnippet(content, term, 200);
               }
             }
-          } catch (error) {
-            // Skip if metadata unavailable
           }
-        }
-        break;
-        
-      case 'general':
-        // Check filename first (including extension for regex matching)
-        if (textMatches(file.name) || textMatches(file.basename)) {
-          score = 1.5;
-        }
-        // Check content for text files
-        if (this.isTextFile(file)) {
-          try {
-            const content = await this.app.vault.read(file);
-            if (textMatches(content)) {
-              score = Math.max(score, 1.0);
-              if (includeContent) {
-                snippet = this.extractSnippet(content, searchTerm.term, 200);
-              }
+
+          if (condition.isRegex && condition.regex) {
+            // Special handling for regex which is usually the only condition
+            const content = await getContent();
+            if (content && condition.regex.test(content)) {
+              conditionMatched = true;
+              conditionScore = 1.0;
+            } else if (condition.regex.test(file.name)) {
+              conditionMatched = true;
+              conditionScore = 1.5;
             }
-          } catch (error) {
-            // Skip files that can't be read
           }
+          break;
         }
-        break;
+      }
+
+      if (!conditionMatched) {
+        return null; // AND logic: if any condition fails, the file doesn't match
+      }
+
+      totalScore += conditionScore;
+      matchCount++;
     }
 
-    if (score > 0) {
+    if (matchCount > 0) {
       return {
         path: file.path,
         title: file.basename,
-        score,
+        score: totalScore / matchCount, // Average score
         snippet,
         metadata: {
           size: file.stat.size,
@@ -960,13 +996,13 @@ export class ObsidianAPI {
     includeContent: boolean
   ): Promise<SearchResult[]> {
     const results: SearchResult[] = [];
-    
+
     for (const nativeResult of nativeResults) {
       try {
         // Native results typically have: file, score, matches
         const file = nativeResult.file;
         if (!file) continue;
-        
+
         const result: SearchResult = {
           path: file.path,
           title: file.basename,
@@ -977,7 +1013,7 @@ export class ObsidianAPI {
             extension: file.extension || ''
           }
         };
-        
+
         // Add snippets for text files if requested
         if (includeContent && this.isTextFile(file)) {
           try {
@@ -991,14 +1027,14 @@ export class ObsidianAPI {
             Debug.warn(`Could not read file for snippet: ${file.path}`, error);
           }
         }
-        
+
         results.push(result);
       } catch (error) {
         Debug.warn('Error processing native search result:', error);
         continue;
       }
     }
-    
+
     return results;
   }
 
@@ -1006,13 +1042,13 @@ export class ObsidianAPI {
    * Extract a snippet around query matches
    */
   private extractSnippet(
-    content: string, 
-    query: string, 
+    content: string,
+    query: string,
     maxLength: number
   ): { content: string; lineStart: number; lineEnd: number; score: number } | undefined {
     const lines = content.split('\n');
     const queryLower = query.toLowerCase();
-    
+
     // Find the first line that contains the query
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].toLowerCase().includes(queryLower)) {
@@ -1020,12 +1056,12 @@ export class ObsidianAPI {
         const end = Math.min(lines.length - 1, i + 2);
         const snippetLines = lines.slice(start, end + 1);
         const snippetContent = snippetLines.join('\n');
-        
+
         // Truncate if too long
-        const truncated = snippetContent.length > maxLength 
+        const truncated = snippetContent.length > maxLength
           ? snippetContent.substring(0, maxLength) + '...'
           : snippetContent;
-        
+
         return {
           content: truncated,
           lineStart: start + 1,
@@ -1034,7 +1070,7 @@ export class ObsidianAPI {
         };
       }
     }
-    
+
     return undefined;
   }
 
@@ -1065,9 +1101,9 @@ export class ObsidianAPI {
 
   async executeCommand(commandId: string) {
     const success = (this.app as any).commands?.executeCommandById(commandId);
-    return { 
+    return {
       success: !!success,
-      commandId 
+      commandId
     };
   }
 
@@ -1075,7 +1111,7 @@ export class ObsidianAPI {
   private async ensureDirectoryExists(dirPath: string) {
     const parts = dirPath.split('/').filter(part => part);
     let currentPath = '';
-    
+
     for (const part of parts) {
       currentPath = currentPath ? `${currentPath}/${part}` : part;
       if (!this.app.vault.getAbstractFileByPath(currentPath)) {
