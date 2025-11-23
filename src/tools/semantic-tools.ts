@@ -28,7 +28,7 @@ const createSemanticTool = (operation: string) => ({
   },
   handler: async (api: ObsidianAPI, args: any) => {
     const app = api.getApp();
-    
+
     // Check for read-only mode before processing write operations
     if ((api as any).plugin?.settings?.readOnlyMode && operation === 'vault') {
       const writeOperations = ['create', 'update', 'delete', 'move', 'rename', 'copy', 'split', 'combine', 'concatenate'];
@@ -52,7 +52,7 @@ const createSemanticTool = (operation: string) => ({
         };
       }
     }
-    
+
     // Handle Dataview operations separately
     if (operation === 'dataview') {
       const dataviewTool = new DataviewTool(api);
@@ -151,15 +151,15 @@ const createSemanticTool = (operation: string) => ({
     }
 
     const router = new SemanticRouter(api, app);
-    
+
     const request: SemanticRequest = {
       operation,
       action: args.action,
       params: args
     };
-    
+
     const response = await router.route(request);
-    
+
     // Format for MCP
     if (response.error) {
       return {
@@ -174,7 +174,7 @@ const createSemanticTool = (operation: string) => ({
         isError: true
       };
     }
-    
+
     // Check if the result is an image file for vault read operations
     if (operation === 'vault' && args.action === 'read' && response.result && isImageFileObject(response.result)) {
       // Return image content for MCP
@@ -186,11 +186,11 @@ const createSemanticTool = (operation: string) => ({
         }]
       };
     }
-    
+
     // Only filter image files if they contain binary data that would cause JSON errors
     // For search results, we want to show image files in the results list
     const filteredResult = response.result;
-    
+
     // Special handling for image files in view operations
     if (operation === 'view' && args.action === 'file' && filteredResult && filteredResult.base64Data) {
       return {
@@ -201,7 +201,7 @@ const createSemanticTool = (operation: string) => ({
         }]
       };
     }
-    
+
     try {
       return {
         content: [{
@@ -229,7 +229,7 @@ const createSemanticTool = (operation: string) => ({
 
 function filterImageFilesFromSearchResults(searchResult: any): any {
   if (!searchResult) return searchResult;
-  
+
   // Handle paginated search results format
   if (searchResult.results && Array.isArray(searchResult.results)) {
     return {
@@ -246,7 +246,7 @@ function filterImageFilesFromSearchResults(searchResult: any): any {
       })
     };
   }
-  
+
   // Handle simple search results format (array of results)
   if (Array.isArray(searchResult)) {
     return searchResult.filter((result: any) => {
@@ -259,7 +259,7 @@ function filterImageFilesFromSearchResults(searchResult: any): any {
       return true;
     });
   }
-  
+
   return searchResult;
 }
 
@@ -299,14 +299,14 @@ function getParametersForOperation(operation: string): Record<string, any> {
       description: 'File path relative to vault root'
     }
   };
-  
+
   const contentParam = {
     content: {
       type: 'string',
       description: 'Text content to write (markdown supported)'
     }
   };
-  
+
   // Operation-specific parameters
   const operationParams: Record<string, Record<string, any>> = {
     vault: {
@@ -654,8 +654,133 @@ function getParametersForOperation(operation: string): Record<string, any> {
       }
     }
   };
-  
+
   return operationParams[operation] || {};
+}
+
+/**
+ * Create granular vault tools
+ */
+function createVaultTools(): any[] {
+  const vaultParams = getParametersForOperation('vault');
+
+  const createTool = (name: string, description: string, params: string[]) => {
+    const properties: Record<string, any> = {};
+    params.forEach(param => {
+      if (vaultParams[param]) {
+        properties[param] = vaultParams[param];
+      }
+    });
+
+    return {
+      name,
+      description,
+      inputSchema: {
+        type: 'object',
+        properties,
+        required: params.filter(p => !['page', 'pageSize', 'overwrite', 'returnFullFile', 'includeContent', 'strategy', 'maxFragments', 'separator', 'includeFilenames', 'sortBy', 'sortOrder', 'mode', 'level', 'linesPerFile', 'maxSize', 'outputPattern', 'outputDirectory'].includes(p))
+      },
+      handler: async (api: ObsidianAPI, args: any) => {
+        const app = api.getApp();
+
+        // Check for read-only mode
+        if ((api as any).plugin?.settings?.readOnlyMode) {
+          const writeOperations = ['create', 'update', 'delete', 'move', 'rename', 'copy', 'split', 'combine', 'concatenate'];
+          if (writeOperations.includes(name)) {
+            return {
+              content: [{
+                type: 'text' as const,
+                text: JSON.stringify({
+                  error: {
+                    code: 'READ_ONLY_MODE',
+                    message: `Write operation '${name}' is blocked - read-only mode is enabled`
+                  },
+                  context: {
+                    readOnlyMode: true,
+                    operation: 'vault',
+                    action: name,
+                    blockedOperation: true
+                  }
+                }, null, 2)
+              }]
+            };
+          }
+        }
+
+        const router = new SemanticRouter(api, app);
+        const request: SemanticRequest = {
+          operation: 'vault',
+          action: name,
+          params: args
+        };
+
+        const response = await router.route(request);
+
+        if (response.error) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: response.error,
+                workflow: response.workflow,
+                context: response.context
+              }, null, 2)
+            }],
+            isError: true
+          };
+        }
+
+        // Handle image files for read operations
+        if (name === 'read' && response.result && isImageFileObject(response.result)) {
+          return {
+            content: [{
+              type: 'image' as const,
+              data: response.result.base64Data,
+              mimeType: response.result.mimeType
+            }]
+          };
+        }
+
+        try {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                result: response.result,
+                workflow: response.workflow,
+                context: response.context,
+                efficiency_hints: response.efficiency_hints
+              }, null, 2)
+            }]
+          };
+        } catch (error) {
+          Debug.error('JSON serialization failed:', error);
+          return {
+            content: [{
+              type: 'text' as const,
+              text: `Error: Unable to serialize response. ${error instanceof Error ? error.message : 'Unknown error'}`
+            }]
+          };
+        }
+      }
+    };
+  };
+
+  return [
+    createTool('list', 'List files in directories', ['directory', 'page', 'pageSize']),
+    createTool('read', 'Read file content', ['path', 'returnFullFile']),
+    createTool('create', 'Create new files', ['path', 'content']),
+    createTool('update', 'Update file content', ['path', 'content']),
+    createTool('delete', 'Delete files', ['path']),
+    createTool('search', 'Search files with operators (file:, path:, content:, tag:)', ['query', 'page', 'pageSize', 'includeContent']),
+    createTool('fragments', 'Get file fragments with different strategies', ['query', 'path', 'strategy', 'maxFragments']),
+    createTool('move', 'Move files to new locations', ['path', 'destination', 'overwrite']),
+    createTool('rename', 'Rename files', ['path', 'newName', 'overwrite']),
+    createTool('copy', 'Copy files', ['path', 'destination', 'overwrite']),
+    createTool('split', 'Split files by heading/delimiter/lines/size', ['path', 'splitBy', 'delimiter', 'level', 'linesPerFile', 'maxSize', 'outputPattern', 'outputDirectory']),
+    createTool('combine', 'Combine multiple files', ['paths', 'destination', 'separator', 'includeFilenames', 'sortBy', 'sortOrder', 'overwrite']),
+    createTool('concatenate', 'Concatenate two files', ['path1', 'path2', 'destination', 'mode'])
+  ];
 }
 
 /**
@@ -663,7 +788,8 @@ function getParametersForOperation(operation: string): Record<string, any> {
  */
 export function createSemanticTools(api?: ObsidianAPI): any[] {
   const baseTools = [
-    createSemanticTool('vault'),
+    // Replaced 'vault' with granular tools
+    ...createVaultTools(),
     createSemanticTool('edit'),
     createSemanticTool('view'),
     createSemanticTool('workflow'),
@@ -680,13 +806,7 @@ export function createSemanticTools(api?: ObsidianAPI): any[] {
   return baseTools;
 }
 
-// Export the base 6 semantic tools (for backward compatibility)
-export const semanticTools = [
-  createSemanticTool('vault'),
-  createSemanticTool('edit'),
-  createSemanticTool('view'),
-  createSemanticTool('workflow'),
-  createSemanticTool('system'),
-  createSemanticTool('graph'),
-  createSemanticTool('bases')
-];
+// Export the base semantic tools (for backward compatibility)
+// Note: This export is static and doesn't include Dataview or the new granular tools correctly if they depend on API
+// We should update this to use the new structure, but for now we'll just use the function
+export const semanticTools = createSemanticTools();
