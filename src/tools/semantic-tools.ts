@@ -176,7 +176,7 @@ const createSemanticTool = (operation: string) => ({
     }
 
     // Check if the result is an image file for vault read operations
-    if (operation === 'vault' && args.action === 'read' && response.result && isImageFileObject(response.result)) {
+    if (operation === 'vault' && args.action === 'read' && response.result && typeof response.result === 'object' && isImageFileObject(response.result)) {
       // Return image content for MCP
       return {
         content: [{
@@ -208,9 +208,8 @@ const createSemanticTool = (operation: string) => ({
           type: 'text' as const,
           text: JSON.stringify({
             result: filteredResult,
-            workflow: response.workflow,
-            context: response.context,
-            efficiency_hints: response.efficiency_hints
+            metadata: (response as any).metadata,
+            context: response.context
           }, null, 2)
         }]
       };
@@ -268,11 +267,9 @@ function getOperationDescription(operation: string): string {
     vault: '📁 File operations - list, read, create, update, delete, search, fragments, move, rename, copy, split, combine, concatenate. Search supports operators: file:, path:, content:, tag:. OR for multiple terms. "quoted phrases". /regex/. Results ranked by relevance.',
     edit: '✏️ Edit files - window: find/replace with fuzzy matching, append: add to end, patch: modify headings/blocks/frontmatter, at_line: insert at line number, from_buffer: reuse previous window content',
     view: '👁️ View content - file: entire document, window: ~20 lines around point, active: current editor file, open_in_obsidian: launch in app',
-    workflow: '💡 Get contextual suggestions for next actions based on current state',
     system: 'ℹ️ System operations - info: server details, commands: available actions, fetch_web: retrieve and process web content',
     graph: '🕸️ Graph navigation - traverse: explore connections, neighbors: immediate links, path: find routes between notes, statistics: link counts, backlinks/forwardlinks: directional analysis, search-traverse: connected snippets',
-    dataview: '📊 Dataview operations - query: execute DQL queries (LIST FROM "folder", TABLE field FROM #tag WHERE condition), list: get pages with metadata and frontmatter, metadata: extract complete page metadata, validate: check DQL syntax, status: plugin availability. Supports LIST, TABLE, TASK, CALENDAR queries with WHERE filters, sorting, grouping.',
-    bases: '🗃️ Bases operations - list: show all .base files, read: get YAML config, create: new base with views/filters/formulas, query: execute filters on vault notes, view: get table/card view data, evaluate: test formulas, export: CSV/JSON/Markdown. Bases use YAML format with expression-based filters like status == "active" and file.hasTag("project")'
+    dataview: '📊 Dataview operations - query: execute DQL queries (LIST FROM "folder", TABLE field FROM #tag WHERE condition), list: get pages with metadata and frontmatter, metadata: extract complete page metadata, validate: check DQL syntax, status: plugin availability. Supports LIST, TABLE, TASK, CALENDAR queries with WHERE filters, sorting, grouping.'
   };
   return descriptions[operation] || 'Unknown operation';
 }
@@ -282,11 +279,9 @@ function getActionsForOperation(operation: string): string[] {
     vault: ['list', 'read', 'create', 'update', 'delete', 'search', 'fragments', 'move', 'rename', 'copy', 'split', 'combine', 'concatenate'],
     edit: ['window', 'append', 'patch', 'at_line', 'from_buffer'],
     view: ['file', 'window', 'active', 'open_in_obsidian'],
-    workflow: ['suggest'],
     system: ['info', 'commands', 'fetch_web'],
     graph: ['traverse', 'neighbors', 'path', 'statistics', 'backlinks', 'forwardlinks', 'search-traverse', 'advanced-traverse', 'tag-traverse', 'tag-analysis', 'shared-tags'],
-    dataview: ['query', 'list', 'metadata', 'validate', 'status'],
-    bases: ['list', 'read', 'create', 'query', 'view', 'export']
+    dataview: ['query', 'list', 'metadata', 'validate', 'status']
   };
   return actions[operation] || [];
 }
@@ -424,6 +419,10 @@ function getParametersForOperation(operation: string): Record<string, any> {
         enum: ['append', 'prepend', 'new'],
         description: 'Concatenation mode: append to path1, prepend to path1, or create new file'
       },
+      includeMetadata: {
+        type: 'boolean',
+        description: 'Include metadata (links, tags) in the response (default: true)'
+      },
       ...contentParam
     },
     edit: {
@@ -482,12 +481,7 @@ function getParametersForOperation(operation: string): Record<string, any> {
         default: 20
       }
     },
-    workflow: {
-      type: {
-        type: 'string',
-        description: 'Type of analysis or workflow'
-      }
-    },
+
     system: {
       url: {
         type: 'string',
@@ -731,7 +725,7 @@ function createVaultTools(): any[] {
         }
 
         // Handle image files for read operations
-        if (name === 'read' && response.result && isImageFileObject(response.result)) {
+        if (name === 'read' && response.result && typeof response.result === 'object' && isImageFileObject(response.result)) {
           return {
             content: [{
               type: 'image' as const,
@@ -747,9 +741,8 @@ function createVaultTools(): any[] {
               type: 'text' as const,
               text: JSON.stringify({
                 result: response.result,
-                workflow: response.workflow,
-                context: response.context,
-                efficiency_hints: response.efficiency_hints
+                metadata: (response as any).metadata,
+                context: response.context
               }, null, 2)
             }]
           };
@@ -767,13 +760,13 @@ function createVaultTools(): any[] {
   };
 
   return [
-    createTool('list', 'List files in directories', ['directory', 'page', 'pageSize']),
-    createTool('read', 'Read file content', ['path', 'returnFullFile']),
-    createTool('create', 'Create new files', ['path', 'content']),
-    createTool('update', 'Update file content', ['path', 'content']),
-    createTool('delete', 'Delete files', ['path']),
-    createTool('search', 'Search files with operators (file:, path:, content:, tag:)', ['query', 'page', 'pageSize', 'includeContent']),
-    createTool('fragments', 'Get file fragments with different strategies', ['query', 'path', 'strategy', 'maxFragments']),
+    createTool('list', 'List files in directory', ['directory', 'page', 'pageSize', 'recursive', 'includeContent']),
+    createTool('read', 'Read file content', ['path', 'includeMetadata']),
+    createTool('create', 'Create new file', ['path', 'content', 'overwrite']),
+    createTool('update', 'Update existing file', ['path', 'content']),
+    createTool('delete', 'Delete file', ['path']),
+    createTool('search', 'Search vault', ['query', 'page', 'pageSize', 'includeContent', 'includeMetadata']),
+    createTool('fragments', 'Retrieve file fragments', ['query', 'strategy', 'maxFragments', 'returnFullFile', 'includeMetadata']),
     createTool('move', 'Move files to new locations', ['path', 'destination', 'overwrite']),
     createTool('rename', 'Rename files', ['path', 'newName', 'overwrite']),
     createTool('copy', 'Copy files', ['path', 'destination', 'overwrite']),

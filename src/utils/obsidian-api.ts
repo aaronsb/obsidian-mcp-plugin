@@ -631,40 +631,8 @@ export class ObsidianAPI {
       })
     };
 
-    // Add workflow hints if results were found
-    if (response.results.length > 0) {
-      const suggestions = [
-        {
-          description: 'View a specific file',
-          command: 'view:file',
-          reason: 'To see the full content of a file'
-        },
-        {
-          description: 'Read file fragments',
-          command: 'vault:fragments',
-          reason: 'To get relevant excerpts from large files'
-        },
-        {
-          description: 'Edit a file',
-          command: 'edit:window',
-          reason: 'To modify content in text files'
-        }
-      ];
-
-      // Add pagination suggestion only for first few pages (later pages have lower relevance)
-      if (response.page < response.totalPages && response.page <= 3) {
-        suggestions.push({
-          description: 'Get next page of results',
-          command: 'vault:search',
-          reason: `View page ${response.page + 1} of ${response.totalPages} (use page: ${response.page + 1})`
-        });
-      }
-
-      response.workflow = {
-        message: `Found ${response.totalResults} results${response.totalPages > 1 ? ` (page ${response.page} of ${response.totalPages})` : ''}. You can read, view, or edit these files.`,
-        suggested_next: suggestions
-      };
-    }
+    // Workflow hints removed to reduce verbosity
+    // if (response.results.length > 0) { ... }
 
     return response;
   }
