@@ -393,7 +393,37 @@ export class ObsidianAPI {
     switch (operation) {
       case 'append':
         // Add content at the end of the section
-        lines.splice(endLineIndex, 0, '', patchContent);
+        const lastLine = endLineIndex > 0 ? lines[endLineIndex - 1] : '';
+        const isLastLineEmpty = lastLine.trim() === '';
+
+        // Check for list continuity
+        const listRegex = /^(\s*)([-*+]|\d+\.)\s+/;
+        const isPatchList = listRegex.test(patchContent);
+
+        // Find the last non-empty line to check if it's a list
+        let lastNonEmptyLine = '';
+        for (let i = endLineIndex - 1; i >= targetLineIndex + 1; i--) {
+          if (lines[i].trim() !== '') {
+            lastNonEmptyLine = lines[i];
+            break;
+          }
+        }
+        const isLastNonEmptyLineList = listRegex.test(lastNonEmptyLine);
+
+        if (isLastLineEmpty && isLastNonEmptyLineList && isPatchList) {
+          // If last line is empty but the last non-empty line is a list item,
+          // and we're appending a list item, replace the empty line to preserve continuity
+          lines.splice(endLineIndex - 1, 1, patchContent);
+        } else if (!isLastLineEmpty && lastLine === lastNonEmptyLine && isLastNonEmptyLineList && isPatchList) {
+          // If last line is not empty and is a list, append without blank line
+          lines.splice(endLineIndex, 0, patchContent);
+        } else if (isLastLineEmpty) {
+          // If last line is empty and not a list continuation case, just append
+          lines.splice(endLineIndex, 0, patchContent);
+        } else {
+          // Otherwise add a blank line separator
+          lines.splice(endLineIndex, 0, '', patchContent);
+        }
         break;
       case 'prepend':
         // Add content right after the heading
