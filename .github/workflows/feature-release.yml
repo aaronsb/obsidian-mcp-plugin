@@ -47,6 +47,12 @@ jobs:
           echo "safe_branch=$SAFE_BRANCH" >> $GITHUB_OUTPUT
           echo "tag=v${VERSION}-${SAFE_BRANCH}-${{ inputs.release_type }}" >> $GITHUB_OUTPUT
 
+      - name: Verify build artifacts exist
+        run: |
+          echo "Verifying required files for BRAT compatibility..."
+          ls -lh main.js manifest.json styles.css
+          echo "✓ All required files present"
+
       - name: Create Pre-Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
