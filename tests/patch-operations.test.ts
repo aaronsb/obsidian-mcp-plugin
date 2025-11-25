@@ -57,7 +57,6 @@ Different content.`;
 ## Section One
 Original content here.
 
-
 New appended content.
 ## Section Two
 Different content.`;
@@ -117,7 +116,6 @@ Original subsection content.
 
 ### Subsection
 Original subsection content.
-
 
 New content in subsection.
 ## Section Two`;
