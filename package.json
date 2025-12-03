@@ -24,7 +24,7 @@
   "author": "Aaron Blumenfeld",
   "license": "MIT",
   "devDependencies": {
-    "@types/jest": "^29.5.5",
+    "@types/jest": "^30.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/minimatch": "^5.1.2",
     "@types/node": "^20.6.2",
@@ -33,7 +33,7 @@
     "builtin-modules": "^3.3.0",
     "esbuild": "0.19.2",
     "eslint": "^8.49.0",
-    "jest": "^29.7.0",
+    "jest": "^30.2.0",
     "obsidian": "latest",
     "ts-jest": "^29.1.1",
     "tslib": "2.6.2",
