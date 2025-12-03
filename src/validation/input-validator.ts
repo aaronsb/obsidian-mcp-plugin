@@ -268,6 +268,7 @@ export class PathSafetyValidator implements Validator {
     }
 
     // Check for invalid characters
+    // eslint-disable-next-line no-control-regex
     const invalidChars = /[<>:"|?*\x00-\x1f]/;
     if (invalidChars.test(path)) {
       errors.push({
@@ -321,12 +322,9 @@ export class SafeRegexValidator implements Validator {
 
     // Check for patterns known to cause exponential complexity
     const dangerousPatterns = [
-      /(\(.*\+.*\))+/,           // Nested quantifiers like (a+)+
-      /(\(.*\*.*\))+/,           // Nested quantifiers like (a*)*
-      /(\w+\*)+\w+/,             // Multiple * quantifiers
-      /(.+)+/,                   // Greedy quantifiers on captures
-      /(.*)*/, // Nested star quantifiers
-      /(\w+\|\w+)+/              // Alternation with quantifiers
+      /\([^)]*[+*][^)]*\)[+*]/,  // Nested quantifiers like (a+)+ or (a*)*
+      /(.+)\+/,                   // Greedy quantifiers on captures like (.+)+
+      /(\w+\|\w+)\+/              // Alternation with quantifiers like (a|b)+
     ];
 
     for (const pattern of dangerousPatterns) {
