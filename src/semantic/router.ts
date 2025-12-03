@@ -1,8 +1,8 @@
 import { Debug } from '../utils/debug';
 import { ObsidianAPI } from '../utils/obsidian-api';
-import { 
-  SemanticResponse, 
-  WorkflowConfig, 
+import {
+  SemanticResponse,
+  WorkflowConfig,
   SemanticContext,
   SemanticRequest,
   SuggestedAction
@@ -17,6 +17,7 @@ import { GraphSearchTool } from '../tools/graph-search';
 import { GraphSearchTool as GraphSearchTraversalTool } from '../tools/graph-search-tool';
 import { GraphTagTool } from '../tools/graph-tag-tool';
 import { App } from 'obsidian';
+import { InputValidator, ValidationException } from '../validation/input-validator';
 
 export class SemanticRouter {
   private config!: WorkflowConfig;
@@ -28,12 +29,14 @@ export class SemanticRouter {
   private graphSearchTraversalTool?: GraphSearchTraversalTool;
   private graphTagTool?: GraphTagTool;
   private app?: App;
-  
+  private validator: InputValidator;
+
   constructor(api: ObsidianAPI, app?: App) {
     this.api = api;
     this.app = app;
     this.tokenManager = new StateTokenManager();
     this.fragmentRetriever = new UniversalFragmentRetriever();
+    this.validator = new InputValidator();
     if (app) {
       this.graphSearchTool = new GraphSearchTool(api, app);
       this.graphSearchTraversalTool = new GraphSearchTraversalTool(app, api);
@@ -552,11 +555,20 @@ export class SemanticRouter {
       
       case 'combine': {
         const { paths, destination, separator = '\n\n---\n\n', includeFilenames = false, overwrite = false, sortBy, sortOrder = 'asc' } = params;
-        
+
+        // Validate batch operation
+        const validationResult = this.validator.validate('batch.combine', { paths, path: destination });
+        if (!validationResult.valid) {
+          throw new ValidationException(
+            validationResult.errors || [],
+            `Validation failed for combine: ${validationResult.errors?.map(e => e.message).join(', ')}`
+          );
+        }
+
         if (!paths || !Array.isArray(paths) || paths.length === 0) {
           throw new Error('paths array is required for combine operation');
         }
-        
+
         if (!destination) {
           throw new Error('destination is required for combine operation');
         }
