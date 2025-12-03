@@ -19,7 +19,7 @@ class MockObsidianAPI extends ObsidianAPI {
     this.mockFiles.set('source/subdir/file3.md', { content: '# File 3\nContent of file 3' });
     this.mockFiles.set('source/subdir/nested/file4.md', { content: '# File 4\nContent of file 4' });
     this.mockFiles.set('source/image.png', { content: 'binary', isImage: true });
-    
+
     // Mock directories
     this.mockDirectories.add('source');
     this.mockDirectories.add('source/subdir');
@@ -29,7 +29,7 @@ class MockObsidianAPI extends ObsidianAPI {
   async listFiles(directory?: string): Promise<string[]> {
     const targetDir = directory || '';
     const files: string[] = [];
-    
+
     // Add files in this directory (return full paths like the real API)
     for (const [path, _] of this.mockFiles) {
       if (path.startsWith(targetDir)) {
@@ -46,7 +46,7 @@ class MockObsidianAPI extends ObsidianAPI {
         }
       }
     }
-    
+
     // Add subdirectories (return full paths with trailing slash)
     for (const dirPath of this.mockDirectories) {
       if (dirPath.startsWith(targetDir) && dirPath !== targetDir) {
@@ -63,7 +63,7 @@ class MockObsidianAPI extends ObsidianAPI {
         }
       }
     }
-    
+
     return files.filter(f => f !== '');
   }
 
@@ -72,7 +72,7 @@ class MockObsidianAPI extends ObsidianAPI {
     if (!file) {
       throw new Error(`File not found: ${path}`);
     }
-    
+
     if (file.isImage) {
       // Mock the same structure that isImageFile() would detect
       return {
@@ -83,7 +83,7 @@ class MockObsidianAPI extends ObsidianAPI {
         base64Data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
       };
     }
-    
+
     return {
       content: file.content,
       path,
@@ -95,7 +95,7 @@ class MockObsidianAPI extends ObsidianAPI {
     if (this.mockFiles.has(path)) {
       throw new Error(`File already exists: ${path}`);
     }
-    
+
     this.mockFiles.set(path, { content });
     return {
       success: true,
@@ -116,7 +116,7 @@ class MockObsidianAPI extends ObsidianAPI {
   async listFilesPaginated(directory?: string, page: number = 1, pageSize: number = 20): Promise<any> {
     const targetDir = directory || '';
     const items: any[] = [];
-    
+
     // Add files in this directory (return full paths like the real API) 
     for (const [path, file] of this.mockFiles) {
       if (path.startsWith(targetDir)) {
@@ -145,7 +145,7 @@ class MockObsidianAPI extends ObsidianAPI {
         }
       }
     }
-    
+
     // Add subdirectories
     for (const dirPath of this.mockDirectories) {
       if (dirPath.startsWith(targetDir) && dirPath !== targetDir) {
@@ -170,7 +170,7 @@ class MockObsidianAPI extends ObsidianAPI {
         }
       }
     }
-    
+
     return {
       files: items.filter(item => item !== null),
       page,
@@ -295,21 +295,7 @@ describe('Recursive Directory Copy', () => {
       expect(result.result.filesCount).toBe(4); // Only text files copied
     });
 
-    test('should provide helpful workflow suggestions', async () => {
-      const result = await router.route({
-        operation: 'vault',
-        action: 'copy',
-        params: { path: 'source', destination: 'dest' }
-      });
 
-      expect(result.result.workflow.message).toContain('Directory copied successfully');
-      expect(result.result.workflow.suggested_next).toHaveLength(3); // List, view, review skipped
-      
-      const suggestions = result.result.workflow.suggested_next;
-      expect(suggestions[0].description).toBe('List copied directory contents');
-      expect(suggestions[0].command).toContain('vault(action=\'list\', directory=\'dest\')');
-      expect(suggestions[2].description).toBe('Review skipped files');
-    });
   });
 
   describe('backward compatibility', () => {

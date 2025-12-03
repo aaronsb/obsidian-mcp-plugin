@@ -55,6 +55,13 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Verify build artifacts exist
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          echo "Verifying required files for BRAT compatibility..."
+          ls -lh main.js manifest.json styles.css
+          echo "✓ All required files present"
+
       - name: Create Release
         if: steps.check_tag.outputs.exists == 'false'
         env:
