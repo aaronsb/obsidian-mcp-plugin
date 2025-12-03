@@ -8,6 +8,7 @@ import { MCPIgnoreManager } from '../security/mcp-ignore-manager';
 import { Debug } from './debug';
 import { BasesAPI } from './bases-api';
 import { BaseYAML, BaseQueryResult as BasesQueryResult } from '../types/bases-yaml';
+import { InputValidator, ValidationException } from '../validation/input-validator';
 
 export class ObsidianAPI {
   private app: App;
@@ -15,13 +16,18 @@ export class ObsidianAPI {
   private plugin?: any; // Reference to the plugin for accessing MCP server info
   private ignoreManager?: MCPIgnoreManager;
   private basesAPI: BasesAPI;
-  
+  private validator: InputValidator;
+
   constructor(app: App, config?: ObsidianConfig, plugin?: any) {
     this.app = app;
     this.config = config || { apiKey: '', apiUrl: '' };
     this.plugin = plugin;
     this.ignoreManager = plugin?.ignoreManager;
     this.basesAPI = new BasesAPI(app);
+
+    // Initialize input validator with plugin settings or defaults
+    this.validator = new InputValidator(plugin?.settings?.validation || {});
+
     Debug.log(`ObsidianAPI initialized with ignoreManager: ${!!this.ignoreManager}, enabled: ${this.ignoreManager?.getEnabled()}`);
   }
 
@@ -230,11 +236,20 @@ export class ObsidianAPI {
   }
 
   async createFile(path: string, content: string) {
+    // Validate input
+    const validationResult = this.validator.validate('file.create', { path, content });
+    if (!validationResult.valid) {
+      throw new ValidationException(
+        validationResult.errors || [],
+        `Validation failed for createFile: ${validationResult.errors?.map(e => e.message).join(', ')}`
+      );
+    }
+
     // Check if path is excluded
     if (this.ignoreManager && this.ignoreManager.isExcluded(path)) {
       throw new Error(`Access denied: ${path}`);
     }
-    
+
     // Ensure directory exists
     const dirPath = path.substring(0, path.lastIndexOf('/'));
     if (dirPath && !this.app.vault.getAbstractFileByPath(dirPath)) {
@@ -244,10 +259,10 @@ export class ObsidianAPI {
     const result = await this.withVaultRetry(
       async () => {
         const file = await this.app.vault.create(path, content);
-        return { 
-          success: true, 
+        return {
+          success: true,
           path: file.path,
-          name: file.name 
+          name: file.name
         };
       },
       'file creation',
@@ -257,6 +272,15 @@ export class ObsidianAPI {
   }
 
   async updateFile(path: string, content: string) {
+    // Validate input
+    const validationResult = this.validator.validate('file.update', { path, content });
+    if (!validationResult.valid) {
+      throw new ValidationException(
+        validationResult.errors || [],
+        `Validation failed for updateFile: ${validationResult.errors?.map(e => e.message).join(', ')}`
+      );
+    }
+
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!file || !(file instanceof TFile)) {
       throw new Error(`File not found: ${path}`);
@@ -277,12 +301,31 @@ export class ObsidianAPI {
   }
 
   async appendToFile(path: string, content: string) {
+    // Validate input
+    const validationResult = this.validator.validate('file.append', { content });
+    if (!validationResult.valid) {
+      throw new ValidationException(
+        validationResult.errors || [],
+        `Validation failed for appendToFile: ${validationResult.errors?.map(e => e.message).join(', ')}`
+      );
+    }
+
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!file || !(file instanceof TFile)) {
       throw new Error(`File not found: ${path}`);
     }
 
     const existingContent = await this.app.vault.read(file);
+
+    // Validate combined content size
+    const combinedValidation = this.validator.validate('file.append', { content: existingContent + content });
+    if (!combinedValidation.valid) {
+      throw new ValidationException(
+        combinedValidation.errors || [],
+        `Validation failed: Combined file size would exceed limit`
+      );
+    }
+
     await this.app.vault.modify(file, existingContent + content);
     return { success: true };
   }
@@ -514,8 +557,8 @@ export class ObsidianAPI {
   // Search operations
 
   async searchPaginated(
-    query: string, 
-    page: number = 1, 
+    query: string,
+    page: number = 1,
     pageSize: number = 10,
     strategy: 'filename' | 'content' | 'combined' = 'combined',
     includeContent: boolean = true
@@ -539,6 +582,15 @@ export class ObsidianAPI {
       }>;
     };
   }> {
+    // Validate search query
+    const validationResult = this.validator.validate('search.query', { query });
+    if (!validationResult.valid) {
+      throw new ValidationException(
+        validationResult.errors || [],
+        `Validation failed for search: ${validationResult.errors?.map(e => e.message).join(', ')}`
+      );
+    }
+
     if (!query || query.trim().length === 0) {
       return {
         query,
