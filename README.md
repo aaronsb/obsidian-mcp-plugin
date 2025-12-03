@@ -15,25 +15,6 @@ This plugin connects your Obsidian vault to AI assistants through MCP (Model Con
 - Claude Code/Continue.dev (VS Code)
 - Any platform that supports local MCP servers
 
-<!-- STATS:START -->
-<!-- Last updated: 2025-12-03 -->
-
-### 🌟 Community Engagement
-| Metric | Count |
-|--------|-------|
-| ⭐ Stars | 159 |
-| 🍴 Forks | 11 |
-| 👀 Watchers | 159 |
-| 👁️ Views (14 days) | 0 (0 unique) |
-| 📥 Clones (14 days) | 0 (0 unique) |
-
-### 📦 Release Downloads
-| Version | Downloads |
-|---------|-----------|
-| **Total All Versions** | **13205** |
-| Latest (0.10.2) | 1257 |
-<!-- STATS:END -->
-
 ## Why Semantic MCP?
 
 Traditional file access gives AI a narrow view - one document at a time. This plugin transforms that into **semantic agency**:
