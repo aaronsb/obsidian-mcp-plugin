@@ -7,6 +7,7 @@ import { randomBytes } from 'crypto';
 import { createSemanticTools } from './tools/semantic-tools';
 import { PluginDetector } from './utils/plugin-detector';
 import { CertificateConfig } from './utils/certificate-manager';
+import { ValidationConfig } from './validation/input-validator';
 
 interface MCPPluginSettings {
 	httpEnabled: boolean;
@@ -24,6 +25,7 @@ interface MCPPluginSettings {
 	readOnlyMode: boolean;
 	pathExclusionsEnabled: boolean;
 	enableIgnoreContextMenu: boolean;
+	validation?: Partial<ValidationConfig>;
 }
 
 const DEFAULT_SETTINGS: MCPPluginSettings = {
@@ -47,7 +49,14 @@ const DEFAULT_SETTINGS: MCPPluginSettings = {
 	dangerouslyDisableAuth: false, // Auth enabled by default
 	readOnlyMode: false, // Read-only mode disabled by default
 	pathExclusionsEnabled: false, // Path exclusions disabled by default
-	enableIgnoreContextMenu: false // Context menu disabled by default
+	enableIgnoreContextMenu: false, // Context menu disabled by default
+	validation: {
+		maxFileSize: 10 * 1024 * 1024, // 10MB default
+		maxBatchSize: 100,
+		maxPathLength: 255,
+		maxRegexComplexity: 100,
+		strictMode: false
+	}
 };
 
 export default class ObsidianMCPPlugin extends Plugin {
