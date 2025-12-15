@@ -6,6 +6,7 @@ import { isImageFile } from '../utils/image-handler';
 import { isImageFile as isImageFileObject } from '../types/obsidian';
 import { App } from 'obsidian';
 import { DataviewTool, isDataviewToolAvailable } from './dataview-tool';
+import { formatResponse } from '../formatters';
 
 /**
  * Unified semantic tools that consolidate all operations into 5 main verbs
@@ -21,6 +22,11 @@ const createSemanticTool = (operation: string) => ({
         type: 'string',
         description: 'The specific action to perform',
         enum: getActionsForOperation(operation)
+      },
+      raw: {
+        type: 'boolean',
+        description: 'Return raw JSON instead of formatted markdown (use when you need complete metadata or structured data for processing)',
+        default: false
       },
       ...getParametersForOperation(operation)
     },
@@ -139,13 +145,16 @@ const createSemanticTool = (operation: string) => ({
         };
       }
 
+      // Format Dataview success response through presentation facade
+      const rawMode = args.raw === true;
+      const formattedOutput = rawMode
+        ? JSON.stringify({ result: result.result, context: result.context }, null, 2)
+        : formatResponse('dataview', args.action, result.result, rawMode);
+
       return {
         content: [{
           type: 'text' as const,
-          text: JSON.stringify({
-            result: result.result,
-            context: result.context
-          }, null, 2)
+          text: formattedOutput
         }]
       };
     }
@@ -203,15 +212,21 @@ const createSemanticTool = (operation: string) => ({
     }
     
     try {
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
+      // Format response through presentation facade
+      const rawMode = args.raw === true;
+      const formattedOutput = rawMode
+        ? JSON.stringify({
             result: filteredResult,
             workflow: response.workflow,
             context: response.context,
             efficiency_hints: response.efficiency_hints
           }, null, 2)
+        : formatResponse(operation, args.action, filteredResult, rawMode);
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: formattedOutput
         }]
       };
     } catch (error) {
