@@ -223,11 +223,12 @@ export function formatWorkflowSuggest(response: WorkflowSuggestResponse): string
 
 /**
  * Format edit operation responses
+ * Note: Response may only contain success status
  */
 export interface EditResponse {
-  success: boolean;
-  path: string;
-  operation: 'window' | 'append' | 'patch' | 'at_line';
+  success?: boolean;
+  path?: string;
+  operation?: 'window' | 'append' | 'patch' | 'at_line';
   linesChanged?: number;
   message?: string;
 }
@@ -235,16 +236,24 @@ export interface EditResponse {
 export function formatEditResult(response: EditResponse): string {
   const lines: string[] = [];
 
-  const icon = response.success ? '✓' : '✗';
-  const verb = response.operation === 'window' ? 'Replaced'
-    : response.operation === 'append' ? 'Appended'
-    : response.operation === 'patch' ? 'Patched'
-    : 'Edited';
+  // Handle minimal response (just success)
+  const success = response.success ?? true;
+  const icon = success ? '✓' : '✗';
 
-  lines.push(header(1, `${icon} ${verb}: ${response.path}`));
+  // Determine verb from operation if available
+  let verb = 'Edited';
+  if (response.operation) {
+    verb = response.operation === 'window' ? 'Replaced'
+      : response.operation === 'append' ? 'Appended'
+      : response.operation === 'patch' ? 'Patched'
+      : 'Edited';
+  }
+
+  const pathDisplay = response.path || 'file';
+  lines.push(header(1, `${icon} ${verb}: ${pathDisplay}`));
   lines.push('');
 
-  if (response.success) {
+  if (success) {
     lines.push('Edit successful.');
     if (response.linesChanged !== undefined) {
       lines.push(property('Lines Changed', response.linesChanged.toString(), 0));

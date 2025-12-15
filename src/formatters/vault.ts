@@ -270,9 +270,10 @@ export function formatFileWrite(response: FileWriteResponse, action: 'create' | 
 
 /**
  * Format file delete response
+ * Note: path may not be in result, just success status
  */
 export interface FileDeleteResponse {
-  path: string;
+  path?: string;
   success: boolean;
 }
 
@@ -280,7 +281,8 @@ export function formatFileDelete(response: FileDeleteResponse): string {
   const lines: string[] = [];
 
   const icon = response.success ? '✓' : '✗';
-  lines.push(header(1, `${icon} Deleted: ${response.path}`));
+  const pathDisplay = response.path || 'file';
+  lines.push(header(1, `${icon} Deleted: ${pathDisplay}`));
   lines.push('');
 
   if (response.success) {
