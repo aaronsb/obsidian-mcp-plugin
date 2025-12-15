@@ -1,6 +1,6 @@
 {
   "name": "obsidian-mcp-plugin",
-  "version": "0.10.3",
+  "version": "0.10.4",
   "description": "Semantic MCP server providing AI tools with direct vault access via HTTP transport.",
   "main": "main.js",
   "scripts": {
