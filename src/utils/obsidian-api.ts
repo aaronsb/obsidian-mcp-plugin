@@ -652,34 +652,7 @@ export class ObsidianAPI {
       };
     }
 
-    // Try to access internal search API first, then fallback to our implementation
-    try {
-      const searchResults = await this.tryInternalSearch(query);
-      if (searchResults && searchResults.length > 0) {
-        // Process internal search results
-        const processedResults = await this.processNativeSearchResults(searchResults, query, strategy, includeContent);
-        const paginatedResponse = paginateResults(processedResults, page, pageSize);
-        
-        return {
-          query,
-          page: paginatedResponse.page,
-          pageSize: paginatedResponse.pageSize,
-          totalResults: paginatedResponse.totalResults,
-          totalPages: paginatedResponse.totalPages,
-          results: paginatedResponse.results,
-          method: `internal-${strategy}`,
-          ...(paginatedResponse.truncated && {
-            truncated: true,
-            originalCount: paginatedResponse.originalCount,
-            message: paginatedResponse.message
-          })
-        };
-      }
-    } catch (error) {
-      Debug.warn('Internal search failed, using official API:', error);
-    }
-
-    // Fallback to SearchFacade implementation
+    // Use SearchFacade as the single unified search implementation
     const searchResults = await this.performVaultSearch(query, strategy, includeContent, options);
     Debug.log(`Search found ${searchResults.length} results for query: ${query}`);
     if (searchResults.length > 0) {
