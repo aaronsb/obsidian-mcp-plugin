@@ -13,20 +13,31 @@ import {
 
 /**
  * Format system.info response
+ * Actual response: { authenticated, cors, ok, service, versions: {obsidian, self}, mcp: {running, port, connections, vault} }
  */
 export interface SystemInfoResponse {
-  plugin: {
+  authenticated?: boolean;
+  ok?: boolean;
+  service?: string;
+  versions?: {
+    obsidian?: string;
+    self?: string;
+  };
+  mcp?: {
+    running?: boolean;
+    port?: number;
+    connections?: number;
+    vault?: string;
+  };
+  // Legacy format support
+  plugin?: {
     name: string;
     version: string;
   };
-  vault: {
+  vault?: {
     name: string;
     fileCount?: number;
     folderCount?: number;
-  };
-  server?: {
-    httpEnabled: boolean;
-    httpPort?: number;
   };
 }
 
@@ -36,26 +47,46 @@ export function formatSystemInfo(response: SystemInfoResponse): string {
   lines.push(header(1, 'System Info'));
   lines.push('');
 
-  lines.push(header(2, 'Plugin'));
-  lines.push(property('Name', response.plugin.name, 0));
-  lines.push(property('Version', response.plugin.version, 0));
-  lines.push('');
+  // Handle actual API response format
+  if (response.service || response.versions) {
+    if (response.service) {
+      lines.push(property('Service', response.service, 0));
+    }
+    if (response.versions?.self) {
+      lines.push(property('Version', response.versions.self, 0));
+    }
+    if (response.versions?.obsidian) {
+      lines.push(property('Obsidian', response.versions.obsidian, 0));
+    }
+    lines.push(property('Status', response.ok ? '✓ OK' : '✗ Error', 0));
+    lines.push('');
 
-  lines.push(header(2, 'Vault'));
-  lines.push(property('Name', response.vault.name, 0));
-  if (response.vault.fileCount !== undefined) {
-    lines.push(property('Files', response.vault.fileCount.toString(), 0));
-  }
-  if (response.vault.folderCount !== undefined) {
-    lines.push(property('Folders', response.vault.folderCount.toString(), 0));
-  }
-  lines.push('');
+    if (response.mcp) {
+      lines.push(header(2, 'MCP Server'));
+      lines.push(property('Running', response.mcp.running ? 'Yes' : 'No', 0));
+      if (response.mcp.port) {
+        lines.push(property('Port', response.mcp.port.toString(), 0));
+      }
+      if (response.mcp.connections !== undefined) {
+        lines.push(property('Connections', response.mcp.connections.toString(), 0));
+      }
+      if (response.mcp.vault) {
+        lines.push(property('Vault', response.mcp.vault, 0));
+      }
+    }
+  } else if (response.plugin) {
+    // Legacy format
+    lines.push(header(2, 'Plugin'));
+    lines.push(property('Name', response.plugin.name, 0));
+    lines.push(property('Version', response.plugin.version, 0));
+    lines.push('');
 
-  if (response.server) {
-    lines.push(header(2, 'Server'));
-    lines.push(property('HTTP', response.server.httpEnabled ? 'Enabled' : 'Disabled', 0));
-    if (response.server.httpPort) {
-      lines.push(property('Port', response.server.httpPort.toString(), 0));
+    if (response.vault) {
+      lines.push(header(2, 'Vault'));
+      lines.push(property('Name', response.vault.name, 0));
+      if (response.vault.fileCount !== undefined) {
+        lines.push(property('Files', response.vault.fileCount.toString(), 0));
+      }
     }
   }
 

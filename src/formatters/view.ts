@@ -14,21 +14,36 @@ import {
 
 /**
  * Format view.file response (full document view)
+ * Actual response: { path, content, tags, frontmatter }
  */
 export interface ViewFileResponse {
   path: string;
   content: string;
-  lineCount: number;
+  lineCount?: number;
+  tags?: string[];
+  frontmatter?: Record<string, any>;
 }
 
 export function formatViewFile(response: ViewFileResponse): string {
   const lines: string[] = [];
 
   const fileName = response.path.split('/').pop() || response.path;
+  const lineCount = response.lineCount ?? response.content.split('\n').length;
+
   lines.push(header(1, `View: ${fileName}`));
   lines.push('');
   lines.push(property('Path', response.path, 0));
-  lines.push(property('Lines', response.lineCount.toString(), 0));
+  lines.push(property('Lines', lineCount.toString(), 0));
+
+  // Show tags if present
+  if (response.tags && response.tags.length > 0) {
+    lines.push(property('Tags', response.tags.join(', '), 0));
+  }
+
+  // Show frontmatter keys if present
+  if (response.frontmatter && Object.keys(response.frontmatter).length > 0) {
+    lines.push(property('Frontmatter', Object.keys(response.frontmatter).join(', '), 0));
+  }
   lines.push('');
 
   lines.push('```markdown');

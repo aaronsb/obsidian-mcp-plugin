@@ -34,9 +34,36 @@ export interface FileListResponse {
   totalFolders?: number;
 }
 
-export function formatFileList(response: FileListResponse): string {
-  const { directory, files, totalFiles, totalFolders } = response;
+export function formatFileList(response: FileListResponse | string[]): string {
   const lines: string[] = [];
+
+  // Handle simple string array response
+  if (Array.isArray(response)) {
+    const paths = response as string[];
+    lines.push(header(1, 'Files'));
+    lines.push('');
+    lines.push(`Found ${paths.length} item${paths.length !== 1 ? 's' : ''}`);
+    lines.push('');
+
+    paths.slice(0, 50).forEach(path => {
+      const name = path.split('/').pop() || path;
+      const isFolder = !path.includes('.');
+      lines.push(`- ${isFolder ? name + '/' : name}`);
+    });
+
+    if (paths.length > 50) {
+      lines.push(`- ... and ${paths.length - 50} more`);
+    }
+
+    lines.push('');
+    lines.push(divider());
+    lines.push(tip('Use `vault.read(path)` to read file contents'));
+    lines.push(summaryFooter());
+    return joinLines(lines);
+  }
+
+  // Handle structured response
+  const { directory, files, totalFiles, totalFolders } = response;
 
   lines.push(header(1, `Directory: ${directory || '/'}`));
   lines.push('');
