@@ -116,6 +116,24 @@ Slow responses or timeouts.
 3. **Graph traversal**: Limit depth for large, highly-connected vaults
 4. **Debug logging**: Disable debug logging in production (Settings → Semantic MCP)
 
+## n8n Integration
+
+**Symptoms:**
+n8n MCP tool reports "unable to connect" or expects SSE endpoint.
+
+**Cause:**
+Older versions of n8n only support SSE (Server-Sent Events) transport, while this plugin uses Streamable HTTP transport (the newer MCP standard).
+
+**Solution:**
+Update n8n to the latest version which supports Streamable HTTP transport.
+
+**Configuration:**
+```
+MCP URL: http://<your-ip>:3001/mcp
+```
+
+Ensure the plugin is enabled and the server is running (check the status bar in Obsidian).
+
 ## Still Having Issues?
 
 - Check [GitHub Issues](https://github.com/aaronsb/obsidian-mcp-plugin/issues) for known problems
