@@ -99,25 +99,42 @@ async getFile(path: string): Promise<ObsidianFileResponse> {
 
 When developing with Obsidian BRAT (Beta Reviewer's Auto-update Tool) for plugin side-loading:
 
-#### Critical Release Workflow
-1. **Version Updates**: 
-   - **ONLY update `package.json` version** - `sync-version.mjs` automatically syncs to `manifest.json` and `version.ts`
-   - DO NOT manually update `manifest.json` - the automation handles this
-2. **Commit Strategy**: Use separate commits for:
-   - Feature/fix changes 
-   - Version bumps
-3. **Tag Management**: 
-   - NEVER manually create tags before version commits
-   - Let GitHub Actions workflow create tags automatically
-   - If automation fails, delete existing tags before retry: `git tag -d vX.X.X && git push origin :refs/tags/vX.X.X`
-4. **Release Creation**:
-   - Workflow checks for tag existence and skips if found
-   - Manual release creation: `gh release create vX.X.X --prerelease --title "..." --notes "..." --target main`
-   - BRAT users need GitHub releases, not just tags
-5. **Automation Issues**: 
-   - Workflow may fail if tags exist before version commits
-   - Empty commits can trigger workflow: `git commit --allow-empty -m "chore: Trigger release workflow"`
-   - Monitor `gh run list` to verify workflow execution
+#### Development vs Release Workflow
+
+**Development (no releases created):**
+- Push commits to main freely - no automatic releases triggered
+- Test locally with `npm run build`
+- Iterate as needed without polluting release history
+
+**Creating a Release (manual trigger):**
+
+Via GitHub UI:
+1. Go to **Actions** → **Create Release**
+2. Click **Run workflow**
+3. Optionally add release notes
+4. Click **Run**
+
+Via CLI:
+```bash
+# Simple release
+gh workflow run release.yml
+
+# With release notes
+gh workflow run release.yml -f release_notes="Fixed VS Code compatibility, improved search"
+```
+
+#### Version Updates
+- **ONLY update `package.json` version** - `sync-version.mjs` automatically syncs to `manifest.json` and `version.ts`
+- DO NOT manually update `manifest.json` - the automation handles this
+- Bump version in `package.json` before triggering a release
+
+#### Tag Management
+- Release workflow creates tags automatically (no 'v' prefix)
+- If a tag already exists for that version, the release is skipped
+- To re-release same version, delete existing tag first:
+  ```bash
+  git tag -d X.Y.Z && git push origin :refs/tags/X.Y.Z
+  ```
 
 #### BRAT User Experience
 - Users install via: `aaronsb/obsidian-mcp-plugin` in BRAT
