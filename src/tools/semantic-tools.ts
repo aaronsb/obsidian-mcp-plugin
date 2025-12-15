@@ -617,6 +617,7 @@ function getParametersForOperation(operation: string): Record<string, any> {
       },
       filters: {
         type: 'array',
+        items: { type: 'object' },
         description: 'Array of filter objects with property, operator, and value'
       },
       sort: {
@@ -633,6 +634,7 @@ function getParametersForOperation(operation: string): Record<string, any> {
       },
       properties: {
         type: 'array',
+        items: { type: 'string' },
         description: 'Specific properties to include in results'
       },
       basePath: {

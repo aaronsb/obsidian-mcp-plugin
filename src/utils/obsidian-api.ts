@@ -426,7 +426,7 @@ export class ObsidianAPI {
     
     // Apply the operation
     switch (operation) {
-      case 'append':
+      case 'append': {
         // Add content at the end of the section
         // Fix for list continuity - thanks to @that0n3guy (PR #44)
         const lastLine = endLineIndex > 0 ? lines[endLineIndex - 1] : '';
@@ -455,6 +455,7 @@ export class ObsidianAPI {
           lines.splice(endLineIndex, 0, '', patchContent);
         }
         break;
+      }
       case 'prepend':
         // Add content right after the heading
         lines.splice(targetLineIndex + 1, 0, '', patchContent);
