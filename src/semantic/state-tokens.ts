@@ -73,12 +73,21 @@ export class StateTokenManager {
         this.tokens.file_loaded = params.path;
         this.tokens.file_content = true;
         this.tokens.file_is_markdown = params.path?.endsWith('.md');
-        
-        // Extract links and tags from content
-        if (typeof result === 'object' && result.content) {
-          const content = result.content;
-          this.tokens.file_has_links = this.extractLinks(content);
-          this.tokens.file_has_tags = this.extractTags(content);
+
+        // Extract links and tags from result
+        if (typeof result === 'object') {
+          // Use tags from API response (includes frontmatter tags from metadataCache)
+          if (result.tags && Array.isArray(result.tags)) {
+            this.tokens.file_has_tags = result.tags;
+          } else if (result.content) {
+            // Fallback to content extraction
+            this.tokens.file_has_tags = this.extractTags(result.content);
+          }
+
+          // Extract links from content
+          if (result.content) {
+            this.tokens.file_has_links = this.extractLinks(result.content);
+          }
         }
         
         // Update history

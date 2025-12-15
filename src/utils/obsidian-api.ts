@@ -73,13 +73,22 @@ export class ObsidianAPI {
     }
 
     const content = await this.app.vault.read(activeFile);
-    const stat = await this.app.vault.adapter.stat(activeFile.path);
-    
+
+    // Extract metadata from cache
+    const cache = this.app.metadataCache.getFileCache(activeFile);
+    const tags = cache ? (getAllTags(cache) || []) : [];
+    const frontmatter = cache?.frontmatter ? { ...cache.frontmatter } : {};
+
+    // Remove position metadata from frontmatter (internal Obsidian data)
+    if (frontmatter.position) {
+      delete frontmatter.position;
+    }
+
     return {
       path: activeFile.path,
       content,
-      tags: [], // TODO: Extract tags from frontmatter/content
-      frontmatter: {} // TODO: Parse frontmatter
+      tags,
+      frontmatter
     };
   }
 
@@ -226,12 +235,22 @@ export class ObsidianAPI {
 
     // Regular text file
     const content = await this.app.vault.read(file);
-    
+
+    // Extract metadata from cache
+    const cache = this.app.metadataCache.getFileCache(file);
+    const tags = cache ? (getAllTags(cache) || []) : [];
+    const frontmatter = cache?.frontmatter ? { ...cache.frontmatter } : {};
+
+    // Remove position metadata from frontmatter (internal Obsidian data)
+    if (frontmatter.position) {
+      delete frontmatter.position;
+    }
+
     return {
       path: file.path,
       content,
-      tags: [], // TODO: Extract tags from frontmatter/content
-      frontmatter: {} // TODO: Parse frontmatter
+      tags,
+      frontmatter
     };
   }
 
