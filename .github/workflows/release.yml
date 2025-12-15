@@ -1,12 +1,12 @@
 name: Create Release
 
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - '**.md'
-      - '.gitignore'
-      - '.github/workflows/build.yml'
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: 'Additional release notes (optional)'
+        required: false
+        type: string
 
 env:
   PLUGIN_NAME: obsidian-mcp-plugin
@@ -60,21 +60,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ steps.version.outputs.version }}" \
-            --title "${{ steps.version.outputs.name }} ${{ steps.version.outputs.version }}" \
-            --generate-notes \
-            --notes "## ${{ steps.version.outputs.name }} ${{ steps.version.outputs.version }}
+          NOTES="## ${{ steps.version.outputs.name }} ${{ steps.version.outputs.version }}
 
-          Auto-generated release from main branch.
+          ${{ inputs.release_notes }}
 
           ### Installation via BRAT
           1. Install the BRAT plugin if you haven't already
           2. Command palette → \"BRAT: Add a beta plugin for testing\"
           3. Enter: \`aaronsb/obsidian-mcp-plugin\`
-          4. Enable the plugin in Community Plugins
+          4. Enable the plugin in Community Plugins"
 
-          ### Changes
-          See commit history for detailed changes in this release." \
+          gh release create "${{ steps.version.outputs.version }}" \
+            --title "${{ steps.version.outputs.name }} ${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            --notes "$NOTES" \
             --prerelease \
             main.js \
             manifest.json \
