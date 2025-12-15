@@ -223,13 +223,24 @@ export function formatGraphPath(response: GraphPathResponse): string {
 
 /**
  * Format graph.statistics response
+ * Actual response: { operation, sourcePath, statistics: {...}, message, workflow }
  */
 export interface GraphStatsResponse {
   sourcePath: string;
-  inDegree: number;
-  outDegree: number;
-  totalDegree: number;
+  // Flat format (legacy)
+  inDegree?: number;
+  outDegree?: number;
+  totalDegree?: number;
   isOrphan?: boolean;
+  // Nested format (actual)
+  statistics?: {
+    inDegree: number;
+    outDegree: number;
+    totalDegree: number;
+    unresolvedCount?: number;
+    tagCount?: number;
+  };
+  message?: string;
 }
 
 export function formatGraphStats(response: GraphStatsResponse): string {
@@ -239,11 +250,30 @@ export function formatGraphStats(response: GraphStatsResponse): string {
   lines.push(header(1, `Stats: ${fileName}`));
   lines.push('');
 
-  lines.push(property('Incoming Links', response.inDegree.toString(), 0));
-  lines.push(property('Outgoing Links', response.outDegree.toString(), 0));
-  lines.push(property('Total Connections', response.totalDegree.toString(), 0));
+  if (response.message) {
+    lines.push(response.message);
+    lines.push('');
+  }
 
-  if (response.isOrphan) {
+  // Handle both nested and flat formats
+  const stats = response.statistics || response;
+  const inDegree = stats.inDegree ?? 0;
+  const outDegree = stats.outDegree ?? 0;
+  const totalDegree = stats.totalDegree ?? (inDegree + outDegree);
+
+  lines.push(property('Incoming Links', inDegree.toString(), 0));
+  lines.push(property('Outgoing Links', outDegree.toString(), 0));
+  lines.push(property('Total Connections', totalDegree.toString(), 0));
+
+  if (response.statistics?.unresolvedCount) {
+    lines.push(property('Unresolved', response.statistics.unresolvedCount.toString(), 0));
+  }
+  if (response.statistics?.tagCount) {
+    lines.push(property('Tags', response.statistics.tagCount.toString(), 0));
+  }
+
+  const isOrphan = response.isOrphan ?? (totalDegree === 0);
+  if (isOrphan) {
     lines.push('');
     lines.push('⚠️ This note is an orphan (no incoming or outgoing links)');
   }

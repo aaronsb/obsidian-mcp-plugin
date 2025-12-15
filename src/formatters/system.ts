@@ -149,6 +149,7 @@ export function formatSystemCommands(response: SystemCommandsResponse): string {
 
 /**
  * Format workflow.suggest response
+ * Actual response: { current_context: {...}, suggestions: [...] }
  */
 export interface WorkflowSuggestion {
   description: string;
@@ -157,8 +158,16 @@ export interface WorkflowSuggestion {
 }
 
 export interface WorkflowSuggestResponse {
-  message: string;
-  suggested_next: WorkflowSuggestion[];
+  // Legacy format
+  message?: string;
+  suggested_next?: WorkflowSuggestion[];
+  // Actual format
+  current_context?: {
+    buffer_available?: boolean;
+    has_links?: boolean;
+    has_tags?: boolean;
+  };
+  suggestions?: WorkflowSuggestion[];
 }
 
 export function formatWorkflowSuggest(response: WorkflowSuggestResponse): string {
@@ -166,11 +175,33 @@ export function formatWorkflowSuggest(response: WorkflowSuggestResponse): string
 
   lines.push(header(1, 'Workflow Suggestions'));
   lines.push('');
-  lines.push(response.message);
-  lines.push('');
 
-  if (response.suggested_next.length === 0) {
+  // Show context if available
+  if (response.current_context) {
+    const ctx = response.current_context;
+    const contextItems: string[] = [];
+    if (ctx.buffer_available) contextItems.push('buffer available');
+    if (ctx.has_links) contextItems.push('has links');
+    if (ctx.has_tags) contextItems.push('has tags');
+
+    if (contextItems.length > 0) {
+      lines.push(property('Context', contextItems.join(', '), 0));
+      lines.push('');
+    }
+  }
+
+  if (response.message) {
+    lines.push(response.message);
+    lines.push('');
+  }
+
+  // Handle both formats
+  const suggestions = response.suggestions || response.suggested_next || [];
+
+  if (suggestions.length === 0) {
     lines.push('No specific suggestions at this time.');
+    lines.push('');
+    lines.push(tip('Try performing an operation first to get contextual suggestions'));
     lines.push(summaryFooter());
     return joinLines(lines);
   }
@@ -178,7 +209,7 @@ export function formatWorkflowSuggest(response: WorkflowSuggestResponse): string
   lines.push(header(2, 'Suggested Actions'));
   lines.push('');
 
-  response.suggested_next.forEach((suggestion, i) => {
+  suggestions.forEach((suggestion, i) => {
     lines.push(`${i + 1}. **${suggestion.description}**`);
     lines.push(property('Command', `\`${suggestion.command}\``, 1));
     lines.push(property('Why', suggestion.reason, 1));

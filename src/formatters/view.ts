@@ -59,13 +59,18 @@ export function formatViewFile(response: ViewFileResponse): string {
 
 /**
  * Format view.window response (windowed view around a line)
+ * Actual response: { path, lines[], startLine, endLine, totalLines, centerLine }
  */
 export interface ViewWindowResponse {
   path: string;
-  content: string;
-  lineStart: number;
-  lineEnd: number;
+  content?: string;
+  lines?: string[];
+  lineStart?: number;
+  lineEnd?: number;
+  startLine?: number;
+  endLine?: number;
   totalLines: number;
+  centerLine?: number;
   searchText?: string;
 }
 
@@ -73,22 +78,38 @@ export function formatViewWindow(response: ViewWindowResponse): string {
   const lines: string[] = [];
 
   const fileName = response.path.split('/').pop() || response.path;
+  // Handle both naming conventions
+  const startLine = response.startLine ?? response.lineStart ?? 1;
+  const endLine = response.endLine ?? response.lineEnd ?? response.totalLines;
+
   lines.push(header(1, `View: ${fileName}`));
   lines.push('');
   lines.push(property('Path', response.path, 0));
-  lines.push(property('Showing', `lines ${response.lineStart}-${response.lineEnd} of ${response.totalLines}`, 0));
+  lines.push(property('Showing', `lines ${startLine}-${endLine} of ${response.totalLines}`, 0));
 
+  if (response.centerLine) {
+    lines.push(property('Center', `line ${response.centerLine}`, 0));
+  }
   if (response.searchText) {
     lines.push(property('Search', `"${response.searchText}"`, 0));
   }
   lines.push('');
 
+  // Get content lines - handle both formats
+  let contentLines: string[];
+  if (response.lines && Array.isArray(response.lines)) {
+    contentLines = response.lines;
+  } else if (response.content) {
+    contentLines = response.content.split('\n');
+  } else {
+    contentLines = [];
+  }
+
   // Add line numbers to content
-  const contentLines = response.content.split('\n');
   const numberedContent = contentLines
     .map((line, i) => {
-      const lineNum = response.lineStart + i;
-      const padding = String(response.lineEnd).length;
+      const lineNum = startLine + i;
+      const padding = String(endLine).length;
       return `${String(lineNum).padStart(padding)} | ${line}`;
     })
     .join('\n');
@@ -100,16 +121,16 @@ export function formatViewWindow(response: ViewWindowResponse): string {
   lines.push(divider());
 
   // Navigation tips
-  const tips: string[] = [];
-  if (response.lineStart > 1) {
-    tips.push(tip(`Use \`lineNumber: ${Math.max(1, response.lineStart - 20)}\` to see earlier content`));
+  const tipLines: string[] = [];
+  if (startLine > 1) {
+    tipLines.push(tip(`Use \`lineNumber: ${Math.max(1, startLine - 20)}\` to see earlier content`));
   }
-  if (response.lineEnd < response.totalLines) {
-    tips.push(tip(`Use \`lineNumber: ${response.lineEnd + 1}\` to see later content`));
+  if (endLine < response.totalLines) {
+    tipLines.push(tip(`Use \`lineNumber: ${endLine + 1}\` to see later content`));
   }
-  tips.push(tip('Use `edit.window(path, oldText, newText)` to make changes'));
+  tipLines.push(tip('Use `edit.window(path, oldText, newText)` to make changes'));
 
-  lines.push(tips.join('\n'));
+  lines.push(tipLines.join('\n'));
   lines.push(summaryFooter());
 
   return joinLines(lines);

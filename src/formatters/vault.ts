@@ -118,10 +118,19 @@ export function formatFileList(response: FileListResponse | string[]): string {
 
 /**
  * Format file read response
+ * Actual response can have content as string OR array of fragments
  */
+export interface FileReadFragment {
+  id: string;
+  content: string;
+  lineStart: number;
+  lineEnd: number;
+  score?: number;
+}
+
 export interface FileReadResponse {
   path: string;
-  content: string;
+  content: string | FileReadFragment[];
   metadata?: {
     size: number;
     modified: number;
@@ -130,10 +139,16 @@ export interface FileReadResponse {
   };
   frontmatter?: Record<string, any>;
   tags?: string[];
+  originalContentLength?: number;
+  fragmentMetadata?: {
+    totalFragments: number;
+    strategy: string;
+    query?: string;
+  };
 }
 
 export function formatFileRead(response: FileReadResponse): string {
-  const { path, content, metadata, frontmatter, tags } = response;
+  const { path, content, metadata, frontmatter, tags, fragmentMetadata } = response;
   const lines: string[] = [];
 
   const fileName = path.split('/').pop() || path;
@@ -172,22 +187,47 @@ export function formatFileRead(response: FileReadResponse): string {
     }
   }
 
-  // Content preview
-  lines.push('');
-  lines.push(header(2, 'Content'));
+  // Content - handle both string and fragment array formats
   lines.push('');
 
-  const contentLines = content.split('\n');
-  const previewLines = contentLines.slice(0, 50);
-  lines.push('```markdown');
-  lines.push(previewLines.join('\n'));
-  if (contentLines.length > 50) {
-    lines.push(`\n... (${contentLines.length - 50} more lines)`);
+  if (Array.isArray(content)) {
+    // Fragment-based response
+    const fragments = content as FileReadFragment[];
+    if (fragmentMetadata) {
+      lines.push(header(2, `Content (${fragmentMetadata.totalFragments} fragment${fragmentMetadata.totalFragments !== 1 ? 's' : ''})`));
+    } else {
+      lines.push(header(2, 'Content'));
+    }
+    lines.push('');
+
+    fragments.slice(0, 5).forEach((frag, i) => {
+      lines.push(`**Fragment ${i + 1}** (lines ${frag.lineStart}-${frag.lineEnd})`);
+      lines.push('```markdown');
+      lines.push(truncate(frag.content, 500));
+      lines.push('```');
+      lines.push('');
+    });
+
+    if (fragments.length > 5) {
+      lines.push(`... and ${fragments.length - 5} more fragments`);
+    }
+  } else {
+    // Simple string content
+    lines.push(header(2, 'Content'));
+    lines.push('');
+
+    const contentLines = content.split('\n');
+    const previewLines = contentLines.slice(0, 50);
+    lines.push('```markdown');
+    lines.push(previewLines.join('\n'));
+    if (contentLines.length > 50) {
+      lines.push(`\n... (${contentLines.length - 50} more lines)`);
+    }
+    lines.push('```');
   }
-  lines.push('```');
 
   lines.push(divider());
-  lines.push(tip('Use `view.window(path, lineNumber)` to see a specific section'));
+  lines.push(tip('Use `view.file(path)` for full content or `view.window(path, lineNumber)` for a section'));
   lines.push(summaryFooter());
 
   return joinLines(lines);
