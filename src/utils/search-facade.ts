@@ -48,6 +48,28 @@ export interface SearchFacadeOptions {
 
   /** Include file metadata in results (default: true) */
   includeMetadata?: boolean;
+
+  /** Page number for pagination (1-indexed, default: 1) */
+  page?: number;
+
+  /** Number of results per page (default: 10) */
+  pageSize?: number;
+}
+
+/**
+ * Paginated search response
+ */
+export interface PaginatedSearchResponse {
+  query: string;
+  page: number;
+  pageSize: number;
+  totalResults: number;
+  totalPages: number;
+  results: UnifiedSearchResult[];
+  method: string;
+  truncated?: boolean;
+  originalCount?: number;
+  message?: string;
 }
 
 /**
@@ -133,6 +155,56 @@ export class SearchFacade {
     return results
       .sort((a, b) => b.score - a.score)
       .slice(0, maxResults);
+  }
+
+  /**
+   * Perform search with pagination - primary method for MCP tool use
+   */
+  async searchPaginated(query: string, options: SearchFacadeOptions = {}): Promise<PaginatedSearchResponse> {
+    const {
+      page = 1,
+      pageSize = 10,
+      strategy = 'auto'
+    } = options;
+
+    if (!query || query.trim().length === 0) {
+      return {
+        query: query || '',
+        page: 1,
+        pageSize,
+        totalResults: 0,
+        totalPages: 0,
+        results: [],
+        method: 'facade'
+      };
+    }
+
+    // Get all results (facade limits internally via maxResults)
+    const allResults = await this.search(query, {
+      ...options,
+      maxResults: options.maxResults || 100  // Get more results for pagination
+    });
+
+    // Apply pagination
+    const totalResults = allResults.length;
+    const totalPages = Math.ceil(totalResults / pageSize);
+    const startIdx = (page - 1) * pageSize;
+    const endIdx = startIdx + pageSize;
+    const paginatedResults = allResults.slice(startIdx, endIdx);
+
+    // Determine method based on query type
+    const parsed = this.parseQuery(query);
+    const method = parsed.type === 'operator' ? `facade-operator-${strategy}` : `facade-ranked-${strategy}`;
+
+    return {
+      query,
+      page,
+      pageSize,
+      totalResults,
+      totalPages,
+      results: paginatedResults,
+      method
+    };
   }
 
   /**

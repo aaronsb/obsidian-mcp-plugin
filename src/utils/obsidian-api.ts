@@ -4,7 +4,7 @@ import { paginateResults, paginateFiles } from './response-limiter';
 import { isImageFile as checkIsImageFile, processImageResponse, IMAGE_PROCESSING_PRESETS } from './image-handler';
 import { getVersion } from '../version';
 import { SearchResult } from './advanced-search';
-import { SearchFacade, SearchFacadeOptions, UnifiedSearchResult } from './search-facade';
+import { SearchFacade, SearchFacadeOptions, UnifiedSearchResult, PaginatedSearchResponse } from './search-facade';
 import { MCPIgnoreManager } from '../security/mcp-ignore-manager';
 import { Debug } from './debug';
 import { BasesAPI } from './bases-api';
@@ -640,29 +640,22 @@ export class ObsidianAPI {
       );
     }
 
-    if (!query || query.trim().length === 0) {
-      return {
-        query,
-        page,
-        pageSize,
-        totalResults: 0,
-        totalPages: 0,
-        results: [],
-        method: 'native'
-      };
-    }
+    // Delegate to SearchFacade for all search operations
+    const facadeResponse = await this.searchFacade.searchPaginated(query, {
+      page,
+      pageSize,
+      strategy: strategy as 'filename' | 'content' | 'combined' | 'auto',
+      includeSnippets: options?.includeSnippets ?? includeContent,
+      snippetLength: options?.snippetLength,
+      ranked: options?.ranked
+    });
 
-    // Use SearchFacade as the single unified search implementation
-    const searchResults = await this.performVaultSearch(query, strategy, includeContent, options);
-    Debug.log(`Search found ${searchResults.length} results for query: ${query}`);
-    if (searchResults.length > 0) {
-      Debug.log('First few results:', searchResults.slice(0, 3).map(r => ({ path: r.path, score: r.score })));
-    }
-    
-    // Apply pagination
-    const paginatedResponse = paginateResults(searchResults, page, pageSize);
-    Debug.log(`After pagination: ${paginatedResponse.results.length} results shown, ${paginatedResponse.totalResults} total`);
-    
+    // Apply ignore filtering to results (security concern)
+    const filteredResults = this.ignoreManager
+      ? facadeResponse.results.filter(r => !this.ignoreManager!.isExcluded(r.path))
+      : facadeResponse.results;
+
+    // Convert to SearchResult format and build response
     const response: {
       query: string;
       page: number;
@@ -671,9 +664,6 @@ export class ObsidianAPI {
       totalPages: number;
       results: SearchResult[];
       method: string;
-      truncated?: boolean;
-      originalCount?: number;
-      message?: string;
       workflow?: {
         message: string;
         suggested_next: Array<{
@@ -683,20 +673,26 @@ export class ObsidianAPI {
         }>;
       };
     } = {
-      query,
-      page: paginatedResponse.page,
-      pageSize: paginatedResponse.pageSize,
-      totalResults: paginatedResponse.totalResults,
-      totalPages: paginatedResponse.totalPages,
-      results: paginatedResponse.results,
-      method: `native-${strategy}`,
-      ...(paginatedResponse.truncated && {
-        truncated: true,
-        originalCount: paginatedResponse.originalCount,
-        message: paginatedResponse.message
-      })
+      query: facadeResponse.query,
+      page: facadeResponse.page,
+      pageSize: facadeResponse.pageSize,
+      totalResults: facadeResponse.totalResults,
+      totalPages: facadeResponse.totalPages,
+      results: filteredResults.map(r => ({
+        path: r.path,
+        title: r.title,
+        score: r.score,
+        snippet: r.snippet,
+        metadata: r.metadata
+      })),
+      method: facadeResponse.method
     };
-    
+
+    Debug.log(`Search found ${response.totalResults} results for query: ${query}`);
+    if (response.results.length > 0) {
+      Debug.log('First few results:', response.results.slice(0, 3).map(r => ({ path: r.path, score: r.score })));
+    }
+
     // Add workflow hints if results were found
     if (response.results.length > 0) {
       const suggestions = [
@@ -716,8 +712,8 @@ export class ObsidianAPI {
           reason: 'To modify content in text files'
         }
       ];
-      
-      // Add pagination suggestion only for first few pages (later pages have lower relevance)
+
+      // Add pagination suggestion only for first few pages
       if (response.page < response.totalPages && response.page <= 3) {
         suggestions.push({
           description: 'Get next page of results',
@@ -725,399 +721,14 @@ export class ObsidianAPI {
           reason: `View page ${response.page + 1} of ${response.totalPages} (use page: ${response.page + 1})`
         });
       }
-      
+
       response.workflow = {
         message: `Found ${response.totalResults} results${response.totalPages > 1 ? ` (page ${response.page} of ${response.totalPages})` : ''}. You can read, view, or edit these files.`,
         suggested_next: suggestions
       };
     }
-    
+
     return response;
-  }
-
-  /**
-   * Try to access Obsidian's internal search API
-   */
-  private async tryInternalSearch(query: string): Promise<any[] | null> {
-    // Check if app has a search method directly
-    if ((this.app as any).search) {
-      Debug.log('Found app.search method');
-      return (this.app as any).search(query);
-    }
-
-    // Try internal plugins
-    const internalPlugins = (this.app as any).internalPlugins;
-    if (internalPlugins) {
-      Debug.log('Available internal plugins:', Object.keys(internalPlugins.plugins || {}));
-      
-      // Try different plugin names
-      const searchPluginNames = ['global-search', 'search', 'core-search', 'file-search'];
-      for (const name of searchPluginNames) {
-        const plugin = internalPlugins.plugins?.[name];
-        if (plugin?.instance?.search) {
-          Debug.log(`Found search method in ${name} plugin`);
-          return plugin.instance.search(query);
-        }
-        if (plugin?.instance?.searchIndex?.search) {
-          Debug.log(`Found searchIndex.search in ${name} plugin`);
-          return plugin.instance.searchIndex.search(query);
-        }
-      }
-    }
-
-    // Try workspace search
-    if ((this.app as any).workspace?.search) {
-      Debug.log('Found workspace.search method');
-      return (this.app as any).workspace.search(query);
-    }
-
-    Debug.log('No internal search API found');
-    return null;
-  }
-
-  /**
-   * Perform vault search using SearchFacade
-   * Routes to appropriate search strategy based on query characteristics
-   */
-  private async performVaultSearch(
-    query: string,
-    strategy: string,
-    includeContent: boolean,
-    options?: { ranked?: boolean; includeSnippets?: boolean; snippetLength?: number }
-  ): Promise<SearchResult[]> {
-    // Use SearchFacade for unified search
-    const facadeOptions: SearchFacadeOptions = {
-      strategy: strategy as 'filename' | 'content' | 'combined' | 'auto',
-      // Use includeSnippets from options if specified, otherwise fall back to includeContent
-      includeSnippets: options?.includeSnippets !== undefined ? options.includeSnippets : includeContent,
-      snippetLength: options?.snippetLength,
-      ranked: options?.ranked,
-      maxResults: 100 // Get more results before pagination
-    };
-
-    const facadeResults = await this.searchFacade.search(query, facadeOptions);
-
-    // Filter out excluded files
-    const filteredResults = this.ignoreManager
-      ? facadeResults.filter(r => !this.ignoreManager!.isExcluded(r.path))
-      : facadeResults;
-
-    // Convert UnifiedSearchResult to SearchResult format for compatibility
-    return filteredResults.map(r => ({
-      path: r.path,
-      title: r.title,
-      score: r.score,
-      snippet: r.snippet,
-      metadata: r.metadata
-    }));
-  }
-
-  /**
-   * Extract quoted phrases from a search string
-   */
-  private extractQuotedPhrases(text: string): { phrases: string[], remaining: string } {
-    const phrases: string[] = [];
-    let remaining = text;
-    
-    // Match quoted strings, handling escaped quotes
-    const quoteRegex = /"([^"\\]*(\\.[^"\\]*)*)"/g;
-    let match;
-    
-    while ((match = quoteRegex.exec(text)) !== null) {
-      phrases.push(match[1]);
-      remaining = remaining.replace(match[0], `__PHRASE_${phrases.length - 1}__`);
-    }
-    
-    return { phrases, remaining };
-  }
-
-  /**
-   * Parse search query to handle operators like file:, path:, content:
-   */
-  private parseSearchQuery(query: string): {
-    type: 'filename' | 'path' | 'content' | 'tag' | 'general';
-    term: string;
-    originalQuery: string;
-    isRegex?: boolean;
-    regex?: RegExp;
-    isOr?: boolean;
-    orTerms?: string[];
-  } {
-    const trimmed = query.trim();
-    
-    // Check for regex pattern /pattern/flags
-    if (trimmed.startsWith('/') && trimmed.lastIndexOf('/') > 0) {
-      const lastSlash = trimmed.lastIndexOf('/');
-      const pattern = trimmed.substring(1, lastSlash);
-      const flags = trimmed.substring(lastSlash + 1);
-      try {
-        const regex = new RegExp(pattern, flags);
-        return { type: 'general', term: pattern, originalQuery: query, isRegex: true, regex };
-      } catch (e) {
-        // Invalid regex, treat as normal search
-        Debug.warn('Invalid regex pattern:', e);
-      }
-    }
-    
-    // Check for operators
-    if (trimmed.startsWith('file:')) {
-      return { type: 'filename', term: trimmed.substring(5).trim(), originalQuery: query };
-    }
-    if (trimmed.startsWith('path:')) {
-      return { type: 'path', term: trimmed.substring(5).trim(), originalQuery: query };
-    }
-    if (trimmed.startsWith('content:')) {
-      return { type: 'content', term: trimmed.substring(8).trim(), originalQuery: query };
-    }
-    if (trimmed.startsWith('tag:')) {
-      return { type: 'tag', term: trimmed.substring(4).trim(), originalQuery: query };
-    }
-    
-    // Check for OR operator (handle quoted phrases)
-    if (trimmed.includes(' OR ')) {
-      const { phrases, remaining } = this.extractQuotedPhrases(trimmed);
-      
-      // Split on OR, then restore phrases
-      const orParts = remaining.split(' OR ').map(part => {
-        let restored = part.trim();
-        phrases.forEach((phrase, i) => {
-          restored = restored.replace(`__PHRASE_${i}__`, phrase);
-        });
-        return restored;
-      });
-      
-      return { type: 'general', term: trimmed, originalQuery: query, isOr: true, orTerms: orParts };
-    }
-    
-    // Check for quoted phrases in single terms
-    const { phrases } = this.extractQuotedPhrases(trimmed);
-    if (phrases.length === 1 && trimmed === `"${phrases[0]}"`) {
-      // Single quoted phrase
-      return { type: 'general', term: phrases[0], originalQuery: query };
-    }
-    
-    return { type: 'general', term: trimmed, originalQuery: query };
-  }
-
-  /**
-   * Check if a file matches the search criteria
-   */
-  private async checkFileMatch(
-    file: TFile,
-    searchTerm: { type: string; term: string; originalQuery: string; isRegex?: boolean; regex?: RegExp; isOr?: boolean; orTerms?: string[] },
-    includeContent: boolean
-  ): Promise<SearchResult | null> {
-    const termLower = searchTerm.term.toLowerCase();
-    let score = 0;
-    let snippet = undefined;
-
-    // Helper function to check if text matches the search term
-    const textMatches = (text: string): boolean => {
-      if (searchTerm.isOr && searchTerm.orTerms) {
-        // Check if any of the OR terms match
-        return searchTerm.orTerms.some(term => 
-          text.toLowerCase().includes(term.toLowerCase())
-        );
-      }
-      if (searchTerm.isRegex && searchTerm.regex) {
-        return searchTerm.regex.test(text);
-      }
-      return text.toLowerCase().includes(termLower);
-    };
-
-    switch (searchTerm.type) {
-      case 'filename': {
-        // Support searching by extension (e.g., file:.png)
-        const fileName = file.name.toLowerCase();
-        const baseName = file.basename.toLowerCase();
-        
-        if (termLower.startsWith('.')) {
-          // Extension search
-          if (fileName.endsWith(termLower)) {
-            score = 1.5;
-          }
-        } else {
-          // Regular filename search
-          if (baseName.includes(termLower)) {
-            score = baseName === termLower ? 2.0 : 1.0;
-          } else if (fileName.includes(termLower)) {
-            score = 0.8; // Lower score for extension matches
-          }
-        }
-        break;
-      }
-        
-      case 'path':
-        if (file.path.toLowerCase().includes(termLower)) {
-          score = file.path.toLowerCase() === termLower ? 2.0 : 1.0;
-        }
-        break;
-        
-      case 'content':
-        if (this.isTextFile(file)) {
-          try {
-            const content = await this.app.vault.read(file);
-            if (content.toLowerCase().includes(termLower)) {
-              score = 1.0;
-              if (includeContent) {
-                snippet = this.extractSnippet(content, searchTerm.term, 200);
-              }
-            }
-          } catch (error) {
-            // Skip files that can't be read
-          }
-        }
-        break;
-        
-      case 'tag':
-        if (this.isTextFile(file)) {
-          try {
-            const cache = this.app.metadataCache.getFileCache(file);
-            const tags = cache ? (getAllTags(cache) || []) : [];
-
-            if (tags.length > 0) {
-              // Normalize the search term to include leading '#'
-              const target = termLower.startsWith('#') ? termLower : `#${termLower}`;
-              const tagMatch = tags.some((t) => {
-                const tl = String(t).toLowerCase();
-                // Match exact tag or hierarchical descendants (e.g., #foo or #foo/bar)
-                return tl === target || tl.startsWith(`${target}/`);
-              });
-              if (tagMatch) {
-                score = 1.0;
-              }
-            }
-          } catch (error) {
-            // Skip if metadata unavailable
-          }
-        }
-        break;
-        
-      case 'general':
-        // Check filename first (including extension for regex matching)
-        if (textMatches(file.name) || textMatches(file.basename)) {
-          score = 1.5;
-        }
-        // Check content for text files
-        if (this.isTextFile(file)) {
-          try {
-            const content = await this.app.vault.read(file);
-            if (textMatches(content)) {
-              score = Math.max(score, 1.0);
-              if (includeContent) {
-                snippet = this.extractSnippet(content, searchTerm.term, 200);
-              }
-            }
-          } catch (error) {
-            // Skip files that can't be read
-          }
-        }
-        break;
-    }
-
-    if (score > 0) {
-      return {
-        path: file.path,
-        title: file.basename,
-        score,
-        snippet,
-        metadata: {
-          size: file.stat.size,
-          modified: file.stat.mtime,
-          extension: file.extension
-        }
-      };
-    }
-
-    return null;
-  }
-
-  /**
-   * Process native Obsidian search results and add our special processing
-   */
-  private async processNativeSearchResults(
-    nativeResults: any[],
-    query: string,
-    strategy: string,
-    includeContent: boolean
-  ): Promise<SearchResult[]> {
-    const results: SearchResult[] = [];
-    
-    for (const nativeResult of nativeResults) {
-      try {
-        // Native results typically have: file, score, matches
-        const file = nativeResult.file;
-        if (!file) continue;
-        
-        const result: SearchResult = {
-          path: file.path,
-          title: file.basename,
-          score: nativeResult.score || 1.0,
-          metadata: {
-            size: file.stat?.size || 0,
-            modified: file.stat?.mtime || 0,
-            extension: file.extension || ''
-          }
-        };
-        
-        // Add snippets for text files if requested
-        if (includeContent && this.isTextFile(file)) {
-          try {
-            const content = await this.app.vault.read(file);
-            const snippet = this.extractSnippet(content, query, 200);
-            if (snippet) {
-              result.snippet = snippet;
-            }
-          } catch (error) {
-            // If we can't read the file, skip snippet generation
-            Debug.warn(`Could not read file for snippet: ${file.path}`, error);
-          }
-        }
-        
-        results.push(result);
-      } catch (error) {
-        Debug.warn('Error processing native search result:', error);
-        continue;
-      }
-    }
-    
-    return results;
-  }
-
-  /**
-   * Extract a snippet around query matches
-   */
-  private extractSnippet(
-    content: string, 
-    query: string, 
-    maxLength: number
-  ): { content: string; lineStart: number; lineEnd: number; score: number } | undefined {
-    const lines = content.split('\n');
-    const queryLower = query.toLowerCase();
-    
-    // Find the first line that contains the query
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].toLowerCase().includes(queryLower)) {
-        const start = Math.max(0, i - 1);
-        const end = Math.min(lines.length - 1, i + 2);
-        const snippetLines = lines.slice(start, end + 1);
-        const snippetContent = snippetLines.join('\n');
-        
-        // Truncate if too long
-        const truncated = snippetContent.length > maxLength 
-          ? snippetContent.substring(0, maxLength) + '...'
-          : snippetContent;
-        
-        return {
-          content: truncated,
-          lineStart: start + 1,
-          lineEnd: end + 1,
-          score: 1.0
-        };
-      }
-    }
-    
-    return undefined;
   }
 
   // Obsidian integration
