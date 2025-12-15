@@ -239,15 +239,34 @@ export class SemanticRouter {
         try {
           const page = parseInt(params.page) || 1;
           const pageSize = parseInt(params.pageSize) || 10;
-          const strategy = params.strategy || 'combined'; // filename, content, combined
+          // Use searchStrategy for search, fall back to strategy for backward compatibility
+          const strategy = params.searchStrategy || params.strategy || 'combined';
           const includeContent = params.includeContent !== false; // Default to true
+
+          // Build search options from new parameters
+          const searchOptions: {
+            ranked?: boolean;
+            includeSnippets?: boolean;
+            snippetLength?: number;
+          } = {};
+
+          if (params.ranked !== undefined) {
+            searchOptions.ranked = params.ranked;
+          }
+          if (params.includeSnippets !== undefined) {
+            searchOptions.includeSnippets = params.includeSnippets;
+          }
+          if (params.snippetLength !== undefined) {
+            searchOptions.snippetLength = parseInt(params.snippetLength);
+          }
 
           const searchResults = await this.api.searchPaginated(
             params.query,
             page,
             pageSize,
             strategy,
-            includeContent
+            includeContent,
+            searchOptions
           );
 
           // Check if results are valid

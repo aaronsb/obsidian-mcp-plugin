@@ -4,6 +4,7 @@ import { paginateResults, paginateFiles } from './response-limiter';
 import { isImageFile as checkIsImageFile, processImageResponse, IMAGE_PROCESSING_PRESETS } from './image-handler';
 import { getVersion } from '../version';
 import { SearchResult } from './advanced-search';
+import { SearchFacade, SearchFacadeOptions, UnifiedSearchResult } from './search-facade';
 import { MCPIgnoreManager } from '../security/mcp-ignore-manager';
 import { Debug } from './debug';
 import { BasesAPI } from './bases-api';
@@ -17,6 +18,7 @@ export class ObsidianAPI {
   private ignoreManager?: MCPIgnoreManager;
   private basesAPI: BasesAPI;
   private validator: InputValidator;
+  private searchFacade: SearchFacade;
 
   constructor(app: App, config?: ObsidianConfig, plugin?: any) {
     this.app = app;
@@ -24,6 +26,7 @@ export class ObsidianAPI {
     this.plugin = plugin;
     this.ignoreManager = plugin?.ignoreManager;
     this.basesAPI = new BasesAPI(app);
+    this.searchFacade = new SearchFacade(app);
 
     // Initialize input validator with plugin settings or defaults
     this.validator = new InputValidator(plugin?.settings?.validation || {});
@@ -606,7 +609,8 @@ export class ObsidianAPI {
     page: number = 1,
     pageSize: number = 10,
     strategy: 'filename' | 'content' | 'combined' = 'combined',
-    includeContent: boolean = true
+    includeContent: boolean = true,
+    options?: { ranked?: boolean; includeSnippets?: boolean; snippetLength?: number }
   ): Promise<{
     query: string;
     page: number;
@@ -675,8 +679,8 @@ export class ObsidianAPI {
       Debug.warn('Internal search failed, using official API:', error);
     }
 
-    // Fallback to our official API implementation
-    const searchResults = await this.performVaultSearch(query, strategy, includeContent);
+    // Fallback to SearchFacade implementation
+    const searchResults = await this.performVaultSearch(query, strategy, includeContent, options);
     Debug.log(`Search found ${searchResults.length} results for query: ${query}`);
     if (searchResults.length > 0) {
       Debug.log('First few results:', searchResults.slice(0, 3).map(r => ({ path: r.path, score: r.score })));
@@ -799,32 +803,40 @@ export class ObsidianAPI {
   }
 
   /**
-   * Perform vault search using official Obsidian API
+   * Perform vault search using SearchFacade
+   * Routes to appropriate search strategy based on query characteristics
    */
   private async performVaultSearch(
     query: string,
     strategy: string,
-    includeContent: boolean
+    includeContent: boolean,
+    options?: { ranked?: boolean; includeSnippets?: boolean; snippetLength?: number }
   ): Promise<SearchResult[]> {
-    const searchTerm = this.parseSearchQuery(query);
-    const allFiles = this.app.vault.getFiles();
-    
-    // Filter out excluded files before searching
-    const files = this.ignoreManager ? 
-      allFiles.filter(file => !this.ignoreManager!.isExcluded(file.path)) : 
-      allFiles;
-    
-    const results: SearchResult[] = [];
+    // Use SearchFacade for unified search
+    const facadeOptions: SearchFacadeOptions = {
+      strategy: strategy as 'filename' | 'content' | 'combined' | 'auto',
+      // Use includeSnippets from options if specified, otherwise fall back to includeContent
+      includeSnippets: options?.includeSnippets !== undefined ? options.includeSnippets : includeContent,
+      snippetLength: options?.snippetLength,
+      ranked: options?.ranked,
+      maxResults: 100 // Get more results before pagination
+    };
 
-    for (const file of files) {
-      const matchResult = await this.checkFileMatch(file, searchTerm, includeContent);
-      if (matchResult) {
-        results.push(matchResult);
-      }
-    }
+    const facadeResults = await this.searchFacade.search(query, facadeOptions);
 
-    // Sort by relevance score
-    return results.sort((a, b) => b.score - a.score);
+    // Filter out excluded files
+    const filteredResults = this.ignoreManager
+      ? facadeResults.filter(r => !this.ignoreManager!.isExcluded(r.path))
+      : facadeResults;
+
+    // Convert UnifiedSearchResult to SearchResult format for compatibility
+    return filteredResults.map(r => ({
+      path: r.path,
+      title: r.title,
+      score: r.score,
+      snippet: r.snippet,
+      metadata: r.metadata
+    }));
   }
 
   /**

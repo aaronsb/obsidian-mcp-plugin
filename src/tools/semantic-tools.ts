@@ -265,7 +265,7 @@ function filterImageFilesFromSearchResults(searchResult: any): any {
 
 function getOperationDescription(operation: string): string {
   const descriptions: Record<string, string> = {
-    vault: '📁 File operations - list, read, create, update, delete, search, fragments, move, rename, copy, split, combine, concatenate. Search supports operators: file:, path:, content:, tag:. OR for multiple terms. "quoted phrases". /regex/. Results ranked by relevance.',
+    vault: '📁 File operations - list, read, create, update, delete, search, fragments, move, rename, copy, split, combine, concatenate. Search supports: operators (file:, path:, content:, tag:), OR/AND, "quoted phrases", /regex/. Options: ranked=true for TF-IDF relevance scoring, searchStrategy (filename|content|combined|auto), includeSnippets for contextual extracts.',
     edit: '✏️ Edit files - window: find/replace with fuzzy matching, append: add to end, patch: modify headings/blocks/frontmatter, at_line: insert at line number, from_buffer: reuse previous window content',
     view: '👁️ View content - file: entire document, window: ~20 lines around point, active: current editor file, open_in_obsidian: launch in app',
     workflow: '💡 Get contextual suggestions for next actions based on current state',
@@ -317,7 +317,24 @@ function getParametersForOperation(operation: string): Record<string, any> {
       },
       query: {
         type: 'string',
-        description: 'Search query'
+        description: 'Search query - supports operators (file:, path:, content:, tag:), OR/AND, "quoted phrases", /regex/'
+      },
+      ranked: {
+        type: 'boolean',
+        description: 'Use TF-IDF relevance scoring (default: auto-detected based on query type)'
+      },
+      searchStrategy: {
+        type: 'string',
+        enum: ['auto', 'filename', 'content', 'combined'],
+        description: 'Search strategy: auto (detect from query), filename (names only), content (full-text), combined (both)'
+      },
+      includeSnippets: {
+        type: 'boolean',
+        description: 'Extract contextual snippets around matches (default: true)'
+      },
+      snippetLength: {
+        type: 'number',
+        description: 'Maximum snippet length in characters (default: 300)'
       },
       page: {
         type: 'number',
