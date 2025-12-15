@@ -241,3 +241,50 @@
 .mcp-copy-button.success {
     background: var(--interactive-success);
 }
+
+/* Easter Egg Styles */
+.mcp-version-easter-egg {
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.mcp-version-easter-egg:hover {
+    color: var(--text-accent);
+}
+
+.mcp-easter-egg-modal {
+    text-align: center;
+    padding: 20px;
+}
+
+.mcp-easter-egg-modal h2 {
+    color: var(--text-accent);
+    margin-bottom: 20px;
+}
+
+.mcp-easter-egg-image-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 20px 0;
+}
+
+.mcp-easter-egg-image {
+    max-width: 100%;
+    max-height: 400px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.mcp-easter-egg-fallback {
+    font-size: 1.5em;
+    font-weight: bold;
+    color: var(--text-accent);
+    margin: 10px 0;
+}
+
+.mcp-easter-egg-thanks {
+    color: var(--text-muted);
+    font-style: italic;
+    margin-top: 15px;
+}
