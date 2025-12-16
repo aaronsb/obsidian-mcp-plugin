@@ -138,13 +138,16 @@ export function formatViewWindow(response: ViewWindowResponse): string {
 
 /**
  * Format view.active response (currently open file)
+ * Actual response: { path, content, tags, frontmatter }
  */
 export interface ViewActiveResponse {
   path: string;
   content: string;
-  lineCount: number;
+  lineCount?: number;
   cursorLine?: number;
   cursorColumn?: number;
+  tags?: string[];
+  frontmatter?: Record<string, any>;
 }
 
 export function formatViewActive(response: ViewActiveResponse): string {
@@ -158,10 +161,23 @@ export function formatViewActive(response: ViewActiveResponse): string {
   }
 
   const fileName = response.path.split('/').pop() || response.path;
+  const contentLines = response.content.split('\n');
+  const lineCount = response.lineCount ?? contentLines.length;
+
   lines.push(header(1, `Active: ${fileName}`));
   lines.push('');
   lines.push(property('Path', response.path, 0));
-  lines.push(property('Lines', response.lineCount.toString(), 0));
+  lines.push(property('Lines', lineCount.toString(), 0));
+
+  // Show tags if present
+  if (response.tags && response.tags.length > 0) {
+    lines.push(property('Tags', response.tags.join(', '), 0));
+  }
+
+  // Show frontmatter keys if present
+  if (response.frontmatter && Object.keys(response.frontmatter).length > 0) {
+    lines.push(property('Frontmatter', Object.keys(response.frontmatter).join(', '), 0));
+  }
 
   if (response.cursorLine !== undefined) {
     lines.push(property('Cursor', `line ${response.cursorLine}, column ${response.cursorColumn || 0}`, 0));
@@ -169,7 +185,6 @@ export function formatViewActive(response: ViewActiveResponse): string {
   lines.push('');
 
   // Show content preview
-  const contentLines = response.content.split('\n');
   const previewLines = contentLines.slice(0, 100);
 
   lines.push('```markdown');
