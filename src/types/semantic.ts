@@ -12,7 +12,7 @@
  * prevent common mistakes, but they are NOT prescriptive or mandatory.
  */
 
-export interface SemanticResponse<T = any> {
+export interface SemanticResponse<T = unknown> {
   // The actual operation result
   result: T;
   
@@ -107,5 +107,5 @@ export interface SemanticContext {
 export interface SemanticRequest {
   operation: string;
   action: string;
-  params: Record<string, any>;
+  params: Record<string, unknown>;
 }

@@ -126,7 +126,7 @@ export class ObsidianAPI {
     return { success: true };
   }
 
-  async patchActiveFile(params: any) {
+  async patchActiveFile(params: unknown) {
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) {
       throw new Error('No active file');
@@ -200,15 +200,15 @@ export class ObsidianAPI {
         name: file.name,
         type: isFile ? 'file' : 'folder'
       };
-      
+
       if (isFile) {
         result.size = file.stat.size;
         result.extension = file.extension;
         result.modified = file.stat.mtime;
       }
-      
+
       return result;
-    }).sort((a, b) => {
+    }).sort((a: any, b: any) => {
       // Sort folders first, then files, alphabetically
       if (a.type !== b.type) {
         return a.type === 'folder' ? -1 : 1;
@@ -595,7 +595,7 @@ export class ObsidianAPI {
    */
   private isTextFile(file: any): boolean {
     const textExtensions = new Set([
-      'md', 'txt', 'json', 'js', 'ts', 'css', 'html', 'xml', 'yaml', 'yml', 
+      'md', 'txt', 'json', 'js', 'ts', 'css', 'html', 'xml', 'yaml', 'yml',
       'csv', 'log', 'py', 'java', 'cpp', 'c', 'h', 'php', 'rb', 'go', 'rs',
       'sql', 'sh', 'bat', 'ps1', 'ini', 'conf', 'config', 'env'
     ]);
@@ -738,7 +738,7 @@ export class ObsidianAPI {
       throw new Error(`File not found: ${path}`);
     }
 
-    const leaf = this.app.workspace.getUnpinnedLeaf();
+    const leaf = this.app.workspace.getLeaf(false);
     await leaf.openFile(file);
     return { success: true };
   }

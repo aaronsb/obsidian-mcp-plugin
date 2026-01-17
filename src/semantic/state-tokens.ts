@@ -48,7 +48,7 @@ export class StateTokenManager {
   /**
    * Update tokens based on operation results
    */
-  updateTokens(operation: string, action: string, params: any, result: any, success: boolean) {
+  updateTokens(operation: string, action: string, params: unknown, result: unknown, success: boolean) {
     switch (operation) {
       case 'vault':
         this.updateVaultTokens(action, params, result, success);
@@ -159,7 +159,7 @@ export class StateTokenManager {
     }
   }
   
-  private updateSearchTokens(action: string, params: any, result: any, success: boolean) {
+  private updateSearchTokens(action: string, params: unknown, result: unknown, success: boolean) {
     // Handled in vault tokens
   }
   

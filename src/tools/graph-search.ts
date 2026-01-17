@@ -107,8 +107,10 @@ export class GraphSearchTool {
         return this.getBacklinks(params);
       case 'forwardlinks':
         return this.getForwardLinks(params);
-      default:
-        throw new Error(`Unknown graph operation: ${operation}`);
+      default: {
+        const exhaustiveCheck: never = operation;
+        throw new Error(`Unknown graph operation: ${String(exhaustiveCheck)}`);
+      }
     }
   }
 

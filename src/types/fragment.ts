@@ -10,7 +10,7 @@ export interface Fragment {
   score: number;
   lineStart: number; // Starting line number in the source document
   lineEnd: number;   // Ending line number in the source document
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   context?: {
     before?: string;
     after?: string;
@@ -32,7 +32,7 @@ export interface LocalFragment {
 export interface Document {
   id: string;
   content: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   length: number;
   uniqueTermCount: number;
 }

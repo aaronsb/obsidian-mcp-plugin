@@ -8,7 +8,7 @@ export interface ObsidianFile {
   path: string;
   content: string;
   tags?: string[];
-  frontmatter?: Record<string, any>;
+  frontmatter?: Record<string, unknown>;
 }
 
 export interface ObsidianImageFile {

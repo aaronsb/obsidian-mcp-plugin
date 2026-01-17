@@ -1,6 +1,6 @@
 {
   "name": "obsidian-mcp-plugin",
-  "version": "0.11.4",
+  "version": "0.11.5",
   "description": "Semantic MCP server providing AI tools with direct vault access via HTTP transport.",
   "main": "main.js",
   "scripts": {
@@ -10,8 +10,8 @@
     "sync-version": "node sync-version.mjs",
     "version": "node sync-version.mjs && git add manifest.json",
     "test": "jest",
-    "lint": "eslint src --ext .ts,.tsx",
-    "lint:fix": "eslint src --ext .ts,.tsx --fix"
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "keywords": [
     "obsidian",
@@ -24,20 +24,24 @@
   "author": "Aaron Blumenfeld",
   "license": "MIT",
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@types/jest": "^29.5.5",
     "@types/js-yaml": "^4.0.9",
     "@types/minimatch": "^5.1.2",
     "@types/node": "^20.6.2",
-    "@typescript-eslint/eslint-plugin": "^6.21.0",
-    "@typescript-eslint/parser": "^6.21.0",
+    "@typescript-eslint/utils": "^8.53.0",
     "builtin-modules": "^3.3.0",
     "esbuild": "0.25.0",
-    "eslint": "^8.49.0",
+    "eslint": "^9.39.2",
+    "eslint-plugin-obsidianmd": "^0.1.9",
+    "globals": "^17.0.0",
     "jest": "^29.7.0",
+    "jiti": "^2.6.1",
     "obsidian": "latest",
     "ts-jest": "^29.1.1",
     "tslib": "2.6.2",
-    "typescript": "5.2.2"
+    "typescript": "5.2.2",
+    "typescript-eslint": "^8.53.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",

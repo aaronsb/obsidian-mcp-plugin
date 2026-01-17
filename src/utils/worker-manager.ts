@@ -7,13 +7,13 @@ export interface WorkerTask {
   id: string;
   sessionId: string;
   operation: string;
-  data: any;
+  data: unknown;
 }
 
 export interface WorkerResult {
   id: string;
   success: boolean;
-  result?: any;
+  result?: unknown;
   error?: string;
 }
 
@@ -43,7 +43,7 @@ export class WorkerManager extends EventEmitter {
       worker = new Worker(this.workerScript);
       
       // Set up message handling
-      worker.on('message', (message: any) => {
+      worker.on('message', (message: unknown) => {
         this.handleWorkerMessage(sessionId, message);
       });
       
@@ -85,7 +85,7 @@ export class WorkerManager extends EventEmitter {
         type: 'process',
         request: {
           operation: task.operation,
-          action: task.data.action,
+          action: (task.data as any).action,
           params: task.data
         }
       });
@@ -109,18 +109,18 @@ export class WorkerManager extends EventEmitter {
       this.emit('worker-ready', sessionId);
       return;
     }
-    
+
     if (message.id && this.pendingTasks.has(message.id)) {
       const callback = this.pendingTasks.get(message.id)!;
       this.pendingTasks.delete(message.id);
-      
+
       const result: WorkerResult = {
         id: message.id,
         success: message.type === 'result',
         result: message.result,
         error: message.error
       };
-      
+
       callback(result);
     }
   }

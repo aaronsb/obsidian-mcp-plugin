@@ -1,4 +1,4 @@
-import { App } from 'obsidian';
+import { App, TFile } from 'obsidian';
 import { ObsidianAPI } from '../utils/obsidian-api';
 import { SearchCore } from '../utils/search-core';
 import { GraphSearchTagTraversal } from './graph-search-tag-traversal';
@@ -26,7 +26,7 @@ export class GraphTagTool {
         this.graphSearch = new GraphSearchTagTraversal(app, api, searchCore);
     }
 
-    async execute(params: GraphTagToolParams): Promise<any> {
+    async execute(params: GraphTagToolParams): Promise<unknown> {
         switch (params.action) {
             case 'tag-traverse':
                 return this.tagTraverse(params);
@@ -34,8 +34,10 @@ export class GraphTagTool {
                 return this.analyzeTagConnections(params);
             case 'shared-tags':
                 return this.getSharedTags(params);
-            default:
-                throw new Error(`Unknown graph tag action: ${params.action}`);
+            default: {
+                const exhaustiveCheck: never = params.action;
+                throw new Error(`Unknown graph tag action: ${String(exhaustiveCheck)}`);
+            }
         }
     }
 
@@ -90,11 +92,11 @@ export class GraphTagTool {
 
         // Get the file and its tags
         const file = this.app.vault.getAbstractFileByPath(params.startPath);
-        if (!file || !('extension' in file)) {
+        if (!(file instanceof TFile)) {
             throw new Error('File not found or not a valid file');
         }
 
-        const cache = this.app.metadataCache.getFileCache(file as any);
+        const cache = this.app.metadataCache.getFileCache(file);
         const tags = cache?.tags?.map(t => t.tag) || [];
 
         // Find all files with matching tags
@@ -148,11 +150,11 @@ export class GraphTagTool {
         const matchCount = result.traversalChain.length;
         const visitedCount = result.totalNodesVisited;
         const tagConnections = result.tagConnections || 0;
-        
+
         if (matchCount === 0) {
             return `No matches found for "${result.searchQuery}" after visiting ${visitedCount} notes.`;
         }
-        
+
         const topScore = result.traversalChain[0]?.snippet.score || 0;
         return `Found ${matchCount} matching notes out of ${visitedCount} visited (${tagConnections} via tags). ` +
                `Best match: "${result.traversalChain[0].path}" (score: ${topScore.toFixed(3)})`;
@@ -160,7 +162,7 @@ export class GraphTagTool {
 
     private formatTraversalPath(chain: any[]): string {
         if (chain.length === 0) return 'No path found';
-        
+
         return chain
             .map((node, index) => {
                 const indent = '  '.repeat(node.depth);
@@ -178,25 +180,25 @@ export class GraphTagTool {
     private generateWorkflowSuggestions(result: any): string[] {
         const suggestions: string[] = [];
         const tagConnections = result.tagConnections || 0;
-        
+
         if (result.traversalChain.length === 0) {
             suggestions.push('Try broadening your search query');
             suggestions.push('Lower the score threshold to include more results');
             suggestions.push('Enable tag following to discover more connections');
         } else {
             suggestions.push(`Found ${result.traversalChain.length} connected notes (${tagConnections} via tag bridges)`);
-            
+
             if (tagConnections === 0 && result.followTags !== false) {
                 suggestions.push('No tag connections found - notes may have different tags');
             } else if (tagConnections > 0) {
                 suggestions.push(`Tags created ${tagConnections} additional pathways between clusters`);
             }
-            
+
             if (result.traversalChain.length < 3) {
                 suggestions.push('Consider increasing maxDepth to explore deeper connections');
             }
         }
-        
+
         return suggestions;
     }
 

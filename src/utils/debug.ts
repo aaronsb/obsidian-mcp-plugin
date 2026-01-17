@@ -4,10 +4,10 @@
  */
 
 export interface DebugLogger {
-    log(message: string, ...args: any[]): void;
-    error(message: string, ...args: any[]): void;
-    warn(message: string, ...args: any[]): void;
-    info(message: string, ...args: any[]): void;
+    log(message: string, ...args: unknown[]): void;
+    error(message: string, ...args: unknown[]): void;
+    warn(message: string, ...args: unknown[]): void;
+    info(message: string, ...args: unknown[]): void;
 }
 
 export class Debug {
@@ -21,35 +21,37 @@ export class Debug {
         return this.debugEnabled;
     }
     
-    static log(message: string, ...args: any[]): void {
+    static log(message: string, ...args: unknown[]): void {
         if (this.debugEnabled) {
+            // eslint-disable-next-line no-console -- Debug utility must use console
             console.log(`[MCP] ${message}`, ...args);
         }
     }
     
-    static error(message: string, ...args: any[]): void {
+    static error(message: string, ...args: unknown[]): void {
         // Always log errors
         console.error(`[MCP] ERROR: ${message}`, ...args);
     }
     
-    static warn(message: string, ...args: any[]): void {
+    static warn(message: string, ...args: unknown[]): void {
         if (this.debugEnabled) {
             console.warn(`[MCP] WARN: ${message}`, ...args);
         }
     }
     
-    static info(message: string, ...args: any[]): void {
+    static info(message: string, ...args: unknown[]): void {
         if (this.debugEnabled) {
+            // eslint-disable-next-line no-console -- Debug utility must use console
             console.info(`[MCP] INFO: ${message}`, ...args);
         }
     }
     
     static createLogger(module: string): DebugLogger {
         return {
-            log: (message: string, ...args: any[]) => Debug.log(`[${module}] ${message}`, ...args),
-            error: (message: string, ...args: any[]) => Debug.error(`[${module}] ${message}`, ...args),
-            warn: (message: string, ...args: any[]) => Debug.warn(`[${module}] ${message}`, ...args),
-            info: (message: string, ...args: any[]) => Debug.info(`[${module}] ${message}`, ...args)
+            log: (message: string, ...args: unknown[]) => Debug.log(`[${module}] ${message}`, ...args),
+            error: (message: string, ...args: unknown[]) => Debug.error(`[${module}] ${message}`, ...args),
+            warn: (message: string, ...args: unknown[]) => Debug.warn(`[${module}] ${message}`, ...args),
+            info: (message: string, ...args: unknown[]) => Debug.info(`[${module}] ${message}`, ...args)
         };
     }
 }

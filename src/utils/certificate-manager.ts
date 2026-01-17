@@ -39,7 +39,7 @@ export class CertificateManager {
     // Store certificates in plugin data directory
     this.certDir = join(
       (app.vault.adapter as any).basePath,
-      '.obsidian',
+      app.vault.configDir,
       'plugins',
       'semantic-vault-mcp',
       'certificates'
@@ -207,11 +207,17 @@ export class CertificateManager {
       const daysUntilExpiry = Math.floor((validTo.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       
       const subject = cert.subject.attributes
-        .map(attr => `${attr.shortName || attr.name}=${attr.value}`)
+        .map(attr => {
+          const value = Array.isArray(attr.value) ? attr.value.join(',') : String(attr.value ?? '');
+          return `${attr.shortName || attr.name}=${value}`;
+        })
         .join(', ');
-      
+
       const issuer = cert.issuer.attributes
-        .map(attr => `${attr.shortName || attr.name}=${attr.value}`)
+        .map(attr => {
+          const value = Array.isArray(attr.value) ? attr.value.join(',') : String(attr.value ?? '');
+          return `${attr.shortName || attr.name}=${value}`;
+        })
         .join(', ');
       
       const fingerprint = forge.md.sha256.create()

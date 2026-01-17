@@ -1,3 +1,4 @@
+// eslint-disable-next-line import/no-extraneous-dependencies -- Test file, jest is a devDependency
 import { describe, it, expect } from '@jest/globals';
 import {
   estimateTokens,
@@ -76,7 +77,7 @@ describe('Response Limiter', () => {
       expect(limited.originalCount).toBe(2);
       expect(limited.results).toHaveLength(2);
       
-      const result1 = limited.results[0];
+      const result1 = limited.results[0] as any;
       expect(result1.path).toBe('file1.md');
       expect(result1.title).toBe('File 1');
       expect(result1.preview).toContain('This is the content');
@@ -108,7 +109,7 @@ describe('Response Limiter', () => {
       expect(limited.results.length).toBeLessThan(1000);
       
       // Verify all results have truncated content
-      for (const result of limited.results) {
+      for (const result of limited.results as any[]) {
         expect(result.preview.length).toBeLessThanOrEqual(203);
       }
     });
@@ -130,9 +131,9 @@ describe('Response Limiter', () => {
       const limited = limitSearchResults(results);
       
       expect(limited.results).toHaveLength(2);
-      expect(limited.results[0].preview).toBeUndefined();
-      expect(limited.results[1].title).toBe('file2');
-      expect(limited.results[1].preview).toBe('Some context');
+      expect((limited.results[0] as any).preview).toBeUndefined();
+      expect((limited.results[1] as any).title).toBe('file2');
+      expect((limited.results[1] as any).preview).toBe('Some context');
     });
   });
 
@@ -144,7 +145,7 @@ describe('Response Limiter', () => {
     });
 
     it('should limit large object responses', () => {
-      const response: any = {
+      const response: unknown = {
         error: 'test error',
         message: 'important message',
         data: 'x'.repeat(100000) // Very large data
@@ -153,7 +154,7 @@ describe('Response Limiter', () => {
       const limited = limitResponse(response, {
         ...DEFAULT_LIMITER_CONFIG,
         maxTokens: 100
-      });
+      }) as any;
 
       expect(limited.error).toBe('test error');
       expect(limited.message).toBe('important message');
@@ -170,7 +171,7 @@ describe('Response Limiter', () => {
       const limited = limitResponse(response, {
         ...DEFAULT_LIMITER_CONFIG,
         maxTokens: 500
-      });
+      }) as any[];
 
       expect(Array.isArray(limited)).toBe(true);
       expect(limited.length).toBeLessThan(1000);

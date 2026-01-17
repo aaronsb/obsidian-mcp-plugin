@@ -104,17 +104,17 @@ export interface NoteContext {
    * The file being evaluated
    */
   file: any; // TFile from Obsidian
-  
+
   /**
    * Frontmatter properties from the note
    */
-  frontmatter: Record<string, any>;
-  
+  frontmatter: Record<string, unknown>;
+
   /**
    * Calculated formula values
    */
-  formulas?: Record<string, any>;
-  
+  formulas?: Record<string, unknown>;
+
   /**
    * File metadata cache
    */
@@ -147,12 +147,12 @@ export interface EvaluatedNote {
   /**
    * All properties (note, file, and formula)
    */
-  properties: Record<string, any>;
+  properties: Record<string, unknown>;
   
   /**
    * Raw frontmatter
    */
-  frontmatter: Record<string, any>;
+  frontmatter: Record<string, unknown>;
   
   /**
    * File properties
@@ -162,7 +162,7 @@ export interface EvaluatedNote {
   /**
    * Evaluated formulas
    */
-  formulas?: Record<string, any>;
+  formulas?: Record<string, unknown>;
 }
 
 /**

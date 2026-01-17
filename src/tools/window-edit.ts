@@ -165,7 +165,7 @@ export const windowEditTools = [
     handler: async (api: ObsidianAPI, args: any) => {
       const buffer = ContentBufferManager.getInstance();
       const buffered = buffer.retrieve();
-      
+
       if (!buffered) {
         return {
           content: [{
@@ -175,10 +175,10 @@ export const windowEditTools = [
           isError: true
         };
       }
-      
+
       // Use provided search text or try to extract from buffered content
       const searchText = args.oldText || buffered.searchText || buffered.content.split('\n')[0].substring(0, 50);
-      
+
       // Use the shared edit function with buffered content
       try {
         return await performWindowEdit(
@@ -245,7 +245,7 @@ export const windowEditTools = [
           }
           insertContent = buffered.content;
         }
-        
+
         // Get current file content
         const file = await api.getFile(args.path);
         if (isImageFile(file)) {
@@ -253,7 +253,7 @@ export const windowEditTools = [
         }
         const content = typeof file === 'string' ? file : file.content;
         const lines = content.split('\n');
-        
+
         // Validate line number
         if (args.lineNumber < 1 || args.lineNumber > lines.length + 1) {
           return {
@@ -264,11 +264,11 @@ export const windowEditTools = [
             isError: true
           };
         }
-        
+
         // Perform the insertion
         const lineIndex = args.lineNumber - 1;
         const mode = args.mode || 'replace';
-        
+
         switch (mode) {
           case 'before':
             lines.splice(lineIndex, 0, insertContent);
@@ -280,17 +280,17 @@ export const windowEditTools = [
             lines[lineIndex] = insertContent;
             break;
         }
-        
+
         const newContent = lines.join('\n');
         await api.updateFile(args.path, newContent);
-        
+
         return {
           content: [{
             type: 'text',
             text: `Successfully ${mode === 'replace' ? 'replaced' : 'inserted'} content at line ${args.lineNumber} in ${args.path}`
           }]
         };
-        
+
       } catch (error: any) {
         return {
           content: [{
@@ -337,9 +337,9 @@ export const windowEditTools = [
         }
         const content = typeof file === 'string' ? file : file.content;
         const lines = content.split('\n');
-        
+
         let centerLine = args.lineNumber || 1;
-        
+
         // If search text provided, find it
         if (args.searchText && !args.lineNumber) {
           const matches = findFuzzyMatches(content, args.searchText, 0.6);
@@ -347,13 +347,13 @@ export const windowEditTools = [
             centerLine = matches[0].lineNumber;
           }
         }
-        
+
         // Calculate window
         const windowSize = args.windowSize || 20;
         const halfWindow = Math.floor(windowSize / 2);
         const startLine = Math.max(1, centerLine - halfWindow);
         const endLine = Math.min(lines.length, centerLine + halfWindow);
-        
+
         // Build output with line numbers
         const windowLines = [];
         for (let i = startLine; i <= endLine; i++) {
@@ -361,21 +361,21 @@ export const windowEditTools = [
           const marker = i === centerLine ? '>' : ' ';
           windowLines.push(`${marker} ${i.toString().padStart(4)}: ${line}`);
         }
-        
+
         let output = `File: ${args.path}\n`;
         output += `Lines ${startLine}-${endLine} of ${lines.length}\n`;
         if (args.searchText) {
           output += `Centered on: "${args.searchText}"\n`;
         }
         output += '\n' + windowLines.join('\n');
-        
+
         return {
           content: [{
             type: 'text',
             text: output
           }]
         };
-        
+
       } catch (error: any) {
         return {
           content: [{

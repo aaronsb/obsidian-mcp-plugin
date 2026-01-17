@@ -8,7 +8,7 @@ interface MCPRequest {
 }
 
 interface MCPResponse {
-  result?: any;
+  result?: unknown;
   error?: {
     code: number;
     message: string;
@@ -80,7 +80,7 @@ export class BrowserMCPServer {
     this.server.handlers.set('OPTIONS /mcp', this.handleCORS.bind(this));
   }
 
-  private handleHealthCheck(): any {
+  private handleHealthCheck(): unknown {
     return {
       status: 200,
       headers: {
@@ -97,7 +97,7 @@ export class BrowserMCPServer {
     };
   }
 
-  private handleCORS(): any {
+  private handleCORS(): unknown {
     return {
       status: 200,
       headers: {
@@ -109,7 +109,7 @@ export class BrowserMCPServer {
     };
   }
 
-  private async handleMCPRequest(body: string): Promise<any> {
+  private async handleMCPRequest(body: string): Promise<unknown> {
     try {
       const request: MCPRequest = JSON.parse(body);
       let response: MCPResponse;
@@ -245,7 +245,7 @@ export class BrowserMCPServer {
   }
 
   // Method to simulate handling HTTP requests for testing
-  async simulateRequest(method: string, path: string, body?: string): Promise<any> {
+  async simulateRequest(method: string, path: string, body?: string): Promise<unknown> {
     const key = `${method} ${path}`;
     const handler = this.server?.handlers.get(key);
     

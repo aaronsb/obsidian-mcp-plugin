@@ -34,7 +34,7 @@ const createSemanticTool = (operation: string) => ({
   },
   handler: async (api: ObsidianAPI, args: any) => {
     const app = api.getApp();
-    
+
     // Check for read-only mode before processing write operations
     if ((api as any).plugin?.settings?.readOnlyMode && operation === 'vault') {
       const writeOperations = ['create', 'update', 'delete', 'move', 'rename', 'copy', 'split', 'combine', 'concatenate'];
@@ -185,21 +185,22 @@ const createSemanticTool = (operation: string) => ({
     }
     
     // Check if the result is an image file for vault read operations
-    if (operation === 'vault' && args.action === 'read' && response.result && isImageFileObject(response.result)) {
+    if (operation === 'vault' && args.action === 'read' && response.result && isImageFileObject(response.result as any)) {
       // Return image content for MCP
+      const imageResult = response.result as any;
       return {
         content: [{
           type: 'image' as const,
-          data: response.result.base64Data,
-          mimeType: response.result.mimeType
+          data: imageResult.base64Data,
+          mimeType: imageResult.mimeType
         }]
       };
     }
-    
+
     // Only filter image files if they contain binary data that would cause JSON errors
     // For search results, we want to show image files in the results list
-    const filteredResult = response.result;
-    
+    const filteredResult = response.result as any;
+
     // Special handling for image files in view operations
     if (operation === 'view' && args.action === 'file' && filteredResult && filteredResult.base64Data) {
       return {
@@ -244,7 +245,7 @@ const createSemanticTool = (operation: string) => ({
 
 function filterImageFilesFromSearchResults(searchResult: any): any {
   if (!searchResult) return searchResult;
-  
+
   // Handle paginated search results format
   if (searchResult.results && Array.isArray(searchResult.results)) {
     return {
@@ -261,7 +262,7 @@ function filterImageFilesFromSearchResults(searchResult: any): any {
       })
     };
   }
-  
+
   // Handle simple search results format (array of results)
   if (Array.isArray(searchResult)) {
     return searchResult.filter((result: any) => {
@@ -274,7 +275,7 @@ function filterImageFilesFromSearchResults(searchResult: any): any {
       return true;
     });
   }
-  
+
   return searchResult;
 }
 
@@ -306,7 +307,7 @@ function getActionsForOperation(operation: string): string[] {
   return actions[operation] || [];
 }
 
-function getParametersForOperation(operation: string): Record<string, any> {
+function getParametersForOperation(operation: string): Record<string, unknown> {
   // Common parameters across operations
   const pathParam = {
     path: {
@@ -323,7 +324,7 @@ function getParametersForOperation(operation: string): Record<string, any> {
   };
   
   // Operation-specific parameters
-  const operationParams: Record<string, Record<string, any>> = {
+  const operationParams: Record<string, Record<string, unknown>> = {
     vault: {
       ...pathParam,
       directory: {

@@ -20,13 +20,13 @@ export class PluginDetector {
    */
   isPluginInstalled(pluginId: string): boolean {
     const plugins = (this.app as any).plugins;
-    return plugins?.manifests?.hasOwnProperty(pluginId) || false;
+    return Object.prototype.hasOwnProperty.call(plugins?.manifests ?? {}, pluginId);
   }
 
   /**
    * Get plugin instance if available
    */
-  getPlugin(pluginId: string): any | null {
+  getPlugin(pluginId: string): unknown {
     if (!this.isPluginEnabled(pluginId)) {
       return null;
     }
@@ -44,7 +44,7 @@ export class PluginDetector {
   /**
    * Get Dataview plugin instance
    */
-  getDataviewPlugin(): any | null {
+  getDataviewPlugin(): unknown {
     return this.getPlugin('dataview');
   }
 
@@ -52,9 +52,9 @@ export class PluginDetector {
    * Check if Dataview API is accessible
    */
   isDataviewAPIReady(): boolean {
-    const dataview = this.getDataviewPlugin();
+    const dataview = this.getDataviewPlugin() as any;
     if (!dataview) return false;
-    
+
     // Check if the Dataview API is available
     return dataview.api !== null && dataview.api !== undefined;
   }
@@ -62,8 +62,8 @@ export class PluginDetector {
   /**
    * Get Dataview API instance
    */
-  getDataviewAPI(): any | null {
-    const dataview = this.getDataviewPlugin();
+  getDataviewAPI(): any {
+    const dataview = this.getDataviewPlugin() as any;
     return dataview?.api || null;
   }
 
@@ -79,8 +79,8 @@ export class PluginDetector {
     const installed = this.isPluginInstalled('dataview');
     const enabled = this.isPluginEnabled('dataview');
     const apiReady = this.isDataviewAPIReady();
-    
-    const plugin = this.getDataviewPlugin();
+
+    const plugin = this.getDataviewPlugin() as any;
     const version = plugin?.manifest?.version;
 
     return {

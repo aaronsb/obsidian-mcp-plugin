@@ -27,7 +27,7 @@ export class MCPIgnoreManager {
   setEnabled(enabled: boolean) {
     this.isEnabled = enabled;
     if (enabled) {
-      this.loadIgnoreFile();
+      void this.loadIgnoreFile();
     }
   }
 
@@ -105,7 +105,8 @@ export class MCPIgnoreManager {
         validPatterns.push(trimmed);
         matchers.push(matcher);
       } catch (error) {
-        Debug.log(`MCPIgnore: Invalid pattern "${trimmed}": ${error}`);
+        const message = error instanceof Error ? error.message : String(error);
+        Debug.log(`MCPIgnore: Invalid pattern "${trimmed}": ${message}`);
       }
     }
 
@@ -274,7 +275,8 @@ export class MCPIgnoreManager {
       await this.app.vault.adapter.write(this.ignorePath, template);
       Debug.log(`MCPIgnore: Created default .mcpignore file at ${this.ignorePath}`);
     } catch (error) {
-      Debug.log(`MCPIgnore: Failed to create .mcpignore file: ${error}`);
+      const message = error instanceof Error ? error.message : String(error);
+      Debug.log(`MCPIgnore: Failed to create .mcpignore file: ${message}`);
       throw error;
     }
   }

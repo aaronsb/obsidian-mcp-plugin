@@ -18,11 +18,11 @@ export interface ValidationError {
   field: string;
   message: string;
   code: string;
-  value?: any;
+  value?: unknown;
 }
 
 export interface Validator {
-  validate(value: any, context?: any): ValidationResult;
+  validate(value: unknown, context?: unknown): ValidationResult;
 }
 
 export interface ValidationConfig {
@@ -100,7 +100,7 @@ export class InputValidator {
   /**
    * Validate input for a specific operation
    */
-  validate(operation: string, params: Record<string, any>): ValidationResult {
+  validate(operation: string, params: Record<string, unknown>): ValidationResult {
     const validators = this.validators.get(operation);
 
     if (!validators || validators.length === 0) {
@@ -126,7 +126,7 @@ export class InputValidator {
   /**
    * Validate a single field with specific validator
    */
-  validateField(field: string, value: any, validatorType: string): ValidationResult {
+  validateField(field: string, value: unknown, validatorType: string): ValidationResult {
     let validator: Validator;
 
     switch (validatorType) {
@@ -172,14 +172,24 @@ export class InputValidator {
 export class FileSizeValidator implements Validator {
   constructor(private config: ValidationConfig) {}
 
-  validate(params: Record<string, any>): ValidationResult {
+  validate(params: Record<string, unknown>): ValidationResult {
     const content = params.content;
 
     if (content === undefined || content === null) {
       return { valid: true }; // No content to validate
     }
 
-    const sizeInBytes = Buffer.byteLength(String(content), 'utf8');
+    // Convert content to string for size calculation
+    let contentStr: string;
+    if (typeof content === 'string') {
+      contentStr = content;
+    } else if (typeof content === 'object') {
+      contentStr = JSON.stringify(content);
+    } else {
+      // Primitives (number, boolean, bigint, symbol) are safe to stringify
+      contentStr = String(content as number | boolean | bigint | symbol);
+    }
+    const sizeInBytes = Buffer.byteLength(contentStr, 'utf8');
 
     if (sizeInBytes > this.config.maxFileSize) {
       return {
@@ -210,7 +220,7 @@ export class FileSizeValidator implements Validator {
 export class PathSafetyValidator implements Validator {
   constructor(private config: ValidationConfig) {}
 
-  validate(params: Record<string, any>): ValidationResult {
+  validate(params: Record<string, unknown>): ValidationResult {
     const path = params.path;
 
     if (!path || typeof path !== 'string') {
@@ -293,7 +303,7 @@ export class PathSafetyValidator implements Validator {
 export class SafeRegexValidator implements Validator {
   constructor(private config: ValidationConfig) {}
 
-  validate(params: Record<string, any>): ValidationResult {
+  validate(params: Record<string, unknown>): ValidationResult {
     const query = params.query;
 
     if (!query || typeof query !== 'string') {
@@ -407,7 +417,7 @@ export class SafeRegexValidator implements Validator {
 export class BatchLimitValidator implements Validator {
   constructor(private config: ValidationConfig) {}
 
-  validate(params: Record<string, any>): ValidationResult {
+  validate(params: Record<string, unknown>): ValidationResult {
     // Check paths array
     if (params.paths && Array.isArray(params.paths)) {
       if (params.paths.length > this.config.maxBatchSize) {
@@ -424,14 +434,15 @@ export class BatchLimitValidator implements Validator {
     }
 
     // Check maxFiles for split operations
-    if (params.maxFiles && params.maxFiles > this.config.maxBatchSize) {
+    const maxFiles = typeof params.maxFiles === 'number' ? params.maxFiles : 0;
+    if (maxFiles > this.config.maxBatchSize) {
       return {
         valid: false,
         errors: [{
           field: 'maxFiles',
-          message: `Maximum files ${params.maxFiles} exceeds limit ${this.config.maxBatchSize}`,
+          message: `Maximum files ${maxFiles} exceeds limit ${this.config.maxBatchSize}`,
           code: 'MAX_FILES_EXCEEDED',
-          value: params.maxFiles
+          value: maxFiles
         }]
       };
     }
@@ -447,7 +458,7 @@ export class BatchLimitValidator implements Validator {
 export class ContentValidator implements Validator {
   constructor(private config: ValidationConfig) {}
 
-  validate(params: Record<string, any>): ValidationResult {
+  validate(params: Record<string, unknown>): ValidationResult {
     const content = params.content;
 
     if (content === undefined || content === null) {
@@ -495,7 +506,7 @@ export class QueryLengthValidator implements Validator {
 
   constructor(private config: ValidationConfig) {}
 
-  validate(params: Record<string, any>): ValidationResult {
+  validate(params: Record<string, unknown>): ValidationResult {
     const query = params.query;
 
     if (!query || typeof query !== 'string') {
@@ -525,7 +536,7 @@ export class QueryLengthValidator implements Validator {
 export class PathArrayValidator implements Validator {
   constructor(private config: ValidationConfig) {}
 
-  validate(params: Record<string, any>): ValidationResult {
+  validate(params: Record<string, unknown>): ValidationResult {
     const paths = params.paths;
 
     if (!paths || !Array.isArray(paths)) {

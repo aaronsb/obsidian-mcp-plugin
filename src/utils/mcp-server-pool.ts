@@ -1,4 +1,5 @@
-import { Server as MCPServer } from '@modelcontextprotocol/sdk/server/index.js';
+/* eslint-disable @typescript-eslint/no-deprecated -- Using low-level MCP Server for advanced implementation */
+import { Server as McpBaseServer } from '@modelcontextprotocol/sdk/server/index.js';
 import { EventEmitter } from 'events';
 import { Debug } from './debug';
 import { ObsidianAPI } from './obsidian-api';
@@ -15,7 +16,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 interface PooledServer {
-  server: MCPServer;
+  server: McpBaseServer;
   sessionId: string;
   createdAt: number;
   lastActivityAt: number;
@@ -48,7 +49,7 @@ export class MCPServerPool extends EventEmitter {
   /**
    * Get or create an MCP server for a session
    */
-  getOrCreateServer(sessionId: string): MCPServer {
+  getOrCreateServer(sessionId: string): McpBaseServer {
     // Check if server exists
     let pooledServer = this.servers.get(sessionId);
     
@@ -86,8 +87,8 @@ export class MCPServerPool extends EventEmitter {
   /**
    * Create a new MCP server instance with handlers
    */
-  private createNewServer(sessionId: string): MCPServer {
-    const server = new MCPServer(
+  private createNewServer(sessionId: string): McpBaseServer {
+    const server = new McpBaseServer(
       {
         name: 'Semantic Notes Vault MCP',
         version: getVersion()
@@ -140,7 +141,8 @@ export class MCPServerPool extends EventEmitter {
         throw new Error(`Tool not found: ${name}`);
       }
       
-      Debug.log(`🔧 [Session ${sessionId}] Executing tool: ${name} with action: ${args?.action}`);
+      const action = args && typeof args === 'object' && 'action' in args ? String(args.action) : 'unknown';
+      Debug.log(`🔧 [Session ${sessionId}] Executing tool: ${name} with action: ${action}`);
       
       // Execute tool with session-specific API
       return await tool.handler(sessionAPI, args);
@@ -235,7 +237,7 @@ export class MCPServerPool extends EventEmitter {
         const sessionData = sessions.map((session: any) => {
           const idleTime = Date.now() - session.lastActivityAt;
           const age = Date.now() - session.createdAt;
-          
+
           return {
             sessionId: session.sessionId,
             isCurrentSession: session.sessionId === sessionId,
@@ -247,7 +249,7 @@ export class MCPServerPool extends EventEmitter {
             status: session.sessionId === sessionId ? '🟢 This is you!' : '🔵 Active'
           };
         });
-        
+
         // Sort sessions - current session first, then by last activity
         sessionData.sort((a: any, b: any) => {
           if (a.isCurrentSession) return -1;

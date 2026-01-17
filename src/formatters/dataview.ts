@@ -96,7 +96,14 @@ function formatDataviewList(items: any[]): string {
   const lines: string[] = [];
 
   items.slice(0, 30).forEach((item, i) => {
-    const text = typeof item === 'object' ? (item.path || item.file?.path || JSON.stringify(item)) : String(item);
+    let text: string;
+    if (item && typeof item === 'object') {
+      const obj = item as Record<string, unknown>;
+      const filePath = obj.path ?? (obj.file as Record<string, unknown> | undefined)?.path;
+      text = typeof filePath === 'string' ? filePath : JSON.stringify(item);
+    } else {
+      text = String(item);
+    }
     lines.push(`${i + 1}. ${truncate(text, 60)}`);
   });
 

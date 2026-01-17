@@ -1,9 +1,10 @@
+/* eslint-disable @typescript-eslint/no-deprecated -- Using low-level MCP Server for advanced implementation */
 import express from 'express';
 import cors from 'cors';
 import { App, Notice } from 'obsidian';
 import { Server } from 'http';
 import { Server as HttpsServer } from 'https';
-import { Server as MCPServer } from '@modelcontextprotocol/sdk/server/index.js';
+import { Server as McpBaseServer } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { 
   ListToolsRequestSchema,
@@ -32,7 +33,7 @@ import { CertificateManager, CertificateConfig } from './utils/certificate-manag
 export class MCPHttpServer {
   private app: express.Application;
   private server?: Server | HttpsServer;
-  private mcpServer?: MCPServer; // Single server for non-concurrent mode
+  private mcpServer?: McpBaseServer; // Single server for non-concurrent mode
   private mcpServerPool?: MCPServerPool; // Server pool for concurrent mode
   private transports: Map<string, StreamableHTTPServerTransport> = new Map();
   private obsidianApp: App;
@@ -109,7 +110,7 @@ export class MCPHttpServer {
         // Clean up transport for evicted session
         const transport = this.transports.get(session.sessionId);
         if (transport) {
-          transport.close();
+          void transport.close();
           this.transports.delete(session.sessionId);
           this.connectionCount = Math.max(0, this.connectionCount - 1);
           Debug.log(`🔚 Evicted session ${session.sessionId} (${reason}). Connections: ${this.connectionCount}`);
@@ -125,47 +126,49 @@ export class MCPHttpServer {
         sessionCheckInterval: 60000,
         workerScript: path.join(plugin.manifest.dir, 'dist', 'workers', 'semantic-worker.js')
       });
-      this.connectionPool.initialize();
-      
+      void this.connectionPool.initialize();
+
       // Set up connection pool request processing
-      this.connectionPool.on('process', async (request: PooledRequest) => {
-        try {
-          // Touch session to update activity
-          if (request.sessionId && this.sessionManager) {
-            this.sessionManager.touchSession(request.sessionId);
-          }
-          
-          // Extract tool name from method
-          const toolName = request.method.replace('tool.', '');
-          const tool = semanticTools.find(t => t.name === toolName);
-          
-          if (!tool) {
+      this.connectionPool.on('process', (request: PooledRequest) => {
+        void (async () => {
+          try {
+            // Touch session to update activity
+            if (request.sessionId && this.sessionManager) {
+              this.sessionManager.touchSession(request.sessionId);
+            }
+
+            // Extract tool name from method
+            const toolName = request.method.replace('tool.', '');
+            const tool = semanticTools.find(t => t.name === toolName);
+
+            if (!tool) {
+              this.connectionPool!.completeRequest(request.id, {
+                id: request.id,
+                error: new Error(`Tool not found: ${toolName}`)
+              });
+              return;
+            }
+
+            // Create session-specific API instance if needed
+            const sessionAPI = this.getSessionAPI(request.sessionId);
+
+            // Check if this operation needs data preparation for worker threads
+            await this.prepareWorkerContext(request);
+
+            // Execute tool with session context
+            const result = await tool.handler(sessionAPI, request.params);
+
             this.connectionPool!.completeRequest(request.id, {
               id: request.id,
-              error: new Error(`Tool not found: ${toolName}`)
+              result
             });
-            return;
+          } catch (error) {
+            this.connectionPool!.completeRequest(request.id, {
+              id: request.id,
+              error
+            });
           }
-          
-          // Create session-specific API instance if needed
-          const sessionAPI = this.getSessionAPI(request.sessionId);
-          
-          // Check if this operation needs data preparation for worker threads
-          const preparedContext = await this.prepareWorkerContext(request);
-          
-          // Execute tool with session context
-          const result = await tool.handler(sessionAPI, request.params);
-          
-          this.connectionPool!.completeRequest(request.id, {
-            id: request.id,
-            result
-          });
-        } catch (error) {
-          this.connectionPool!.completeRequest(request.id, {
-            id: request.id,
-            error
-          });
-        }
+        })();
       });
       
       // Initialize MCP Server Pool for concurrent sessions
@@ -177,7 +180,7 @@ export class MCPHttpServer {
       Debug.log(`🏊 Connection pool initialized with max ${maxConnections} connections`);
     } else {
       // Initialize single MCP Server for non-concurrent mode
-      this.mcpServer = new MCPServer(
+      this.mcpServer = new McpBaseServer(
         {
           name: 'Semantic Notes Vault MCP',
           version: getVersion()
@@ -225,7 +228,8 @@ export class MCPHttpServer {
         throw new Error(`Tool not found: ${name}`);
       }
       
-      Debug.log(`🔧 Executing semantic tool: ${name} with action: ${args?.action}`);
+      const action = args && typeof args === 'object' && 'action' in args ? String(args.action) : 'unknown';
+      Debug.log(`🔧 Executing semantic tool: ${name} with action: ${action}`);
       return await tool.handler(this.obsidianAPI, args);
     });
 
@@ -434,17 +438,17 @@ export class MCPHttpServer {
     });
 
     // MCP protocol endpoint - using StreamableHTTPServerTransport
-    this.app.post('/mcp', async (req, res) => {
-      await this.handleMCPRequest(req, res);
+    this.app.post('/mcp', (req, res) => {
+      void this.handleMCPRequest(req, res);
     });
 
     // Handle session deletion
     this.app.delete('/mcp', (req, res) => {
       const sessionId = req.headers['mcp-session-id'] as string;
-      
+
       if (sessionId && this.transports.has(sessionId)) {
         const transport = this.transports.get(sessionId)!;
-        transport.close();
+        void transport.close();
         this.transports.delete(sessionId);
         this.connectionCount = Math.max(0, this.connectionCount - 1);
         Debug.log(`🔚 Closed MCP session: ${sessionId} (Remaining: ${this.connectionCount})`);
@@ -478,7 +482,7 @@ export class MCPHttpServer {
       if (sessionId) {
         effectiveSessionId = sessionId;
       }
-      let mcpServer: MCPServer;
+      let mcpServer: McpBaseServer;
 
       // Helper: create a null response shim so we can send an internal initialize
       const createNullRes = () => {
@@ -502,7 +506,7 @@ export class MCPHttpServer {
           json: (_body: any) => { sent = true; },
           send: (_body?: any) => { sent = true; },
         };
-        return resp as any;
+        return resp;
       };
       // When a non-initialize request arrives without an active transport,
       // we return a JSON-RPC error instructing the client to initialize using
@@ -521,7 +525,7 @@ export class MCPHttpServer {
             }
           });
           // @ts-ignore optional event emitter API on transport
-          tr.on?.('error', (e: any) => {
+          tr.on?.('error', (e: unknown) => {
             Debug.error(`Transport error for session ${sessId}:`, e);
             if (this.transports.has(sessId)) {
               this.transports.delete(sessId);
@@ -555,20 +559,20 @@ export class MCPHttpServer {
             mcpServer = this.mcpServerPool.getOrCreateServer(sessionId);
             effectiveSessionId = sessionId;
             transport = new StreamableHTTPServerTransport({
-              sessionIdGenerator: () => effectiveSessionId!
+              sessionIdGenerator: () => effectiveSessionId
             });
             await mcpServer.connect(transport);
-            this.transports.set(effectiveSessionId as string, transport);
-            attachTransportHandlers(effectiveSessionId as string, transport);
+            this.transports.set(effectiveSessionId, transport);
+            attachTransportHandlers(effectiveSessionId, transport);
             this.connectionCount++;
             Debug.log(`♻️ Recreated transport for session ${sessionId} (requests: ${session.requestCount})`);
           } else {
             // Create transport and require client initialize on next call
-            const newSessionId = sessionId!; // reuse provided id (guaranteed by branch)
+            const newSessionId = sessionId; // reuse provided id (guaranteed by branch)
             mcpServer = this.mcpServerPool.getOrCreateServer(newSessionId);
             effectiveSessionId = newSessionId;
             transport = new StreamableHTTPServerTransport({
-              sessionIdGenerator: () => effectiveSessionId!
+              sessionIdGenerator: () => effectiveSessionId
             });
             await mcpServer.connect(transport);
             this.transports.set(effectiveSessionId, transport);
@@ -584,7 +588,7 @@ export class MCPHttpServer {
           mcpServer = this.mcpServerPool.getOrCreateServer(effectiveSessionId);
           
           transport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: () => effectiveSessionId!
+            sessionIdGenerator: () => effectiveSessionId
           });
           
           // Connect the MCP server to this transport
@@ -606,7 +610,7 @@ export class MCPHttpServer {
           mcpServer = this.mcpServerPool.getOrCreateServer(newSessionId);
           effectiveSessionId = newSessionId;
           transport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: () => effectiveSessionId!
+            sessionIdGenerator: () => effectiveSessionId
           });
           await mcpServer.connect(transport);
           this.transports.set(effectiveSessionId, transport);
@@ -626,14 +630,14 @@ export class MCPHttpServer {
           // No active transport for provided session
           if (isInitializeRequest(request)) {
             effectiveSessionId = sessionId;
-            transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId! });
+            transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId });
             await mcpServer.connect(transport);
             this.transports.set(effectiveSessionId, transport);
             attachTransportHandlers(effectiveSessionId, transport);
             this.connectionCount++;
           } else {
             effectiveSessionId = sessionId;
-            transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId! });
+            transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId });
             await mcpServer.connect(transport);
             this.transports.set(effectiveSessionId, transport);
             attachTransportHandlers(effectiveSessionId, transport);
@@ -643,7 +647,7 @@ export class MCPHttpServer {
         } else if (!sessionId && isInitializeRequest(request)) {
           // New initialization request - create new session and transport
           effectiveSessionId = randomUUID();
-          transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId! });
+          transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId });
           await mcpServer.connect(transport);
           this.transports.set(effectiveSessionId, transport);
           attachTransportHandlers(effectiveSessionId, transport);
@@ -654,7 +658,7 @@ export class MCPHttpServer {
         } else {
           // No session header and not an initialize request: pre-provision session and require initialize
           effectiveSessionId = randomUUID();
-          transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId! });
+          transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId });
           await mcpServer.connect(transport);
           this.transports.set(effectiveSessionId, transport);
           attachTransportHandlers(effectiveSessionId, transport);
@@ -679,7 +683,7 @@ export class MCPHttpServer {
         };
         const versionsToTry = ['2025-06-18', '2024-11-05', '1.0'];
         let initOk = false;
-        let lastErr: any;
+        let lastErr: unknown;
         for (const ver of versionsToTry) {
           try {
             const initReq = {
@@ -691,7 +695,7 @@ export class MCPHttpServer {
                 capabilities: {},
                 clientInfo: { name: 'obsidian-mcp-compat', version: getVersion() }
               }
-            } as any;
+            } as unknown;
             await transport.handleRequest(compatReq, createNullRes(), initReq);
             initOk = true;
             Debug.log(`Compat initialize succeeded with protocolVersion=${ver}`);
@@ -714,7 +718,7 @@ export class MCPHttpServer {
       // instruct the client to initialize for this session.
       if (requireInitializeNotice && !isInitializeRequest(request)) {
         const id = request?.id ?? null;
-        res.setHeader('Mcp-Session-Id', effectiveSessionId as string);
+        res.setHeader('Mcp-Session-Id', effectiveSessionId);
         res.status(400).json({
           jsonrpc: '2.0',
           error: {
@@ -830,10 +834,10 @@ export class MCPHttpServer {
         resolve();
       });
 
-      this.server.on('error', (error: any) => {
+      this.server.on('error', (error: unknown) => {
         this.isRunning = false;
         Debug.error('❌ Failed to start MCP server:', error);
-        reject(error);
+        reject(error instanceof Error ? error : new Error(String(error)));
       });
     });
   }
@@ -845,7 +849,7 @@ export class MCPHttpServer {
 
     // Clean up all active transports
     for (const [sessionId, transport] of this.transports) {
-      transport.close();
+      void transport.close();
       Debug.log(`🔚 Closed MCP session on shutdown: ${sessionId}`);
     }
     this.transports.clear();
@@ -944,7 +948,7 @@ export class MCPHttpServer {
   /**
    * Prepare context data for worker thread operations
    */
-  private async prepareWorkerContext(request: PooledRequest): Promise<any> {
+  private async prepareWorkerContext(request: PooledRequest): Promise<unknown> {
     // Only prepare context for worker-compatible operations
     const workerOps = [
       'tool.vault.search',
@@ -969,7 +973,7 @@ export class MCPHttpServer {
     // For graph operations, we need file contents and link graph
     if (request.method.includes('graph.search-traverse')) {
       try {
-        const startPath = request.params.startPath;
+        const startPath = (request.params as any).startPath;
         if (!startPath) return undefined;
         
         // Pre-fetch relevant file contents and link graph

@@ -8,7 +8,7 @@ interface MCPRequest {
 }
 
 interface MCPResponse {
-  result?: any;
+  result?: unknown;
   error?: {
     code: number;
     message: string;
@@ -38,7 +38,7 @@ export class NodeMCPServer {
       const http = require('http');
       
       this.server = http.createServer((req: any, res: any) => {
-        this.handleRequest(req, res);
+        void this.handleRequest(req, res);
       });
 
       await new Promise<void>((resolve, reject) => {
@@ -50,9 +50,9 @@ export class NodeMCPServer {
           resolve();
         });
 
-        this.server.on('error', (error: any) => {
+        this.server.on('error', (error: unknown) => {
           Debug.error('❌ Failed to start MCP server:', error);
-          reject(error);
+          reject(error instanceof Error ? error : new Error(String(error)));
         });
       });
 
@@ -124,7 +124,7 @@ export class NodeMCPServer {
 
   private async handleMCPRequest(req: any, res: any): Promise<void> {
     let body = '';
-    
+
     req.on('data', (chunk: any) => {
       body += chunk.toString();
     });

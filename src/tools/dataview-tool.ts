@@ -28,7 +28,7 @@ export class DataviewTool {
   /**
    * Execute a Dataview query
    */
-  async executeQuery(query: string, format: 'dql' | 'js' = 'dql'): Promise<any> {
+  async executeQuery(query: string, format: 'dql' | 'js' = 'dql'): Promise<unknown> {
     if (!this.isAvailable()) {
       throw new Error('Dataview plugin is not available or not enabled');
     }
@@ -65,7 +65,7 @@ export class DataviewTool {
   /**
    * List all pages with metadata
    */
-  async listPages(source?: string): Promise<any> {
+  async listPages(source?: string): Promise<unknown> {
     if (!this.isAvailable()) {
       throw new Error('Dataview plugin is not available or not enabled');
     }
@@ -107,7 +107,7 @@ export class DataviewTool {
   /**
    * Get metadata for a specific page
    */
-  async getPageMetadata(path: string): Promise<any> {
+  async getPageMetadata(path: string): Promise<unknown> {
     if (!this.isAvailable()) {
       throw new Error('Dataview plugin is not available or not enabled');
     }
@@ -156,7 +156,7 @@ export class DataviewTool {
   /**
    * Validate a DQL query syntax
    */
-  async validateQuery(query: string): Promise<any> {
+  async validateQuery(query: string): Promise<unknown> {
     if (!this.isAvailable()) {
       throw new Error('Dataview plugin is not available or not enabled');
     }
@@ -235,8 +235,8 @@ export class DataviewTool {
   /**
    * Extract custom frontmatter fields from a page
    */
-  private extractCustomFields(page: any): Record<string, any> {
-    const customFields: Record<string, any> = {};
+  private extractCustomFields(page: any): Record<string, unknown> {
+    const customFields: Record<string, unknown> = {};
     
     // Standard fields to exclude
     const excludeFields = new Set([
@@ -288,7 +288,7 @@ export class DataviewTool {
    */
   private generateQueryWorkflow(query: string, result: any): any {
     const queryType = query.trim().split(/\s+/)[0]?.toUpperCase();
-    const suggestions: any[] = [];
+    const suggestions: unknown[] = [];
 
     // Base suggestions for all query types
     suggestions.push({

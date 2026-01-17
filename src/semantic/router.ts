@@ -91,7 +91,7 @@ export class SemanticRouter {
       
       return response;
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Update tokens for failure
       this.tokenManager.updateTokens(operation, action, params, null, false);
       
@@ -100,7 +100,7 @@ export class SemanticRouter {
     }
   }
   
-  private async executeOperation(operation: string, action: string, params: any): Promise<any> {
+  private async executeOperation(operation: string, action: string, params: any): Promise<unknown> {
     // Map semantic operations to actual tool calls
     switch (operation) {
       case 'vault':
@@ -122,7 +122,7 @@ export class SemanticRouter {
     }
   }
   
-  private async executeVaultOperation(action: string, params: any): Promise<any> {
+  private async executeVaultOperation(action: string, params: any): Promise<unknown> {
     switch (action) {
       case 'list': {
         // Translate "/" to undefined for root directory
@@ -487,14 +487,14 @@ export class SemanticRouter {
         try {
           const sourceFile = await this.api.getFile(path);
           return await this.copyFile(path, destination, overwrite, sourceFile);
-        } catch (fileError: any) {
+        } catch (fileError: unknown) {
           // If file operation failed, try as directory (this will also go through security validation)
           try {
             // Test if it's a directory by trying to list its contents
             await this.api.listFiles(path);
             // If listing succeeds, it's a directory
             return await this.copyDirectoryRecursive(path, destination, overwrite);
-          } catch (dirError: any) {
+          } catch (dirError: unknown) {
             // Neither file nor directory worked
             throw new Error(`Source not found or inaccessible: ${path}`);
           }
@@ -897,7 +897,7 @@ export class SemanticRouter {
       if (destFile && !overwrite) {
         throw new Error(`Destination already exists: ${destination}. Set overwrite=true to replace.`);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       // File doesn't exist, which is what we want
     }
     
@@ -981,7 +981,7 @@ export class SemanticRouter {
   /**
    * Recursively copy a directory and all its contents
    */
-  private async copyDirectoryRecursive(sourcePath: string, destPath: string, overwrite: boolean): Promise<any> {
+  private async copyDirectoryRecursive(sourcePath: string, destPath: string, overwrite: boolean): Promise<unknown> {
     const copiedFiles: string[] = [];
     const skippedFiles: string[] = [];
     
@@ -1124,7 +1124,7 @@ export class SemanticRouter {
     };
   }
   
-  private async performFileBasedSearch(query: string, page: number, pageSize: number, includeContent: boolean = false): Promise<any> {
+  private async performFileBasedSearch(query: string, page: number, pageSize: number, includeContent: boolean = false): Promise<unknown> {
     const lowerQuery = query.toLowerCase();
     const allResults: any[] = [];
     
@@ -1269,7 +1269,7 @@ export class SemanticRouter {
     await indexDirectory();
   }
   
-  private async executeEditOperation(action: string, params: any): Promise<any> {
+  private async executeEditOperation(action: string, params: any): Promise<unknown> {
     // Import window edit tools dynamically to avoid circular dependencies
     const { performWindowEdit } = await import('../tools/window-edit.js');
     const buffer = ContentBufferManager.getInstance();
@@ -1358,7 +1358,7 @@ export class SemanticRouter {
     }
   }
   
-  private async executeViewOperation(action: string, params: any): Promise<any> {
+  private async executeViewOperation(action: string, params: any): Promise<unknown> {
     switch (action) {
       case 'file':
         return await this.api.getFile(params.path);
@@ -1411,7 +1411,7 @@ export class SemanticRouter {
           ]);
           return result;
         } catch (error: any) {
-          if (error.message.includes('Timeout')) {
+          if (error.message?.includes('Timeout')) {
             throw error;
           }
           // Re-throw original error if not timeout
@@ -1426,7 +1426,7 @@ export class SemanticRouter {
     }
   }
   
-  private async executeWorkflowOperation(action: string, params: any): Promise<any> {
+  private async executeWorkflowOperation(action: string, params: any): Promise<unknown> {
     switch (action) {
       case 'suggest':
         return this.generateWorkflowSuggestions();
@@ -1435,7 +1435,7 @@ export class SemanticRouter {
     }
   }
   
-  private async executeSystemOperation(action: string, params: any): Promise<any> {
+  private async executeSystemOperation(action: string, params: any): Promise<unknown> {
     switch (action) {
       case 'info':
         return await this.api.getServerInfo();
@@ -1451,7 +1451,7 @@ export class SemanticRouter {
     }
   }
   
-  private async executeGraphOperation(action: string, params: any): Promise<any> {
+  private async executeGraphOperation(action: string, params: any): Promise<unknown> {
     // Handle graph search traversal operations
     if (action === 'search-traverse' || action === 'advanced-traverse') {
       if (!this.graphSearchTraversalTool) {
@@ -1926,17 +1926,26 @@ export class SemanticRouter {
       if (result?.fragments && result.fragments.length > 0) {
         message = 'Explore connections between documents containing these fragments.';
         
-        const sourcePaths = [...new Set(result.fragments.map((f: any) => f.source).filter(Boolean))];
+        const sourcePathsSet = new Set<string>();
+        for (const f of result.fragments) {
+          if (f && typeof f === 'object' && 'source' in f) {
+            const source = String(f.source);
+            if (source.length > 0) sourcePathsSet.add(source);
+          }
+        }
+        const sourcePaths = [...sourcePathsSet];
         if (sourcePaths.length >= 2) {
+          const firstPath = sourcePaths[0];
+          const secondPath = sourcePaths[1];
           suggestions.push({
             description: 'Find connections between fragment sources',
-            command: `graph(action='path', sourcePath='${sourcePaths[0]}', targetPath='${sourcePaths[1]}')`,
+            command: `graph(action='path', sourcePath='${firstPath}', targetPath='${secondPath}')`,
             reason: 'Explore how documents with similar content are connected'
           });
-          
+
           suggestions.push({
             description: 'Traverse network from first fragment source',
-            command: `graph(action='traverse', sourcePath='${sourcePaths[0]}', maxDepth=2)`,
+            command: `graph(action='traverse', sourcePath='${firstPath}', maxDepth=2)`,
             reason: 'Discover the broader context around this content'
           });
         }
@@ -1946,7 +1955,7 @@ export class SemanticRouter {
     return suggestions.length > 0 ? { message, suggested_next: suggestions } : null;
   }
 
-  private async executeBasesOperation(action: string, params: any): Promise<any> {
+  private async executeBasesOperation(action: string, params: any): Promise<unknown> {
     switch (action) {
       case 'list':
         return await this.api.listBases();

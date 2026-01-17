@@ -11,16 +11,16 @@ interface FileReadOptions {
 }
 
 interface FileReadResult {
-  content?: any;
-  metadata?: any;
+  content?: unknown;
+  metadata?: unknown;
   originalContentLength?: number;
   fragmentMetadata?: {
     totalFragments: number;
     strategy: string;
     query: string;
   };
-  workflow?: any;
-  efficiency_hints?: any;
+  workflow?: unknown;
+  efficiency_hints?: unknown;
   warning?: string;
   // For image files
   base64Data?: string;

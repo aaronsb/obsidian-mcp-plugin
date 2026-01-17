@@ -19,19 +19,19 @@ interface WorkerMessage {
   context?: {
     fileContents?: Record<string, string>; // For search operations
     linkGraph?: Record<string, string[]>; // For graph operations
-    metadata?: Record<string, any>; // Additional metadata
+    metadata?: Record<string, unknown>; // Additional metadata
   };
 }
 
 interface WorkerResponse {
   id: string;
   type: 'result' | 'error';
-  result?: any;
+  result?: unknown;
   error?: string;
 }
 
 // Simple in-memory cache for worker-specific data
-const workerCache = new Map<string, any>();
+const workerCache = new Map<string, unknown>();
 
 /**
  * Process a semantic request in the worker thread
@@ -102,7 +102,7 @@ async function performBulkSearch(params: any, fileContents: Record<string, strin
     throw new Error('Query is required for search');
   }
   
-  const allResults: any[] = [];
+  const allResults: unknown[] = [];
   
   // Search across all provided files
   for (const [filePath, content] of Object.entries(fileContents)) {
@@ -117,7 +117,7 @@ async function performBulkSearch(params: any, fileContents: Record<string, strin
   }
   
   // Sort all results by score
-  allResults.sort((a, b) => b.score - a.score);
+  allResults.sort((a: any, b: any) => b.score - a.score);
   
   // Apply pagination
   const totalResults = allResults.length;
@@ -157,7 +157,7 @@ async function performTextSearch(params: any): Promise<any> {
   }
   
   const lines = content.split('\n');
-  const results: any[] = [];
+  const results: unknown[] = [];
   const queryTerms = query.toLowerCase().split(/\s+/);
   
   for (let i = 0; i < lines.length; i++) {
@@ -195,7 +195,7 @@ async function performTextSearch(params: any): Promise<any> {
   
   // Sort by score and return top results
   return results
-    .sort((a, b) => b.score - a.score)
+    .sort((a: any, b: any) => b.score - a.score)
     .slice(0, maxResults);
 }
 
@@ -211,7 +211,7 @@ async function extractFragments(params: any): Promise<any> {
   
   // Simple fragment extraction based on paragraphs
   const paragraphs = content.split(/\n\s*\n/);
-  const fragments: any[] = [];
+  const fragments: unknown[] = [];
   
   for (let i = 0; i < paragraphs.length; i++) {
     const paragraph = paragraphs[i].trim();
@@ -245,7 +245,7 @@ async function extractFragments(params: any): Promise<any> {
   
   // Sort by score and return top fragments
   return fragments
-    .sort((a, b) => b.score - a.score)
+    .sort((a: any, b: any) => b.score - a.score)
     .slice(0, maxFragments);
 }
 
@@ -253,13 +253,13 @@ async function extractFragments(params: any): Promise<any> {
  * Perform graph traversal operation
  */
 async function performGraphTraversal(params: any): Promise<any> {
-  const { 
-    startNode, 
-    searchQuery, 
-    fileContents, 
+  const {
+    startNode,
+    searchQuery,
+    fileContents,
     linkGraph,
     maxDepth = 3,
-    scoreThreshold = 0.5 
+    scoreThreshold = 0.5
   } = params;
   
   if (!fileContents || !linkGraph) {
@@ -267,7 +267,7 @@ async function performGraphTraversal(params: any): Promise<any> {
   }
   
   const visited = new Set<string>();
-  const traversalChain: any[] = [];
+  const traversalChain: unknown[] = [];
   const queue: Array<{ path: string; depth: number; parent?: string }> = [
     { path: startNode, depth: 0 }
   ];
@@ -322,31 +322,33 @@ async function performGraphTraversal(params: any): Promise<any> {
 
 // Worker message handling
 if (parentPort) {
-  parentPort.on('message', async (message: WorkerMessage) => {
-    const { id, type, request, context } = message;
-    
-    if (type === 'shutdown') {
-      process.exit(0);
-    }
-    
-    try {
-      if (type === 'process' && request) {
-        const result = await processRequest(request, context);
+  parentPort.on('message', (message: WorkerMessage) => {
+    void (async () => {
+      const { id, type, request, context } = message;
+
+      if (type === 'shutdown') {
+        process.exit(0);
+      }
+
+      try {
+        if (type === 'process' && request) {
+          const result = await processRequest(request, context);
+          const response: WorkerResponse = {
+            id,
+            type: 'result',
+            result
+          };
+          parentPort!.postMessage(response);
+        }
+      } catch (error) {
         const response: WorkerResponse = {
           id,
-          type: 'result',
-          result
+          type: 'error',
+          error: error instanceof Error ? error.message : String(error)
         };
         parentPort!.postMessage(response);
       }
-    } catch (error) {
-      const response: WorkerResponse = {
-        id,
-        type: 'error',
-        error: error instanceof Error ? error.message : String(error)
-      };
-      parentPort!.postMessage(response);
-    }
+    })();
   });
   
   // Send ready signal

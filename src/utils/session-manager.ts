@@ -6,7 +6,7 @@ export interface SessionInfo {
   createdAt: number;
   lastActivityAt: number;
   requestCount: number;
-  metadata?: any;
+  metadata?: unknown;
 }
 
 export interface SessionManagerOptions {

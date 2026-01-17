@@ -17,7 +17,7 @@ export class ExpressionEvaluator {
   /**
    * Evaluate an expression string in the context of a note
    */
-  async evaluate(expression: string, context: NoteContext): Promise<any> {
+  async evaluate(expression: string, context: NoteContext): Promise<unknown> {
     try {
       // Create a safe evaluation context
       const evalContext = this.createEvalContext(context);
@@ -27,19 +27,20 @@ export class ExpressionEvaluator {
         Debug.log(`Evaluating expression: "${expression}"`);
         Debug.log('Context frontmatter:', context.frontmatter);
         Debug.log('Available context keys:', Object.keys(evalContext));
-        
+
         // Log specific values that might be referenced in the expression
         if (expression.includes('status')) {
-          Debug.log('status value:', evalContext.status || evalContext.note?.status);
+          Debug.log('status value:', (evalContext as any).status || (evalContext as any).note?.status);
         }
         if (expression.includes('priority')) {
-          Debug.log('priority value:', evalContext.priority || evalContext.note?.priority);
+          Debug.log('priority value:', (evalContext as any).priority || (evalContext as any).note?.priority);
         }
       }
       
       // Parse and evaluate the expression
       // Use 'with' statement to avoid reserved word conflicts
       // Note: 'with' is discouraged but safe in our controlled context
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval -- Intentional for Bases filter/formula evaluation
       const func = new Function('context', `
         with (context) {
           return ${expression};
@@ -74,7 +75,7 @@ export class ExpressionEvaluator {
   /**
    * Create the evaluation context with all available variables and functions
    */
-  private createEvalContext(context: NoteContext): Record<string, any> {
+  private createEvalContext(context: NoteContext): Record<string, unknown> {
     const { file, frontmatter, formulas, cache } = context;
     
     // File properties object
@@ -140,14 +141,14 @@ export class ExpressionEvaluator {
       },
       
       // Type conversion
-      number: (val: any) => Number(val),
-      string: (val: any) => String(val),
+      number: (val: unknown) => Number(val),
+      string: (val: unknown) => String(val),
       
       // Utility functions - renamed to avoid reserved word conflicts
-      iff: (condition: any, trueVal: any, falseVal: any = null) => {
+      iff: (condition: unknown, trueVal: unknown, falseVal: unknown = null) => {
         return condition ? trueVal : falseVal;
       },
-      choice: (condition: any, trueVal: any, falseVal: any = null) => {
+      choice: (condition: unknown, trueVal: unknown, falseVal: unknown = null) => {
         return condition ? trueVal : falseVal;
       },
       
@@ -161,11 +162,11 @@ export class ExpressionEvaluator {
       },
       
       // List functions
-      list: (val: any) => Array.isArray(val) ? val : [val]
+      list: (val: unknown) => Array.isArray(val) ? val : [val]
     };
 
     // Pre-process frontmatter to auto-convert date-like strings
-    const processedFrontmatter: Record<string, any> = {};
+    const processedFrontmatter: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(frontmatter)) {
       // Auto-convert date-like properties
       if (typeof value === 'string' && 
@@ -185,7 +186,7 @@ export class ExpressionEvaluator {
     }
 
     // Build the complete context
-    const evalContext: Record<string, any> = {
+    const evalContext: Record<string, unknown> = {
       ...globalFunctions,
       file: fileObj,
       note: processedFrontmatter, // note properties with dates parsed
@@ -201,7 +202,7 @@ export class ExpressionEvaluator {
   /**
    * Parse a property path like "file.name" or "note.status"
    */
-  resolvePropertyPath(path: string, context: NoteContext): any {
+  resolvePropertyPath(path: string, context: NoteContext): unknown {
     const parts = path.split('.');
     
     if (parts[0] === 'file') {
@@ -216,7 +217,7 @@ export class ExpressionEvaluator {
     }
   }
 
-  private resolveFileProperty(prop: string, context: NoteContext): any {
+  private resolveFileProperty(prop: string, context: NoteContext): unknown {
     const { file, cache } = context;
     
     switch (prop) {
@@ -243,7 +244,7 @@ export class ExpressionEvaluator {
     }
   }
 
-  private resolveFrontmatterProperty(prop: string, context: NoteContext): any {
+  private resolveFrontmatterProperty(prop: string, context: NoteContext): unknown {
     return context.frontmatter[prop];
   }
 }

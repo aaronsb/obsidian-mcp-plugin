@@ -39,7 +39,7 @@ export function formatFileList(response: FileListResponse | string[]): string {
 
   // Handle simple string array response
   if (Array.isArray(response)) {
-    const paths = response as string[];
+    const paths = response;
     lines.push(header(1, 'Files'));
     lines.push('');
     lines.push(`Found ${paths.length} item${paths.length !== 1 ? 's' : ''}`);
@@ -137,7 +137,7 @@ export interface FileReadResponse {
     created?: number;
     extension: string;
   };
-  frontmatter?: Record<string, any>;
+  frontmatter?: Record<string, unknown>;
   tags?: string[];
   originalContentLength?: number;
   fragmentMetadata?: {
@@ -177,9 +177,15 @@ export function formatFileRead(response: FileReadResponse): string {
     const keys = Object.keys(frontmatter).slice(0, 10);
     keys.forEach(key => {
       const value = frontmatter[key];
-      const displayValue = typeof value === 'object'
-        ? JSON.stringify(value).substring(0, 50)
-        : String(value).substring(0, 50);
+      let displayValue: string;
+      if (value === null || value === undefined) {
+        displayValue = String(value);
+      } else if (typeof value === 'object') {
+        displayValue = JSON.stringify(value).substring(0, 50);
+      } else {
+        // Primitives (string, number, boolean, bigint, symbol) are safe to stringify
+        displayValue = String(value as string | number | boolean | bigint | symbol).substring(0, 50);
+      }
       lines.push(property(key, displayValue, 0));
     });
     if (Object.keys(frontmatter).length > 10) {
@@ -192,7 +198,7 @@ export function formatFileRead(response: FileReadResponse): string {
 
   if (Array.isArray(content)) {
     // Fragment-based response
-    const fragments = content as FileReadFragment[];
+    const fragments = content;
     if (fragmentMetadata) {
       lines.push(header(2, `Content (${fragmentMetadata.totalFragments} fragment${fragmentMetadata.totalFragments !== 1 ? 's' : ''})`));
     } else {

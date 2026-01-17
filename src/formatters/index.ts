@@ -263,7 +263,7 @@ export function formatResponse(
 /**
  * Format unknown or unmapped responses
  */
-function formatUnknownResponse(tool: string, action: string, response: any): string {
+function formatUnknownResponse(tool: string, action: string, response: unknown): string {
   const lines: string[] = [];
 
   lines.push(`# ${tool}.${action}`);

@@ -11,7 +11,7 @@ import { BasesReference } from './bases-reference';
 export class FormulaEngine {
   private app: App;
   private expressionEvaluator: ExpressionEvaluator;
-  private formulaCache: Map<string, any> = new Map();
+  private formulaCache: Map<string, unknown> = new Map();
 
   constructor(app: App) {
     this.app = app;
@@ -21,7 +21,7 @@ export class FormulaEngine {
   /**
    * Evaluate a formula expression
    */
-  async evaluate(expression: string, context: NoteContext): Promise<any> {
+  async evaluate(expression: string, context: NoteContext): Promise<unknown> {
     // Check cache first
     const cacheKey = `${context.file.path}:${expression}`;
     if (this.formulaCache.has(cacheKey)) {

@@ -21,7 +21,7 @@ export interface ViewFileResponse {
   content: string;
   lineCount?: number;
   tags?: string[];
-  frontmatter?: Record<string, any>;
+  frontmatter?: Record<string, unknown>;
 }
 
 export function formatViewFile(response: ViewFileResponse): string {
@@ -147,7 +147,7 @@ export interface ViewActiveResponse {
   cursorLine?: number;
   cursorColumn?: number;
   tags?: string[];
-  frontmatter?: Record<string, any>;
+  frontmatter?: Record<string, unknown>;
 }
 
 export function formatViewActive(response: ViewActiveResponse): string {

@@ -34,7 +34,7 @@ export default class ObsidianMCPPlugin extends Plugin {
 			// Add command
 			this.addCommand({
 				id: 'restart-mcp-server',
-				name: 'Restart MCP Server',
+				name: 'Restart mcp server',
 				callback: () => {
 					Debug.log('MCP Server restart requested');
 				}
@@ -46,7 +46,7 @@ export default class ObsidianMCPPlugin extends Plugin {
 			if (this.settings.httpEnabled) {
 				statusBarItemEl.setText(`MCP: :${this.settings.httpPort}`);
 			} else {
-				statusBarItemEl.setText('MCP: Disabled');
+				statusBarItemEl.setText('Mcp: disabled');
 			}
 			Debug.log('✅ Status bar added');
 
@@ -57,7 +57,7 @@ export default class ObsidianMCPPlugin extends Plugin {
 		}
 	}
 
-	async onunload() {
+	onunload() {
 		Debug.log('👋 Unloading Obsidian MCP Plugin');
 	}
 
@@ -83,11 +83,12 @@ class MCPSettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		containerEl.createEl('h2', {text: 'Obsidian MCP Plugin Settings'});
+		// eslint-disable-next-line obsidianmd/ui/sentence-case -- acronym at start
+		new Setting(containerEl).setName("MCP plugin configuration").setHeading();
 
 		new Setting(containerEl)
-			.setName('Enable HTTP Server')
-			.setDesc('Enable the HTTP server for MCP access (requires restart)')
+			.setName('Enable HTTP server')
+			.setDesc('Enable the HTTP server for mcp access (requires restart)')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.httpEnabled)
 				.onChange(async (value) => {
@@ -96,8 +97,8 @@ class MCPSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('HTTP Port')
-			.setDesc('Port for HTTP MCP server (default: 3001)')
+			.setName('HTTP port')
+			.setDesc('Port for HTTP mcp server (default: 3001)')
 			.addText(text => text
 				.setPlaceholder('3001')
 				.setValue(this.plugin.settings.httpPort.toString())
@@ -110,7 +111,7 @@ class MCPSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('Debug Logging')
+			.setName('Debug logging')
 			.setDesc('Enable detailed debug logging in console')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.debugLogging)

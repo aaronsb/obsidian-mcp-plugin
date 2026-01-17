@@ -29,14 +29,16 @@ export class GraphSearchTool {
         this.graphSearch = new GraphSearchTraversal(app, api, searchCore);
     }
 
-    async execute(params: GraphSearchToolParams): Promise<any> {
+    async execute(params: GraphSearchToolParams): Promise<unknown> {
         switch (params.action) {
             case 'search-traverse':
                 return this.searchTraverse(params);
             case 'advanced-traverse':
                 return this.advancedTraverse(params);
-            default:
-                throw new Error(`Unknown graph search action: ${params.action}`);
+            default: {
+                const exhaustiveCheck: never = params.action;
+                throw new Error(`Unknown graph search action: ${String(exhaustiveCheck)}`);
+            }
         }
     }
 
@@ -112,11 +114,11 @@ export class GraphSearchTool {
     private generateSummary(result: any): string {
         const matchCount = result.traversalChain.length;
         const visitedCount = result.totalNodesVisited;
-        
+
         if (matchCount === 0) {
             return `No matches found for "${result.searchQuery}" after visiting ${visitedCount} notes.`;
         }
-        
+
         const topScore = result.traversalChain[0]?.snippet.score || 0;
         return `Found ${matchCount} matching notes out of ${visitedCount} visited. ` +
                `Best match: "${result.traversalChain[0].path}" (score: ${topScore.toFixed(3)})`;
@@ -124,7 +126,7 @@ export class GraphSearchTool {
 
     private formatTraversalPath(chain: any[]): string {
         if (chain.length === 0) return 'No path found';
-        
+
         return chain
             .map((node, index) => {
                 const indent = '  '.repeat(node.depth);
@@ -141,28 +143,28 @@ export class GraphSearchTool {
 
     private generateWorkflowSuggestions(result: any): string[] {
         const suggestions: string[] = [];
-        
+
         if (result.traversalChain.length === 0) {
             suggestions.push('Try broadening your search query');
             suggestions.push('Increase the score threshold to include more results');
             suggestions.push('Check if the starting document has any links');
         } else {
             suggestions.push(`Found a knowledge path through ${result.traversalChain.length} connected notes`);
-            
+
             if (result.traversalChain.length < 3) {
                 suggestions.push('Consider increasing maxDepth to explore deeper connections');
             }
-            
-            const avgScore = result.traversalChain.reduce((sum: number, node: any) => 
+
+            const avgScore = result.traversalChain.reduce((sum: number, node: any) =>
                 sum + node.snippet.score, 0) / result.traversalChain.length;
-            
+
             if (avgScore < 0.7) {
                 suggestions.push('Matches have moderate scores - consider refining your search query');
             }
-            
+
             suggestions.push('Use the snippet chain to understand how concepts flow through your notes');
         }
-        
+
         return suggestions;
     }
 

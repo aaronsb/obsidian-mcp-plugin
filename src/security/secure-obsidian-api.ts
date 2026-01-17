@@ -18,7 +18,7 @@ export class SecureObsidianAPI extends ObsidianAPI {
 
 	constructor(app: App, config?: ObsidianConfig, plugin?: any, securitySettings?: Partial<SecuritySettings>) {
 		super(app, config, plugin);
-		
+
 		// Initialize security manager with provided or default settings
 		const settings = securitySettings || (plugin?.settings?.security) || {};
 		const ignoreManager = plugin?.ignoreManager;
@@ -115,7 +115,7 @@ export class SecureObsidianAPI extends ObsidianAPI {
 		return super.appendToFile(validated.path!, content);
 	}
 
-	async patchVaultFile(path: string, params: any): Promise<any> {
+	async patchVaultFile(path: string, params: unknown): Promise<any> {
 		const validated = await this.security.validateOperation({
 			type: OperationType.UPDATE,
 			path: path,

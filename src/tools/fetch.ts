@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-globals -- Using Node/global fetch for MCP tool web requests */
 // Using built-in fetch instead of axios
 import TurndownService from 'turndown';
 
@@ -27,7 +28,7 @@ export const fetchTool = {
     },
     required: ['url']
   },
-  handler: async (_: any, args: any) => {
+  handler: async (_: unknown, args: any) => {
     try {
       const response = await fetch(args.url, {
         headers: {

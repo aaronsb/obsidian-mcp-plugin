@@ -40,20 +40,26 @@ export function ensureStringContent(content: unknown, context?: string): string 
             return item;
           }
           // Fragment objects may have content, text, or data properties
-          const fragmentText = (item as any)?.content || (item as any)?.text || (item as any)?.data || '';
+          const fragmentText = (item)?.content || (item)?.text || (item)?.data || '';
           return typeof fragmentText === 'string' ? fragmentText : '';
         })
         .filter(text => text.length > 0)
         .join('\n');
     }
     
-    // Handle objects with toString method
-    if (typeof content === 'object' && content !== null && 'toString' in content) {
-      return content.toString();
+    // Handle objects with custom toString method
+    if (typeof content === 'object' && content !== null) {
+      // Check if object has a custom toString (not the default Object.prototype.toString)
+      if (content.toString !== Object.prototype.toString) {
+        // Object has custom toString - safe to call
+        return (content as { toString(): string }).toString();
+      }
+      // For plain objects, use JSON serialization
+      return JSON.stringify(content);
     }
-    
-    // Fallback: convert to string
-    return String(content);
+
+    // Fallback: convert primitives (number, boolean, bigint, symbol) to string
+    return String(content as string | number | boolean | bigint | symbol);
     
   } catch (error) {
     Debug.warn(`Content conversion failed${context ? ` in ${context}` : ''}:`, {
@@ -110,7 +116,7 @@ export function safeCountMatches(
  * This provides optimized handling for the specific use case in router.ts
  */
 export function countFragmentMatches(
-  fragments: Fragment[] | unknown,
+  fragments: unknown,
   pattern: RegExp,
   context?: string
 ): number {

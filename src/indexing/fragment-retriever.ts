@@ -17,7 +17,7 @@ export class UniversalFragmentRetriever {
   /**
    * Index a document for fragment retrieval
    */
-  async indexDocument(docId: string, filePath: string, content: string, metadata?: any): Promise<void> {
+  async indexDocument(docId: string, filePath: string, content: string, metadata?: unknown): Promise<void> {
     // Index in all three strategies for flexibility
     this.adaptiveIndex.indexDocument(docId, filePath, content, metadata);
     this.proximityIndex.indexDocument(docId, filePath, content);
@@ -42,23 +42,23 @@ export class UniversalFragmentRetriever {
       selectedStrategy = this.selectOptimalStrategy(query);
     }
     
-    // Execute the selected strategy
+    // Execute the selected strategy (all search methods are synchronous)
     switch (selectedStrategy) {
       case 'adaptive':
-        fragments = await this.adaptiveIndex.search(query, maxFragments);
+        fragments = this.adaptiveIndex.search(query, maxFragments);
         break;
-      
+
       case 'proximity':
-        fragments = await this.proximityIndex.searchWithProximity(query);
+        fragments = this.proximityIndex.searchWithProximity(query);
         break;
-      
+
       case 'semantic':
-        fragments = await this.semanticIndex.searchWithContext(query, { maxFragments });
+        fragments = this.semanticIndex.searchWithContext(query, { maxFragments });
         break;
-      
+
       default:
         // Hybrid approach - combine results from multiple strategies
-        fragments = await this.hybridSearch(query, maxFragments);
+        fragments = this.hybridSearch(query, maxFragments);
         selectedStrategy = 'hybrid';
     }
     
@@ -107,13 +107,11 @@ export class UniversalFragmentRetriever {
     }
   }
   
-  private async hybridSearch(query: string, maxFragments: number): Promise<Fragment[]> {
-    // Get results from all strategies
-    const [adaptiveResults, proximityResults, semanticResults] = await Promise.all([
-      this.adaptiveIndex.search(query, maxFragments * 2),
-      this.proximityIndex.searchWithProximity(query),
-      this.semanticIndex.searchWithContext(query, { maxFragments: maxFragments * 2 })
-    ]);
+  private hybridSearch(query: string, maxFragments: number): Fragment[] {
+    // Get results from all strategies (all search methods are synchronous)
+    const adaptiveResults = this.adaptiveIndex.search(query, maxFragments * 2);
+    const proximityResults = this.proximityIndex.searchWithProximity(query);
+    const semanticResults = this.semanticIndex.searchWithContext(query, { maxFragments: maxFragments * 2 });
     
     // Merge and deduplicate results
     const fragmentMap = new Map<string, Fragment>();

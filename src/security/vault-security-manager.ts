@@ -75,7 +75,7 @@ export interface VaultOperation {
 	context?: {
 		method?: string;
 		contentSize?: number;
-		[key: string]: any;
+		[key: string]: unknown;
 	};
 }
 

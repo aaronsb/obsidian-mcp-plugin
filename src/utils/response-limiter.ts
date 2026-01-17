@@ -61,30 +61,30 @@ export function truncateContent(
  * Process search results to limit response size
  */
 export function limitSearchResults(
-  results: any[],
+  results: unknown[],
   config: ResponseLimiterConfig = DEFAULT_LIMITER_CONFIG
 ): {
-  results: any[];
+  results: unknown[];
   truncated: boolean;
   originalCount: number;
 } {
   const originalCount = results.length;
   let currentTokens = 0;
-  const processedResults: any[] = [];
+  const processedResults: unknown[] = [];
   let truncated = false;
   
-  for (const result of results) {
+  for (const result of results as any[]) {
     // Create a minimal result object
     const minimalResult: any = {
       path: result.path || result.filename || '',
       title: result.title || result.basename || result.path?.split('/').pop()?.replace(/\.(md|png|jpg|jpeg|gif|svg|pdf|txt|json)$/i, '') || ''
     };
-    
+
     // Add score if available
     if (typeof result.score === 'number') {
       minimalResult.score = result.score;
     }
-    
+
     // Process content
     if (result.content || result.context) {
       const rawContent = result.content || result.context;
@@ -92,11 +92,11 @@ export function limitSearchResults(
       const fullContent = ensureStringContent(rawContent, 'response-limiter');
       const preview = truncateContent(fullContent, config.contentPreviewLength);
       minimalResult.preview = preview;
-      
+
       if (config.includeContentHash) {
         minimalResult.contentHash = hashContent(fullContent);
       }
-      
+
       // Store original content length for reference
       minimalResult.contentLength = fullContent.length;
     }
@@ -126,9 +126,9 @@ export function limitSearchResults(
  * Process any response to ensure it fits within token limits
  */
 export function limitResponse(
-  response: any,
+  response: unknown,
   config: ResponseLimiterConfig = DEFAULT_LIMITER_CONFIG
-): any {
+): unknown {
   const responseStr = JSON.stringify(response);
   const tokens = estimateTokens(responseStr);
   
@@ -152,8 +152,8 @@ export function limitResponse(
 /**
  * Limit array responses
  */
-function limitArrayResponse(arr: any[], config: ResponseLimiterConfig): any[] {
-  const limited: any[] = [];
+function limitArrayResponse(arr: unknown[], config: ResponseLimiterConfig): unknown[] {
+  const limited: unknown[] = [];
   let currentTokens = 2; // For array brackets
   
   for (const item of arr) {
@@ -177,19 +177,19 @@ function limitArrayResponse(arr: any[], config: ResponseLimiterConfig): any[] {
 function limitObjectResponse(obj: any, config: ResponseLimiterConfig): any {
   const limited: any = {};
   let currentTokens = 2; // For object brackets
-  
+
   // Prioritize certain keys
   const priorityKeys = ['error', 'message', 'path', 'title', 'query', 'page', 'totalResults'];
   const otherKeys = Object.keys(obj).filter(k => !priorityKeys.includes(k));
   const allKeys = [...priorityKeys.filter(k => k in obj), ...otherKeys];
-  
+
   for (const key of allKeys) {
     if (!(key in obj)) continue;
-    
+
     const value = obj[key];
     const entryStr = JSON.stringify({ [key]: value });
     const entryTokens = estimateTokens(entryStr);
-    
+
     if (currentTokens + entryTokens > config.maxTokens) {
       // Try to add a truncation notice
       if (currentTokens + 50 < config.maxTokens) {
@@ -197,11 +197,11 @@ function limitObjectResponse(obj: any, config: ResponseLimiterConfig): any {
       }
       break;
     }
-    
+
     limited[key] = value;
     currentTokens += entryTokens;
   }
-  
+
   return limited;
 }
 
@@ -240,14 +240,14 @@ export function paginateResults<T>(
     totalResults,
     totalPages
   };
-  
+
   // Add truncation metadata if results were limited
   if (truncated) {
     response.truncated = true;
     response.originalCount = originalCount;
     response.message = `Results limited to prevent token overflow. Showing ${limitedResults.length} of ${originalCount} total results.`;
   }
-  
+
   return response;
 }
 

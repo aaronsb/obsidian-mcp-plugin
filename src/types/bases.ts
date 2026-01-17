@@ -26,7 +26,7 @@ export interface BaseProperty {
   type: BasePropertyType;
   formula?: string; // For calculated properties
   required?: boolean;
-  defaultValue?: any;
+  defaultValue?: unknown;
   displayName?: string;
   description?: string;
 }
@@ -73,7 +73,7 @@ export interface BaseView {
 export interface BaseFilter {
   property: string;
   operator: FilterOperator;
-  value: any;
+  value: unknown;
   caseSensitive?: boolean;
 }
 
@@ -123,7 +123,7 @@ export interface BaseQueryResult {
 export interface BaseNote {
   path: string;
   title: string;
-  properties: Record<string, any>;
+  properties: Record<string, unknown>;
   content?: string; // Optional, for performance
   tags?: string[];
   links?: string[];
@@ -135,7 +135,7 @@ export interface BaseTemplate {
   name: string;
   folder?: string;
   fileNameFormat?: string; // e.g., "{{date}}-{{title}}"
-  properties: Record<string, any>;
+  properties: Record<string, unknown>;
   contentTemplate?: string;
 }
 
@@ -159,14 +159,14 @@ export interface BaseFormulaFunctions {
   min: (property: string) => number;
   max: (property: string) => number;
   concat: (...values: string[]) => string;
-  date: (value: any) => Date;
+  date: (value: unknown) => Date;
   days_between: (date1: Date, date2: Date) => number;
 }
 
 export interface BaseError {
   code: BaseErrorCode;
   message: string;
-  details?: any;
+  details?: unknown;
 }
 
 export type BaseErrorCode = 
