@@ -220,7 +220,7 @@ describe('Dataview Integration', () => {
       const api = new MockObsidianAPI(app);
       const tool = new DataviewTool(api as any);
 
-      const result = await tool.executeQuery('LIST FROM #tag');
+      const result = await tool.executeQuery('LIST FROM #tag') as any;
 
       expect(result.success).toBe(true);
       expect(result.query).toBe('LIST FROM #tag');
@@ -234,7 +234,7 @@ describe('Dataview Integration', () => {
       const api = new MockObsidianAPI(app);
       const tool = new DataviewTool(api as any);
 
-      const result = await tool.executeQuery('TABLE name, created FROM #tag');
+      const result = await tool.executeQuery('TABLE name, created FROM #tag') as any;
 
       expect(result.success).toBe(true);
       expect(result.result.type).toBe('table');
@@ -247,7 +247,7 @@ describe('Dataview Integration', () => {
       const api = new MockObsidianAPI(app);
       const tool = new DataviewTool(api as any);
 
-      const result = await tool.listPages();
+      const result = await tool.listPages() as any;
 
       expect(result.success).toBe(true);
       expect(result.source).toBe('all');
@@ -263,7 +263,7 @@ describe('Dataview Integration', () => {
       const api = new MockObsidianAPI(app);
       const tool = new DataviewTool(api as any);
 
-      const result = await tool.getPageMetadata('Note1.md');
+      const result = await tool.getPageMetadata('Note1.md') as any;
 
       expect(result.success).toBe(true);
       expect(result.path).toBe('Note1.md');
@@ -278,11 +278,11 @@ describe('Dataview Integration', () => {
       const api = new MockObsidianAPI(app);
       const tool = new DataviewTool(api as any);
 
-      const validResult = await tool.validateQuery('LIST FROM #tag');
+      const validResult = await tool.validateQuery('LIST FROM #tag') as any;
       expect(validResult.valid).toBe(true);
       expect(validResult.queryType).toBe('LIST');
 
-      const invalidResult = await tool.validateQuery('INVALID QUERY');
+      const invalidResult = await tool.validateQuery('INVALID QUERY') as any;
       expect(invalidResult.valid).toBe(false);
       expect(invalidResult.error).toContain('Query must start with one of');
     });
