@@ -36,8 +36,9 @@ export class BrowserMCPServer {
     try {
       // Create a simple HTTP server using browser APIs
       // We'll use a worker or service worker approach for this
-      const serverCode = this.generateServerCode();
-      
+      // Generate server code (currently unused, reserved for future worker implementation)
+      this.generateServerCode();
+
       // For now, let's create a simple mock server that can handle requests
       this.server = {
         port: this.port,

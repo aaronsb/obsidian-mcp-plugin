@@ -1,10 +1,9 @@
-import { App, Plugin, PluginSettingTab, Setting, Notice, TFolder, Menu, setIcon, Modal } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Notice, TFolder, setIcon, Modal } from 'obsidian';
 import { MCPHttpServer } from './mcp-server';
 import { getVersion } from './version';
 import { Debug } from './utils/debug';
 import { MCPIgnoreManager } from './security/mcp-ignore-manager';
 import { randomBytes } from 'crypto';
-import { createSemanticTools } from './tools/semantic-tools';
 import { PluginDetector } from './utils/plugin-detector';
 import { CertificateConfig } from './utils/certificate-manager';
 import { ValidationConfig } from './validation/input-validator';
@@ -312,7 +311,7 @@ export default class ObsidianMCPPlugin extends Plugin {
 				});
 				testServer.on('error', () => resolve('in-use')); // Port is in use
 			});
-		} catch (error) {
+		} catch {
 			return 'available'; // Assume available if we can't test
 		}
 	}
@@ -373,7 +372,7 @@ export default class ObsidianMCPPlugin extends Plugin {
 		try {
 			// Try to get the vault path from the adapter
 			return (this.app.vault.adapter as any).basePath || '';
-		} catch (error) {
+		} catch {
 			return '';
 		}
 	}
@@ -411,7 +410,7 @@ export default class ObsidianMCPPlugin extends Plugin {
 								let currentContent = '';
 								try {
 									currentContent = await this.app.vault.adapter.read('.mcpignore');
-								} catch (readError) {
+								} catch {
 									Debug.log('.mcpignore not found when reading, will create new');
 									currentContent = '';
 								}
@@ -642,8 +641,8 @@ class MCPSettingTab extends PluginSettingTab {
 				}));
 
 		const portSetting = new Setting(containerEl)
-			.setName('HTTP port')
-			.setDesc('Port for HTTP mcp server (default: 3001)')
+			.setName('Server port')
+			.setDesc('Port for the server (default: 3001)')
 			.addText(text => {
 				let pendingPort = this.plugin.settings.httpPort;
 				let hasChanges = false;
@@ -713,7 +712,7 @@ class MCPSettingTab extends PluginSettingTab {
 	}
 	
 	private createHTTPSConfigSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName("HTTPS/TLS configuration").setHeading();
+		new Setting(containerEl).setName("Secure transport").setHeading();
 		
 		new Setting(containerEl)
 			.setName('Enable HTTPS server')
@@ -748,8 +747,8 @@ class MCPSettingTab extends PluginSettingTab {
 		
 		if (this.plugin.settings.httpsEnabled) {
 			const httpsPortSetting = new Setting(containerEl)
-				.setName('HTTPS port')
-				.setDesc('Port for HTTPS mcp server (default: 3443)')
+				.setName('Secure port')
+				.setDesc('Port for secure connections (default: 3443)')
 				.addText(text => text
 					.setPlaceholder('3443')
 					.setValue(this.plugin.settings.httpsPort.toString())
@@ -855,8 +854,8 @@ class MCPSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName("Authentication").setHeading();
 		
 		new Setting(containerEl)
-			.setName('API key')
-			.setDesc('Secure API key for authenticating mcp clients')
+			.setName('Authentication key')
+			.setDesc('Secure key for authenticating mcp clients')
 			.addText(text => {
 				const input = text
 					.setPlaceholder('API key will be shown here')
@@ -879,26 +878,27 @@ class MCPSettingTab extends PluginSettingTab {
 				.setButtonText('Regenerate')
 				.setTooltip('Generate a new API key')
 				.setWarning()
-				.onClick(async () => {
-					// Show confirmation dialog
-					const confirmed = confirm('Are you sure you want to regenerate the API key? This will invalidate the current key and require updating all MCP clients.');
-					
-					if (confirmed) {
-						this.plugin.settings.apiKey = this.plugin.generateApiKey();
-						await this.plugin.saveSettings();
-						new Notice('API key regenerated. Update your mcp clients with the new key.');
-						this.display(); // Refresh the settings display
-					}
+				.onClick(() => {
+					new ConfirmationModal(
+						this.app,
+						'Are you sure you want to regenerate the API key? This will invalidate the current key and require updating all MCP clients.',
+						async () => {
+							this.plugin.settings.apiKey = this.plugin.generateApiKey();
+							await this.plugin.saveSettings();
+							new Notice('API key regenerated. Update your mcp clients with the new key.');
+							this.display();
+						}
+					).open();
 				}));
 		
 		// Add a note about security
-		const securityNote = containerEl.createEl('p', {
+		containerEl.createEl('p', {
 			text: 'Note: the API key is stored in the plugin settings file. Anyone with access to your vault can read it.',
 			cls: 'setting-item-description mcp-security-note'
 		});
 		
 		// Add note about auth methods
-		const authNote = containerEl.createEl('p', {
+		containerEl.createEl('p', {
 			text: 'Supports both bearer token (recommended) and basic authentication.',
 			cls: 'setting-item-description mcp-security-note'
 		});
@@ -1256,7 +1256,7 @@ class MCPSettingTab extends PluginSettingTab {
 		
 		// Show warning if auth is disabled
 		if (this.plugin.settings.dangerouslyDisableAuth) {
-			const warningEl = info.createEl('div', {
+			info.createEl('div', {
 				text: '⚠️ warning: authentication is disabled. Your vault is accessible without credentials!',
 				cls: 'mcp-warning-box'
 			});
@@ -1281,7 +1281,6 @@ class MCPSettingTab extends PluginSettingTab {
 			toolsList.push('📊 dataview - Query vault data with DQL (Dataview plugin detected)');
 		}
 		
-		const toolCount = toolsList.length;
 		new Setting(info).setName("").setHeading();
 		const toolsListEl = info.createEl('ul');
 		toolsList.forEach(tool => {
@@ -1291,18 +1290,17 @@ class MCPSettingTab extends PluginSettingTab {
 		// Add plugin integration status
 		if (isDataviewAvailable) {
 			const dataviewStatus = detector.getDataviewStatus();
-			const statusEl = info.createEl('p', {
+			info.createEl('p', {
 				text: `🔌 Plugin Integrations: Dataview v${dataviewStatus.version} (enabled)`,
 				cls: 'plugin-integration-status'
 			});
 		} else {
-			const statusEl = info.createEl('p', {
+			info.createEl('p', {
 				text: '🔌 plugin integrations: none detected (install dataview for additional functionality)',
 				cls: 'plugin-integration-status'
 			});
 		}
 		
-		const resourceCount = this.plugin.settings.enableConcurrentSessions ? 2 : 1;
 		new Setting(info).setName("").setHeading();
 		const resourcesList = info.createEl('ul');
 		resourcesList.createEl('li', {text: '📊 Obsidian://vault-info - real-time vault metadata'});
@@ -1330,7 +1328,7 @@ class MCPSettingTab extends PluginSettingTab {
 		this.addCopyButton(commandExample, claudeCommand);
 		
 		new Setting(info).setName("Client configuration (claude desktop, cline, etc.)").setHeading();
-		const desktopDesc = info.createEl('p', {
+		info.createEl('p', {
 			text: 'Add this to your mcp client configuration file:'
 		});
 		
@@ -1368,7 +1366,7 @@ class MCPSettingTab extends PluginSettingTab {
 
 		// Option 2: Via mcp-remote
 		info.createEl('p', {text: 'Option 2: via mcp-remote (for claude desktop):', cls: 'mcp-section-header'});
-		const remoteDesc = info.createEl('p', {
+		info.createEl('p', {
 			text: 'Mcp-remote supports authentication headers via the --header flag:',
 			cls: 'setting-item-description mcp-security-note'
 		});
@@ -1431,7 +1429,7 @@ class MCPSettingTab extends PluginSettingTab {
 
 		// Add note about self-signed certificates if applicable
 		if (isUsingSelfSignedCert) {
-			const certNote = info.createEl('p', {
+			info.createEl('p', {
 				text: '📝 self-signed certificate detected: node_TLS_reject_unauthorized=0 is included to allow the secure connection.',
 				cls: 'setting-item-description mcp-cert-note'
 			});
@@ -1439,7 +1437,7 @@ class MCPSettingTab extends PluginSettingTab {
 		
 		// Option 2a: Windows Configuration
 		info.createEl('p', {text: 'Option 2a: Windows configuration (via mcp-remote):', cls: 'mcp-section-header'});
-		const windowsNote = info.createEl('p', {
+		info.createEl('p', {
 			text: 'Windows has issues with spaces in npx arguments. Use environment variables to work around this:',
 			cls: 'setting-item-description mcp-security-note'
 		});
@@ -1691,6 +1689,39 @@ class NoteTakingEnthusiastModal extends Modal {
 		img.alt = 'Note Taking Enthusiast';
 		contentEl.createEl('p', { text: 'Thanks for being an Obsidian enthusiast!', cls: 'mcp-easter-egg-thanks' });
 	}
+	onClose() {
+		this.contentEl.empty();
+	}
+}
+
+class ConfirmationModal extends Modal {
+	private message: string;
+	private onConfirm: () => void | Promise<void>;
+
+	constructor(app: App, message: string, onConfirm: () => void | Promise<void>) {
+		super(app);
+		this.message = message;
+		this.onConfirm = onConfirm;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.createEl('p', { text: this.message });
+
+		const buttonContainer = contentEl.createDiv('modal-button-container');
+
+		const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
+		cancelButton.addEventListener('click', () => {
+			this.close();
+		});
+
+		const confirmButton = buttonContainer.createEl('button', { text: 'Confirm', cls: 'mod-warning' });
+		confirmButton.addEventListener('click', () => {
+			void Promise.resolve(this.onConfirm()).then(() => this.close());
+		});
+	}
+
 	onClose() {
 		this.contentEl.empty();
 	}

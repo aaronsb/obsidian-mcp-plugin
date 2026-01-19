@@ -58,7 +58,7 @@ export class MCPIgnoreManager {
       this.lastModified = stat?.mtime || Date.now();
       
       Debug.log(`MCPIgnore: Loaded ${this.patterns.length} exclusion patterns`);
-    } catch (error) {
+    } catch {
       // File doesn't exist or can't be read - no exclusions
       this.patterns = [];
       this.matchers = [];
@@ -289,7 +289,7 @@ export class MCPIgnoreManager {
       // Force fresh check - no caching
       const stat = await this.app.vault.adapter.stat(this.ignorePath);
       return stat !== null && stat !== undefined;
-    } catch (error) {
+    } catch {
       // File doesn't exist
       Debug.log(`MCPIgnore: File check for ${this.ignorePath} - does not exist`);
       return false;

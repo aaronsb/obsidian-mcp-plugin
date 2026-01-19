@@ -1,14 +1,7 @@
-import { App, TFile, CachedMetadata } from 'obsidian';
+import { App, TFile } from 'obsidian';
 import { ObsidianAPI } from '../utils/obsidian-api';
 import { SearchCore } from '../utils/search-core';
-import { GraphSearchTraversal, SearchSnippet, TraversalNode, GraphSearchResult } from './graph-search-traversal';
-
-interface TagEdge {
-    source: string;
-    target: string;
-    tag: string;
-    type: 'tag-link';
-}
+import { GraphSearchTraversal, TraversalNode, GraphSearchResult } from './graph-search-traversal';
 
 export class GraphSearchTagTraversal extends GraphSearchTraversal {
     constructor(app: App, api: ObsidianAPI, searchCore: SearchCore) {

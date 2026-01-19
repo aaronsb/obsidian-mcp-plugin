@@ -96,7 +96,7 @@ export class SecurePathValidator {
 				if (!this.isWithinVault(realPath)) {
 					throw new SecurityError('Resolved path escapes vault boundary', 'SYMLINK_ESCAPE');
 				}
-			} catch (e) {
+			} catch {
 				// File system error, let it pass for now
 			}
 		}

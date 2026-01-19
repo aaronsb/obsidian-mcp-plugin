@@ -1,5 +1,5 @@
 import { ObsidianAPI } from '../utils/obsidian-api';
-import { GraphTraversal, GraphTraversalOptions, GraphNode, GraphEdge } from '../utils/graph-traversal';
+import { GraphTraversal, GraphTraversalOptions, GraphNode } from '../utils/graph-traversal';
 import { App, TFile } from 'obsidian';
 
 /**

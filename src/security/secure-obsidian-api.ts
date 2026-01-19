@@ -1,10 +1,9 @@
 import { App } from 'obsidian';
 import { ObsidianAPI } from '../utils/obsidian-api';
-import { 
-	VaultSecurityManager, 
-	OperationType, 
-	SecuritySettings,
-	DEFAULT_SECURITY_SETTINGS 
+import {
+	VaultSecurityManager,
+	OperationType,
+	SecuritySettings
 } from './vault-security-manager';
 import { ObsidianConfig, ObsidianFileResponse } from '../types/obsidian';
 import { Debug } from '../utils/debug';
@@ -67,11 +66,11 @@ export class SecureObsidianAPI extends ObsidianAPI {
 
 	async getActiveFile(): Promise<any> {
 		// This doesn't need path validation as it gets the currently active file
-		const validated = await this.security.validateOperation({
+		await this.security.validateOperation({
 			type: OperationType.READ,
 			context: { method: 'getActiveFile' }
 		});
-		
+
 		return super.getActiveFile();
 	}
 

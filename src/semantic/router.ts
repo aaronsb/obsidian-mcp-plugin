@@ -332,7 +332,7 @@ export class SemanticRouter {
           if (destFile && !overwrite) {
             throw new Error(`Destination already exists: ${destination}. Set overwrite=true to replace.`);
           }
-        } catch (e) {
+        } catch {
           // File doesn't exist, which is what we want
         }
         
@@ -417,7 +417,7 @@ export class SemanticRouter {
           if (destFile && !overwrite) {
             throw new Error(`File already exists: ${newPath}. Set overwrite=true to replace.`);
           }
-        } catch (e) {
+        } catch {
           // File doesn't exist, which is what we want
         }
         
@@ -487,14 +487,14 @@ export class SemanticRouter {
         try {
           const sourceFile = await this.api.getFile(path);
           return await this.copyFile(path, destination, overwrite, sourceFile);
-        } catch (fileError: unknown) {
+        } catch {
           // If file operation failed, try as directory (this will also go through security validation)
           try {
             // Test if it's a directory by trying to list its contents
             await this.api.listFiles(path);
             // If listing succeeds, it's a directory
             return await this.copyDirectoryRecursive(path, destination, overwrite);
-          } catch (dirError: unknown) {
+          } catch {
             // Neither file nor directory worked
             throw new Error(`Source not found or inaccessible: ${path}`);
           }
@@ -502,7 +502,7 @@ export class SemanticRouter {
       }
       
       case 'split': {
-        const { path, splitBy, delimiter, level, linesPerFile, maxSize, outputPattern, outputDirectory } = params;
+        const { path, splitBy, outputPattern, outputDirectory } = params;
         
         if (!path || !splitBy) {
           throw new Error('Both path and splitBy are required for split operation');
@@ -598,7 +598,7 @@ export class SemanticRouter {
           if (destFile && !overwrite) {
             throw new Error(`Destination already exists: ${destination}. Set overwrite=true to replace.`);
           }
-        } catch (e) {
+        } catch {
           // File doesn't exist, which is what we want
         }
         
@@ -897,10 +897,10 @@ export class SemanticRouter {
       if (destFile && !overwrite) {
         throw new Error(`Destination already exists: ${destination}. Set overwrite=true to replace.`);
       }
-    } catch (e: unknown) {
+    } catch {
       // File doesn't exist, which is what we want
     }
-    
+
     // Check for image files
     if (isImageFile(sourceFile)) {
       throw new Error('Cannot copy image files - use Obsidian file explorer');

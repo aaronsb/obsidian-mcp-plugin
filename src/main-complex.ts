@@ -109,8 +109,7 @@ class MCPSettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		// eslint-disable-next-line obsidianmd/ui/sentence-case -- acronym at start
-		new Setting(containerEl).setName("MCP plugin configuration").setHeading();
+		new Setting(containerEl).setName("Plugin configuration").setHeading();
 
 		new Setting(containerEl)
 			.setName('Enable HTTP server')
@@ -123,8 +122,8 @@ class MCPSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('HTTP port')
-			.setDesc('Port for HTTP mcp server (default: 3001)')
+			.setName('Server port')
+			.setDesc('Port for the server (default: 3001)')
 			.addText(text => text
 				.setPlaceholder('3001')
 				.setValue(this.plugin.settings.httpPort.toString())
@@ -137,8 +136,8 @@ class MCPSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('HTTPS port')
-			.setDesc('Port for HTTPS mcp server (default: 3002)')
+			.setName('Secure port')
+			.setDesc('Port for secure connections (default: 3002)')
 			.addText(text => text
 				.setPlaceholder('3002')
 				.setValue(this.plugin.settings.httpsPort.toString())

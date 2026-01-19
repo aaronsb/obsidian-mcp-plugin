@@ -1,5 +1,4 @@
 import { Debug } from './debug';
-import { Fragment } from '../types/fragment';
 
 /**
  * Safely ensures content is converted to string format

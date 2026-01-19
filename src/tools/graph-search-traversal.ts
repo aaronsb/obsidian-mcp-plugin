@@ -1,4 +1,4 @@
-import { App, TFile, CachedMetadata } from 'obsidian';
+import { App, TFile } from 'obsidian';
 import { ObsidianAPI } from '../utils/obsidian-api';
 import { SearchCore } from '../utils/search-core';
 
@@ -230,11 +230,7 @@ export class GraphSearchTraversal {
     ): Promise<GraphSearchResult & { strategies: string[] }> {
         const {
             maxDepth = 3,
-            strategy = 'best-first',
-            beamWidth = 5,
-            includeOrphans = false,
-            followTags = true,
-            filePattern
+            strategy = 'best-first'
         } = options;
 
         // Implementation would vary based on strategy

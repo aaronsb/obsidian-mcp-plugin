@@ -497,7 +497,7 @@ export class SearchFacade {
         if (content === null) {
           try {
             content = await this.app.vault.read(file);
-          } catch (e) {
+          } catch {
             content = '';
           }
         }
@@ -551,7 +551,7 @@ export class SearchFacade {
         if (content === null) {
           try {
             content = await this.app.vault.read(file);
-          } catch (e) {
+          } catch {
             content = '';
           }
         }

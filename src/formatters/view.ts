@@ -5,7 +5,6 @@
 import {
   header,
   property,
-  truncate,
   divider,
   tip,
   summaryFooter,

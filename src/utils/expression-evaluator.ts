@@ -1,4 +1,4 @@
-import { App, TFile, getAllTags } from 'obsidian';
+import { App, getAllTags } from 'obsidian';
 import { NoteContext } from '../types/bases-yaml';
 import { Debug } from './debug';
 import { BasesReference } from './bases-reference';

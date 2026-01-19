@@ -1,4 +1,4 @@
-import { App, TFile, TFolder, getAllTags } from 'obsidian';
+import { App, TFile, getAllTags } from 'obsidian';
 import * as yaml from 'js-yaml';
 import {
   BaseYAML,

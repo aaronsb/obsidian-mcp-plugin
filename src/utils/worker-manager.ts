@@ -162,7 +162,7 @@ export class WorkerManager extends EventEmitter {
     Debug.log(`🛑 Terminating all ${this.workers.size} workers`);
     const promises = [];
     
-    for (const [sessionId, worker] of this.workers) {
+    for (const [, worker] of this.workers) {
       promises.push(worker.terminate());
     }
     

@@ -1,10 +1,10 @@
 import { App, TFile, TFolder, TAbstractFile, Command, getAllTags } from 'obsidian';
 import { ObsidianConfig, ObsidianFile, ObsidianFileResponse } from '../types/obsidian';
-import { paginateResults, paginateFiles } from './response-limiter';
+import { paginateFiles } from './response-limiter';
 import { isImageFile as checkIsImageFile, processImageResponse, IMAGE_PROCESSING_PRESETS } from './image-handler';
 import { getVersion } from '../version';
 import { SearchResult } from './advanced-search';
-import { SearchFacade, SearchFacadeOptions, UnifiedSearchResult, PaginatedSearchResponse } from './search-facade';
+import { SearchFacade } from './search-facade';
 import { MCPIgnoreManager } from '../security/mcp-ignore-manager';
 import { Debug } from './debug';
 import { BasesAPI } from './bases-api';

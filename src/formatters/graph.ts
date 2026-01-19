@@ -8,8 +8,7 @@ import {
   divider,
   tip,
   summaryFooter,
-  joinLines,
-  formatPath
+  joinLines
 } from './utils';
 
 /**

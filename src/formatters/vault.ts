@@ -11,9 +11,7 @@ import {
   divider,
   tip,
   summaryFooter,
-  joinLines,
-  formatPath,
-  formatTree
+  joinLines
 } from './utils';
 
 /**

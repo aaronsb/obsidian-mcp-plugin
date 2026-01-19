@@ -1,6 +1,6 @@
 import { Debug } from './debug';
 import { TFile, App } from 'obsidian';
-import { estimateTokens, truncateContent } from './response-limiter';
+import { truncateContent } from './response-limiter';
 
 export interface SearchResult {
   path: string;

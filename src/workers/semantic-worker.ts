@@ -1,5 +1,5 @@
-import { parentPort, workerData } from 'worker_threads';
-import { SemanticRequest, SemanticResponse } from '../types/semantic';
+import { parentPort } from 'worker_threads';
+import { SemanticRequest } from '../types/semantic';
 
 /**
  * Worker thread for processing semantic operations
@@ -29,9 +29,6 @@ interface WorkerResponse {
   result?: unknown;
   error?: string;
 }
-
-// Simple in-memory cache for worker-specific data
-const workerCache = new Map<string, unknown>();
 
 /**
  * Process a semantic request in the worker thread
@@ -203,7 +200,7 @@ async function performTextSearch(params: any): Promise<any> {
  * Extract fragments from content
  */
 async function extractFragments(params: any): Promise<any> {
-  const { content, query, strategy = 'auto', maxFragments = 5 } = params;
+  const { content, query, maxFragments = 5 } = params;
   
   if (!content) {
     throw new Error('Content is required for fragment extraction');

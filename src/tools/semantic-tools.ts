@@ -2,9 +2,7 @@ import { Debug } from '../utils/debug';
 import { ObsidianAPI } from '../utils/obsidian-api';
 import { SemanticRouter } from '../semantic/router';
 import { SemanticRequest } from '../types/semantic';
-import { isImageFile } from '../utils/image-handler';
 import { isImageFile as isImageFileObject } from '../types/obsidian';
-import { App } from 'obsidian';
 import { DataviewTool, isDataviewToolAvailable } from './dataview-tool';
 import { formatResponse } from '../formatters';
 
@@ -242,42 +240,6 @@ const createSemanticTool = (operation: string) => ({
     }
   }
 });
-
-function filterImageFilesFromSearchResults(searchResult: any): any {
-  if (!searchResult) return searchResult;
-
-  // Handle paginated search results format
-  if (searchResult.results && Array.isArray(searchResult.results)) {
-    return {
-      ...searchResult,
-      results: searchResult.results.filter((result: any) => {
-        // Filter out results that reference image files
-        if (result.filename && typeof result.filename === 'string' && isImageFile(result.filename)) {
-          return false;
-        }
-        if (result.path && typeof result.path === 'string' && isImageFile(result.path)) {
-          return false;
-        }
-        return true;
-      })
-    };
-  }
-
-  // Handle simple search results format (array of results)
-  if (Array.isArray(searchResult)) {
-    return searchResult.filter((result: any) => {
-      if (result.filename && typeof result.filename === 'string' && isImageFile(result.filename)) {
-        return false;
-      }
-      if (result.path && typeof result.path === 'string' && isImageFile(result.path)) {
-        return false;
-      }
-      return true;
-    });
-  }
-
-  return searchResult;
-}
 
 function getOperationDescription(operation: string): string {
   const descriptions: Record<string, string> = {

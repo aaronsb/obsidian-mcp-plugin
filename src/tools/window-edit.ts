@@ -1,5 +1,5 @@
 import { ObsidianAPI } from '../utils/obsidian-api';
-import { findFuzzyMatches, extractContext } from '../utils/fuzzy-match';
+import { findFuzzyMatches } from '../utils/fuzzy-match';
 import { ContentBufferManager } from '../utils/content-buffer';
 import { isImageFile } from '../types/obsidian';
 

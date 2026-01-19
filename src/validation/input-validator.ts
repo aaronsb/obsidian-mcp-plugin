@@ -320,7 +320,7 @@ export class SafeRegexValidator implements Validator {
     try {
       // Test if it's a valid regex
       new RegExp(query);
-    } catch (e) {
+    } catch {
       errors.push({
         field: 'query',
         message: 'Invalid regular expression syntax',
@@ -481,7 +481,7 @@ export class ContentValidator implements Validator {
     // Check for valid UTF-8 encoding
     try {
       Buffer.from(content, 'utf8');
-    } catch (e) {
+    } catch {
       errors.push({
         field: 'content',
         message: 'Content contains invalid UTF-8 sequences',

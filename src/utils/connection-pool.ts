@@ -1,9 +1,6 @@
 import { EventEmitter } from 'events';
-import { Worker } from 'worker_threads';
-import { randomUUID } from 'crypto';
 import { Debug } from './debug';
 import { WorkerManager } from './worker-manager';
-import * as path from 'path';
 
 export interface PooledRequest {
   id: string;

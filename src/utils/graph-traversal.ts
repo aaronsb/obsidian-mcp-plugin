@@ -167,7 +167,6 @@ export class GraphTraversal {
     const {
       maxDepth = 3,
       maxNodes = 100,
-      includeUnresolved = false,
       followBacklinks = true,
       followForwardLinks = true,
       followTags = false,
