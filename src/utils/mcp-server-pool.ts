@@ -6,6 +6,7 @@ import { SecureObsidianAPI } from '../security/secure-obsidian-api';
 import { createSemanticTools } from '../tools/semantic-tools';
 import { DataviewTool, isDataviewToolAvailable } from '../tools/dataview-tool';
 import { getVersion } from '../version';
+import { jsonSchemaToZod } from './json-schema-to-zod';
 
 interface PooledServer {
   server: McpServer;
@@ -114,13 +115,21 @@ export class MCPServerPool extends EventEmitter {
     // Register semantic tools using the new McpServer API
     const availableTools = createSemanticTools(this.obsidianAPI);
     for (const tool of availableTools) {
+      // Convert JSON Schema to Zod schema for the new McpServer API
+      const zodSchema = jsonSchemaToZod(tool.inputSchema as {
+        type?: string;
+        properties?: Record<string, Record<string, unknown>>;
+        required?: string[];
+      });
+
       server.registerTool(tool.name, {
         description: tool.description,
-        inputSchema: tool.inputSchema
-      }, async (args: Record<string, unknown>) => {
-        const action = args && typeof args === 'object' && 'action' in args ? String(args.action) : 'unknown';
+        inputSchema: zodSchema
+      }, async (args: unknown) => {
+        const typedArgs = args as Record<string, unknown>;
+        const action = typedArgs && typeof typedArgs === 'object' && 'action' in typedArgs ? String(typedArgs.action) : 'unknown';
         Debug.log(`🔧 [Session ${sessionId}] Executing tool: ${tool.name} with action: ${action}`);
-        return await tool.handler(sessionAPI, args);
+        return await tool.handler(sessionAPI, typedArgs);
       });
     }
 

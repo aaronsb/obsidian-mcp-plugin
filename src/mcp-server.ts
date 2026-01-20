@@ -20,6 +20,7 @@ import { ConnectionPool, PooledRequest } from './utils/connection-pool';
 import { SessionManager } from './utils/session-manager';
 import { MCPServerPool } from './utils/mcp-server-pool';
 import { CertificateManager } from './utils/certificate-manager';
+import { jsonSchemaToZod } from './utils/json-schema-to-zod';
 
 
 export class MCPHttpServer {
@@ -200,13 +201,21 @@ export class MCPHttpServer {
     // Register semantic tools using the new McpServer API
     const availableTools = createSemanticTools(this.obsidianAPI);
     for (const tool of availableTools) {
+      // Convert JSON Schema to Zod schema for the new McpServer API
+      const zodSchema = jsonSchemaToZod(tool.inputSchema as {
+        type?: string;
+        properties?: Record<string, Record<string, unknown>>;
+        required?: string[];
+      });
+
       this.mcpServer.registerTool(tool.name, {
         description: tool.description,
-        inputSchema: tool.inputSchema
-      }, async (args: Record<string, unknown>) => {
-        const action = args && typeof args === 'object' && 'action' in args ? String(args.action) : 'unknown';
+        inputSchema: zodSchema
+      }, async (args: unknown) => {
+        const typedArgs = args as Record<string, unknown>;
+        const action = typedArgs && typeof typedArgs === 'object' && 'action' in typedArgs ? String(typedArgs.action) : 'unknown';
         Debug.log(`🔧 Executing semantic tool: ${tool.name} with action: ${action}`);
-        return await tool.handler(this.obsidianAPI, args);
+        return await tool.handler(this.obsidianAPI, typedArgs);
       });
     }
 
