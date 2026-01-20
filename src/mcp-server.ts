@@ -3,10 +3,15 @@ import cors from 'cors';
 import { App, Notice } from 'obsidian';
 import { Server } from 'http';
 import { Server as HttpsServer } from 'https';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { Server as MCPServer } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
-  isInitializeRequest
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
+  isInitializeRequest,
+  type CallToolResult
 } from '@modelcontextprotocol/sdk/types.js';
 import { randomUUID } from 'crypto';
 import * as path from 'path';
@@ -20,13 +25,13 @@ import { ConnectionPool, PooledRequest } from './utils/connection-pool';
 import { SessionManager } from './utils/session-manager';
 import { MCPServerPool } from './utils/mcp-server-pool';
 import { CertificateManager } from './utils/certificate-manager';
-import { jsonSchemaToZod } from './utils/json-schema-to-zod';
 
 
 export class MCPHttpServer {
   private app: express.Application;
   private server?: Server | HttpsServer;
-  private mcpServer?: McpServer; // Single server for non-concurrent mode
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Using Server (not McpServer) because McpServer requires Zod schemas
+  private mcpServer?: MCPServer; // Single server for non-concurrent mode
   private mcpServerPool?: MCPServerPool; // Server pool for concurrent mode
   private transports: Map<string, StreamableHTTPServerTransport> = new Map();
   private obsidianApp: App;
@@ -173,7 +178,8 @@ export class MCPHttpServer {
       Debug.log(`🏊 Connection pool initialized with max ${maxConnections} connections`);
     } else {
       // Initialize single MCP Server for non-concurrent mode
-      this.mcpServer = new McpServer(
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- Using Server (not McpServer) for JSON Schema support
+      this.mcpServer = new MCPServer(
         {
           name: 'Semantic Notes Vault MCP',
           version: getVersion()
@@ -198,76 +204,123 @@ export class MCPHttpServer {
     // In concurrent mode, each server in the pool has its own handlers
     if (!this.mcpServer) return;
 
-    // Register semantic tools using the new McpServer API
+    // Get available tools
     const availableTools = createSemanticTools(this.obsidianAPI);
-    for (const tool of availableTools) {
-      // Convert JSON Schema to Zod schema for the new McpServer API
-      const zodSchema = jsonSchemaToZod(tool.inputSchema as {
-        type?: string;
-        properties?: Record<string, Record<string, unknown>>;
-        required?: string[];
-      });
 
-      this.mcpServer.registerTool(tool.name, {
-        description: tool.description,
-        inputSchema: zodSchema
-      }, async (args: unknown) => {
-        const typedArgs = args as Record<string, unknown>;
-        const action = typedArgs && typeof typedArgs === 'object' && 'action' in typedArgs ? String(typedArgs.action) : 'unknown';
-        Debug.log(`🔧 Executing semantic tool: ${tool.name} with action: ${action}`);
-        return await tool.handler(this.obsidianAPI, typedArgs);
-      });
-    }
-
-    // Register vault-info resource
-    this.mcpServer.registerResource('Vault Information', 'obsidian://vault-info', {
-      description: 'Current vault status, file counts, and metadata',
-      mimeType: 'application/json'
-    }, async () => {
-      const vaultName = this.obsidianApp.vault.getName();
-      const activeFile = this.obsidianApp.workspace.getActiveFile();
-      const allFiles = this.obsidianApp.vault.getAllLoadedFiles();
-      const markdownFiles = this.obsidianApp.vault.getMarkdownFiles();
-
-      const vaultInfo = {
-        vault: {
-          name: vaultName,
-          path: (this.obsidianApp.vault.adapter as any).basePath || 'Unknown'
-        },
-        activeFile: activeFile ? {
-          name: activeFile.name,
-          path: activeFile.path,
-          basename: activeFile.basename,
-          extension: activeFile.extension
-        } : null,
-        files: {
-          total: allFiles.length,
-          markdown: markdownFiles.length,
-          attachments: allFiles.length - markdownFiles.length
-        },
-        plugin: {
-          version: getVersion(),
-          status: 'Connected and operational',
-          transport: 'HTTP MCP via Express.js + MCP SDK'
-        },
-        timestamp: new Date().toISOString()
-      };
-
+    // List tools handler
+    this.mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
+      Debug.log('📋 Listing available tools');
       return {
-        contents: [{
-          uri: 'obsidian://vault-info',
-          mimeType: 'application/json',
-          text: JSON.stringify(vaultInfo, null, 2)
-        }]
+        tools: availableTools.map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema
+        }))
       };
     });
 
-    // Register Dataview reference resource if plugin is available
+    // Call tool handler
+    this.mcpServer.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
+      const { name, arguments: args } = request.params;
+      Debug.log(`🔧 Executing tool: ${name}`, args);
+
+      const tool = availableTools.find(t => t.name === name);
+      if (!tool) {
+        return {
+          content: [{
+            type: 'text',
+            text: `Error: Unknown tool "${name}"`
+          }],
+          isError: true
+        };
+      }
+
+      try {
+        const result = await tool.handler(this.obsidianAPI, args || {});
+        return result as CallToolResult;
+      } catch (error) {
+        Debug.error(`Tool execution error (${name}):`, error);
+        return {
+          content: [{
+            type: 'text',
+            text: `Error executing tool "${name}": ${error instanceof Error ? error.message : String(error)}`
+          }],
+          isError: true
+        };
+      }
+    });
+
+    // Build resources list
+    const resources = [
+      {
+        uri: 'obsidian://vault-info',
+        name: 'Vault Information',
+        description: 'Current vault status, file counts, and metadata',
+        mimeType: 'application/json'
+      }
+    ];
+
+    // Add Dataview reference if available
     if (isDataviewToolAvailable(this.obsidianAPI)) {
-      this.mcpServer.registerResource('Dataview Query Language Reference', 'obsidian://dataview-reference', {
+      resources.push({
+        uri: 'obsidian://dataview-reference',
+        name: 'Dataview Query Language Reference',
         description: 'Complete DQL syntax guide with examples, functions, and best practices',
         mimeType: 'text/markdown'
-      }, async () => {
+      });
+    }
+
+    // List resources handler
+    this.mcpServer.setRequestHandler(ListResourcesRequestSchema, async () => {
+      Debug.log('📋 Listing available resources');
+      return { resources };
+    });
+
+    // Read resource handler
+    this.mcpServer.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+      const { uri } = request.params;
+      Debug.log(`📖 Reading resource: ${uri}`);
+
+      if (uri === 'obsidian://vault-info') {
+        const vaultName = this.obsidianApp.vault.getName();
+        const activeFile = this.obsidianApp.workspace.getActiveFile();
+        const allFiles = this.obsidianApp.vault.getAllLoadedFiles();
+        const markdownFiles = this.obsidianApp.vault.getMarkdownFiles();
+
+        const vaultInfo = {
+          vault: {
+            name: vaultName,
+            path: (this.obsidianApp.vault.adapter as any).basePath || 'Unknown'
+          },
+          activeFile: activeFile ? {
+            name: activeFile.name,
+            path: activeFile.path,
+            basename: activeFile.basename,
+            extension: activeFile.extension
+          } : null,
+          files: {
+            total: allFiles.length,
+            markdown: markdownFiles.length,
+            attachments: allFiles.length - markdownFiles.length
+          },
+          plugin: {
+            version: getVersion(),
+            status: 'Connected and operational',
+            transport: 'HTTP MCP via Express.js + MCP SDK'
+          },
+          timestamp: new Date().toISOString()
+        };
+
+        return {
+          contents: [{
+            uri: 'obsidian://vault-info',
+            mimeType: 'application/json',
+            text: JSON.stringify(vaultInfo, null, 2)
+          }]
+        };
+      }
+
+      if (uri === 'obsidian://dataview-reference' && isDataviewToolAvailable(this.obsidianAPI)) {
         return {
           contents: [{
             uri: 'obsidian://dataview-reference',
@@ -275,8 +328,10 @@ export class MCPHttpServer {
             text: DataviewTool.generateDataviewReference()
           }]
         };
-      });
-    }
+      }
+
+      throw new Error(`Unknown resource: ${uri}`);
+    });
   }
 
   private setupMiddleware(): void {
@@ -443,7 +498,8 @@ export class MCPHttpServer {
       if (sessionId) {
         effectiveSessionId = sessionId;
       }
-      let mcpServer: McpServer;
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
+      let mcpServer: MCPServer;
 
       // Helper: create a null response shim so we can send an internal initialize
       const createNullRes = () => {
