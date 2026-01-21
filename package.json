@@ -37,7 +37,7 @@
     "globals": "^17.0.0",
     "jest": "^29.7.0",
     "jiti": "^2.6.1",
-    "obsidian": "latest",
+    "obsidian": "^1.11.4",
     "ts-jest": "^29.1.1",
     "tslib": "^2.8.1",
     "typescript": "^5.9.3",
