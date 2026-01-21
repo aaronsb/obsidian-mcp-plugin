@@ -42,26 +42,25 @@ export class SecureObsidianAPI extends ObsidianAPI {
 	async listFiles(directory?: string): Promise<string[]> {
 		const validated = await this.security.validateOperation({
 			type: OperationType.READ,
-			path: directory || '/',
+			path: directory || '.',
 			context: { method: 'listFiles' }
 		});
-		
-		// Use validated path if directory was provided
-		return super.listFiles(validated.path === '/' ? undefined : validated.path);
+
+		// Use validated path if directory was provided, undefined for vault root
+		const listPath = !validated.path || validated.path === '.' ? undefined : validated.path;
+		return super.listFiles(listPath);
 	}
 
 	async listFilesPaginated(directory?: string, page: number = 1, pageSize: number = 20): Promise<any> {
 		const validated = await this.security.validateOperation({
 			type: OperationType.READ,
-			path: directory || '/',
+			path: directory || '.',
 			context: { method: 'listFilesPaginated', page, pageSize }
 		});
-		
-		return super.listFilesPaginated(
-			validated.path === '/' ? undefined : validated.path, 
-			page, 
-			pageSize
-		);
+
+		// Use validated path if directory was provided, undefined for vault root
+		const listPath = !validated.path || validated.path === '.' ? undefined : validated.path;
+		return super.listFilesPaginated(listPath, page, pageSize);
 	}
 
 	async getActiveFile(): Promise<any> {

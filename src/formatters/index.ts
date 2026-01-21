@@ -151,6 +151,72 @@ export {
 };
 
 /**
+ * Normalize response shapes to match formatter expectations.
+ * Maps field names from router responses to what formatters expect.
+ */
+function normalizeResponse(key: string, response: any): any {
+  switch (key) {
+    // vault.move/rename: router returns {oldPath, newPath}, formatter expects {source, destination}
+    case 'vault.move':
+    case 'vault.rename':
+      if (response.oldPath !== undefined || response.newPath !== undefined) {
+        return {
+          source: response.oldPath || response.sourcePath,
+          destination: response.newPath || response.destination,
+          success: response.success ?? true,
+          operation: key === 'vault.move' ? 'move' : 'rename'
+        };
+      }
+      return response;
+
+    // vault.copy: router returns {sourcePath, copiedTo}, formatter expects {source, destination}
+    case 'vault.copy':
+      if (response.sourcePath !== undefined || response.copiedTo !== undefined) {
+        return {
+          source: response.sourcePath || response.source,
+          destination: response.copiedTo || response.destination,
+          success: response.success ?? true,
+          operation: 'copy'
+        };
+      }
+      return response;
+
+    // vault.fragments: router returns {result: []}, formatter expects FragmentResult[]
+    case 'vault.fragments':
+      if (response.result && Array.isArray(response.result)) {
+        return response.result;
+      }
+      return response;
+
+    // edit.window: router returns {isError, content}, formatter expects {success, path}
+    case 'edit.window':
+    case 'edit.from_buffer':
+      if (response.isError !== undefined) {
+        return {
+          success: !response.isError,
+          path: response.path || 'file',
+          operation: 'window',
+          content: response.content
+        };
+      }
+      return response;
+
+    // edit.at_line: ensure consistent shape
+    case 'edit.at_line':
+      return {
+        success: response.success ?? true,
+        path: response.path || 'file',
+        operation: 'at_line',
+        line: response.line,
+        mode: response.mode
+      };
+
+    default:
+      return response;
+  }
+}
+
+/**
  * Format dispatcher - routes responses to appropriate formatters
  * based on the tool/action combination.
  *
@@ -174,80 +240,84 @@ export function formatResponse(
   // Route to appropriate formatter
   const key = `${tool}.${action}`;
 
+  // Normalize response shape before formatting
+  const normalized = normalizeResponse(key, response);
+
   try {
     switch (key) {
       // Vault operations
       case 'vault.list':
-        return formatFileList(response);
+        return formatFileList(normalized);
       case 'vault.read':
-        return formatFileRead(response);
+        return formatFileRead(normalized);
       case 'vault.create':
-        return formatFileWrite(response, 'create');
+        return formatFileWrite(normalized, 'create');
       case 'vault.update':
-        return formatFileWrite(response, 'update');
+        return formatFileWrite(normalized, 'update');
       case 'vault.delete':
-        return formatFileDelete(response);
+        return formatFileDelete(normalized);
       case 'vault.move':
       case 'vault.rename':
       case 'vault.copy':
-        return formatFileMove(response);
+        return formatFileMove(normalized);
       case 'vault.search':
-        return formatSearchResults(response);
+        return formatSearchResults(normalized);
       case 'vault.fragments':
-        return formatFragmentResults(response);
+        return formatFragmentResults(normalized);
 
       // View operations
       case 'view.file':
-        return formatViewFile(response);
+        return formatViewFile(normalized);
       case 'view.window':
-        return formatViewWindow(response);
+        return formatViewWindow(normalized);
       case 'view.active':
-        return formatViewActive(response);
+        return formatViewActive(normalized);
 
       // Graph operations
       case 'graph.traverse':
       case 'graph.advanced-traverse':
       case 'graph.tag-traverse':
-        return formatGraphTraverse(response);
+        return formatGraphTraverse(normalized);
       case 'graph.neighbors':
-        return formatGraphNeighbors(response);
+        return formatGraphNeighbors(normalized);
       case 'graph.path':
-        return formatGraphPath(response);
+        return formatGraphPath(normalized);
       case 'graph.statistics':
       case 'graph.backlinks':
       case 'graph.forwardlinks':
-        return formatGraphStats(response);
+        return formatGraphStats(normalized);
 
       // Dataview operations
       case 'dataview.query':
-        return formatDataviewQuery(response);
+        return formatDataviewQuery(normalized);
       case 'dataview.status':
-        return formatDataviewStatus(response);
+        return formatDataviewStatus(normalized);
       case 'dataview.list':
       case 'dataview.metadata':
-        return formatDataviewQuery({ ...response, type: 'list', successful: true });
+        return formatDataviewQuery({ ...normalized, type: 'list', successful: true });
 
       // Bases operations
       case 'bases.query':
       case 'bases.view':
-        return formatBasesQuery(response);
+        return formatBasesQuery(normalized);
 
       // System operations
       case 'system.info':
-        return formatSystemInfo(response);
+        return formatSystemInfo(normalized);
       case 'system.commands':
-        return formatSystemCommands(response);
+        return formatSystemCommands(normalized);
 
       // Workflow operations
       case 'workflow.suggest':
-        return formatWorkflowSuggest(response);
+        return formatWorkflowSuggest(normalized);
 
       // Edit operations
       case 'edit.window':
+      case 'edit.from_buffer':
       case 'edit.append':
       case 'edit.patch':
       case 'edit.at_line':
-        return formatEditResult(response);
+        return formatEditResult(normalized);
 
       // Default: return formatted JSON with hint
       default:
