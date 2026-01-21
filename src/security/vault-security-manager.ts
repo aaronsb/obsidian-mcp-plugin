@@ -91,7 +91,7 @@ export interface ValidatedOperation extends VaultOperation {
 /**
  * Security audit log entry
  */
-interface SecurityLogEntry {
+export interface SecurityLogEntry {
 	timestamp: number;
 	operation: VaultOperation;
 	result: 'allowed' | 'blocked';

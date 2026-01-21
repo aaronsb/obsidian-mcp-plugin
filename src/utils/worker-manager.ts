@@ -47,7 +47,7 @@ export class WorkerManager extends EventEmitter {
         this.handleWorkerMessage(sessionId, message);
       });
       
-      worker.on('error', (error) => {
+      worker.on('error', (error: Error) => {
         Debug.error(`❌ Worker error for session ${sessionId}:`, error);
         this.handleWorkerError(sessionId, error);
       });

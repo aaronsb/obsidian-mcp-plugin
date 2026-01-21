@@ -3,7 +3,8 @@ import { ObsidianAPI } from '../utils/obsidian-api';
 import {
 	VaultSecurityManager,
 	OperationType,
-	SecuritySettings
+	SecuritySettings,
+	SecurityLogEntry
 } from './vault-security-manager';
 import { ObsidianConfig, ObsidianFileResponse } from '../types/obsidian';
 import { Debug } from '../utils/debug';
@@ -175,7 +176,7 @@ export class SecureObsidianAPI extends ObsidianAPI {
 	/**
 	 * Gets security audit log
 	 */
-	getSecurityAuditLog() {
+	getSecurityAuditLog(): SecurityLogEntry[] {
 		return this.security.getAuditLog();
 	}
 
