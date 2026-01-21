@@ -105,39 +105,105 @@ export function formatSearchResults(response: SearchResponse): string {
 
 /**
  * Format fragment results (vault.fragments action)
+ * Supports both single-file and multi-file fragment results
  */
-export interface FragmentResult {
+export interface FragmentItem {
+  content: string;
+  lineStart: number;
+  lineEnd: number;
+  heading?: string;
+  score?: number;
+}
+
+export interface FileFragments {
   path: string;
-  fragments: Array<{
-    content: string;
-    lineStart: number;
-    lineEnd: number;
-    heading?: string;
-  }>;
+  fragments: FragmentItem[];
   totalFragments: number;
+}
+
+export interface FragmentResult {
+  // Multi-file format (from normalizer)
+  files?: FileFragments[];
+  totalResults?: number;
+  query?: string;
+  // Single-file format (legacy)
+  path?: string;
+  fragments?: FragmentItem[];
+  totalFragments?: number;
 }
 
 export function formatFragmentResults(result: FragmentResult): string {
   const lines: string[] = [];
 
-  lines.push(header(1, `Fragments: ${result.path}`));
-  lines.push('');
-  lines.push(`Showing ${result.fragments.length} of ${result.totalFragments} fragments`);
-  lines.push('');
-
-  result.fragments.forEach((frag, i) => {
-    const headingText = frag.heading ? ` (${frag.heading})` : '';
-    lines.push(header(3, `Fragment ${i + 1}${headingText}`));
-    lines.push(`Lines ${frag.lineStart}-${frag.lineEnd}`);
+  // Handle multi-file format
+  if (result.files && result.files.length > 0) {
+    lines.push(header(1, 'Fragment Search Results'));
     lines.push('');
-    lines.push('```');
-    lines.push(truncate(frag.content, 500));
-    lines.push('```');
+    lines.push(`Found ${result.totalResults || result.files.reduce((sum, f) => sum + f.fragments.length, 0)} fragments across ${result.files.length} files`);
     lines.push('');
-  });
 
-  lines.push(divider());
-  lines.push(tip('Use `view.file(path, lineNumber)` to see context around a specific line'));
+    result.files.slice(0, 5).forEach((file, fileIdx) => {
+      const fileName = file.path.split('/').pop() || file.path;
+      lines.push(header(2, `${fileIdx + 1}. ${fileName}`));
+      lines.push(`Path: ${file.path}`);
+      lines.push('');
+
+      file.fragments.slice(0, 3).forEach((frag, fragIdx) => {
+        const scoreText = frag.score ? ` (score: ${frag.score.toFixed(2)})` : '';
+        lines.push(`**Fragment ${fragIdx + 1}**${scoreText} - lines ${frag.lineStart}-${frag.lineEnd}`);
+        lines.push('```');
+        lines.push(truncate(frag.content, 300));
+        lines.push('```');
+        lines.push('');
+      });
+
+      if (file.fragments.length > 3) {
+        lines.push(`... and ${file.fragments.length - 3} more fragments in this file`);
+        lines.push('');
+      }
+    });
+
+    if (result.files.length > 5) {
+      lines.push(`... and ${result.files.length - 5} more files with matches`);
+    }
+
+    lines.push(divider());
+    lines.push(tip('Use `vault.read(path)` to see full file content'));
+    lines.push(tip('Use `view.window(path, lineNumber)` to see context around a specific line'));
+    lines.push(summaryFooter());
+
+    return joinLines(lines);
+  }
+
+  // Handle single-file format (legacy)
+  if (result.path && result.fragments) {
+    lines.push(header(1, `Fragments: ${result.path}`));
+    lines.push('');
+    lines.push(`Showing ${result.fragments.length} of ${result.totalFragments || result.fragments.length} fragments`);
+    lines.push('');
+
+    result.fragments.forEach((frag, i) => {
+      const headingText = frag.heading ? ` (${frag.heading})` : '';
+      lines.push(header(3, `Fragment ${i + 1}${headingText}`));
+      lines.push(`Lines ${frag.lineStart}-${frag.lineEnd}`);
+      lines.push('');
+      lines.push('```');
+      lines.push(truncate(frag.content, 500));
+      lines.push('```');
+      lines.push('');
+    });
+
+    lines.push(divider());
+    lines.push(tip('Use `view.window(path, lineNumber)` to see context around a specific line'));
+    lines.push(summaryFooter());
+
+    return joinLines(lines);
+  }
+
+  // Fallback for unexpected format
+  lines.push(header(1, 'Fragments'));
+  lines.push('');
+  lines.push('No fragments found or unexpected response format.');
   lines.push(summaryFooter());
 
   return joinLines(lines);

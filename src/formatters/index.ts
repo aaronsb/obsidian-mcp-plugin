@@ -221,10 +221,35 @@ function normalizeResponse(key: string, response: any): any {
       }
       return response;
 
-    // vault.fragments: router returns {result: []}, formatter expects FragmentResult[]
+    // vault.fragments: router returns {result: [...fragments across files]}
+    // Transform to grouped format for formatter
     case 'vault.fragments':
       if (response.result && Array.isArray(response.result)) {
-        return response.result;
+        // Group fragments by file path
+        const byFile = new Map<string, any[]>();
+        for (const frag of response.result) {
+          const path = frag.docPath || frag.path || 'unknown';
+          if (!byFile.has(path)) {
+            byFile.set(path, []);
+          }
+          byFile.get(path)!.push({
+            content: frag.content,
+            lineStart: frag.lineStart,
+            lineEnd: frag.lineEnd,
+            score: frag.score,
+            heading: frag.heading
+          });
+        }
+        // Return as array of file results
+        return {
+          files: Array.from(byFile.entries()).map(([path, fragments]) => ({
+            path,
+            fragments,
+            totalFragments: fragments.length
+          })),
+          totalResults: response.result.length,
+          query: response.query
+        };
       }
       return response;
 
