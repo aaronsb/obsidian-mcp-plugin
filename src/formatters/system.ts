@@ -268,3 +268,53 @@ export function formatEditResult(response: EditResponse): string {
 
   return joinLines(lines);
 }
+
+/**
+ * Format system.fetch_web response
+ */
+export interface WebFetchResponse {
+  content: string;
+  title?: string;
+  url?: string;
+  contentType?: string;
+  metadata?: {
+    fetchedAt?: string;
+    statusCode?: number;
+  };
+}
+
+export function formatWebFetch(response: WebFetchResponse): string {
+  const lines: string[] = [];
+
+  const title = response.title || 'Web Content';
+  lines.push(header(1, `Fetched: ${title}`));
+  lines.push('');
+
+  if (response.url) {
+    lines.push(property('URL', response.url, 0));
+  }
+  if (response.contentType) {
+    lines.push(property('Type', response.contentType, 0));
+  }
+  if (response.metadata?.statusCode) {
+    lines.push(property('Status', response.metadata.statusCode.toString(), 0));
+  }
+  lines.push('');
+
+  lines.push(header(2, 'Content'));
+  lines.push('');
+
+  // Truncate very long content
+  const maxLength = 5000;
+  if (response.content.length > maxLength) {
+    lines.push(response.content.substring(0, maxLength));
+    lines.push('');
+    lines.push(`... (${response.content.length - maxLength} more characters)`);
+  } else {
+    lines.push(response.content);
+  }
+
+  lines.push(summaryFooter());
+
+  return joinLines(lines);
+}

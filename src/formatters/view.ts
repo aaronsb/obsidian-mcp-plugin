@@ -199,3 +199,43 @@ export function formatViewActive(response: ViewActiveResponse): string {
 
   return joinLines(lines);
 }
+
+/**
+ * Format view.open_in_obsidian response
+ */
+export interface OpenInObsidianResponse {
+  success: boolean;
+  path?: string;
+  error?: string;
+}
+
+export function formatOpenInObsidian(response: OpenInObsidianResponse): string {
+  const lines: string[] = [];
+
+  const icon = response.success ? '✓' : '✗';
+
+  if (response.success && response.path) {
+    const fileName = response.path.split('/').pop() || response.path;
+    lines.push(header(1, `${icon} Opened: ${fileName}`));
+    lines.push('');
+    lines.push(`File opened in Obsidian.`);
+    lines.push('');
+    lines.push(property('Path', response.path, 0));
+  } else if (response.success) {
+    lines.push(header(1, `${icon} Opened in Obsidian`));
+    lines.push('');
+    lines.push('File opened successfully.');
+  } else {
+    lines.push(header(1, `${icon} Failed to Open`));
+    lines.push('');
+    lines.push('Could not open file in Obsidian.');
+    if (response.error) {
+      lines.push('');
+      lines.push(property('Error', response.error, 0));
+    }
+  }
+
+  lines.push(summaryFooter());
+
+  return joinLines(lines);
+}

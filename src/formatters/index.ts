@@ -20,21 +20,27 @@ import {
   formatFileWrite,
   formatFileDelete,
   formatFileMove,
+  formatFileSplit,
+  formatFileCombine,
   FileListItem,
   FileListResponse,
   FileReadResponse,
   FileWriteResponse,
   FileDeleteResponse,
-  FileMoveResponse
+  FileMoveResponse,
+  FileSplitResponse,
+  FileCombineResponse
 } from './vault';
 
 import {
   formatViewFile,
   formatViewWindow,
   formatViewActive,
+  formatOpenInObsidian,
   ViewFileResponse,
   ViewWindowResponse,
-  ViewActiveResponse
+  ViewActiveResponse,
+  OpenInObsidianResponse
 } from './view';
 
 import {
@@ -42,6 +48,8 @@ import {
   formatGraphNeighbors,
   formatGraphPath,
   formatGraphStats,
+  formatTagAnalysis,
+  formatSharedTags,
   GraphNode,
   GraphTraverseResponse,
   GraphNeighborsNode,
@@ -49,16 +57,26 @@ import {
   GraphNeighborsResponse,
   GraphPathNode,
   GraphPathResponse,
-  GraphStatsResponse
+  GraphStatsResponse,
+  TagAnalysisResponse,
+  SharedTagsResponse
 } from './graph';
 
 import {
   formatDataviewQuery,
   formatDataviewStatus,
   formatBasesQuery,
+  formatBasesList,
+  formatBasesRead,
+  formatBasesCreate,
+  formatBasesExport,
   DataviewQueryResponse,
   DataviewStatusResponse,
-  BasesQueryResponse
+  BasesQueryResponse,
+  BasesListResponse,
+  BasesReadResponse,
+  BasesCreateResponse,
+  BasesExportResponse
 } from './dataview';
 
 import {
@@ -66,12 +84,14 @@ import {
   formatSystemCommands,
   formatWorkflowSuggest,
   formatEditResult,
+  formatWebFetch,
   SystemInfoResponse,
   CommandInfo,
   SystemCommandsResponse,
   WorkflowSuggestion,
   WorkflowSuggestResponse,
-  EditResponse
+  EditResponse,
+  WebFetchResponse
 } from './system';
 
 // Re-export utility functions
@@ -104,24 +124,32 @@ export {
   formatFileWrite,
   formatFileDelete,
   formatFileMove,
+  formatFileSplit,
+  formatFileCombine,
   FileListItem,
   FileListResponse,
   FileReadResponse,
   FileWriteResponse,
   FileDeleteResponse,
   FileMoveResponse,
+  FileSplitResponse,
+  FileCombineResponse,
   // View
   formatViewFile,
   formatViewWindow,
   formatViewActive,
+  formatOpenInObsidian,
   ViewFileResponse,
   ViewWindowResponse,
   ViewActiveResponse,
+  OpenInObsidianResponse,
   // Graph
   formatGraphTraverse,
   formatGraphNeighbors,
   formatGraphPath,
   formatGraphStats,
+  formatTagAnalysis,
+  formatSharedTags,
   GraphNode,
   GraphTraverseResponse,
   GraphNeighborsNode,
@@ -130,24 +158,36 @@ export {
   GraphPathNode,
   GraphPathResponse,
   GraphStatsResponse,
+  TagAnalysisResponse,
+  SharedTagsResponse,
   // Dataview
   formatDataviewQuery,
   formatDataviewStatus,
   formatBasesQuery,
+  formatBasesList,
+  formatBasesRead,
+  formatBasesCreate,
+  formatBasesExport,
   DataviewQueryResponse,
   DataviewStatusResponse,
   BasesQueryResponse,
+  BasesListResponse,
+  BasesReadResponse,
+  BasesCreateResponse,
+  BasesExportResponse,
   // System
   formatSystemInfo,
   formatSystemCommands,
   formatWorkflowSuggest,
   formatEditResult,
+  formatWebFetch,
   SystemInfoResponse,
   CommandInfo,
   SystemCommandsResponse,
   WorkflowSuggestion,
   WorkflowSuggestResponse,
-  EditResponse
+  EditResponse,
+  WebFetchResponse
 };
 
 /**
@@ -264,6 +304,11 @@ export function formatResponse(
         return formatSearchResults(normalized);
       case 'vault.fragments':
         return formatFragmentResults(normalized);
+      case 'vault.split':
+        return formatFileSplit(normalized);
+      case 'vault.combine':
+      case 'vault.concatenate':
+        return formatFileCombine(normalized);
 
       // View operations
       case 'view.file':
@@ -272,6 +317,8 @@ export function formatResponse(
         return formatViewWindow(normalized);
       case 'view.active':
         return formatViewActive(normalized);
+      case 'view.open_in_obsidian':
+        return formatOpenInObsidian(normalized);
 
       // Graph operations
       case 'graph.traverse':
@@ -286,6 +333,10 @@ export function formatResponse(
       case 'graph.backlinks':
       case 'graph.forwardlinks':
         return formatGraphStats(normalized);
+      case 'graph.tag-analysis':
+        return formatTagAnalysis(normalized);
+      case 'graph.shared-tags':
+        return formatSharedTags(normalized);
 
       // Dataview operations
       case 'dataview.query':
@@ -297,15 +348,25 @@ export function formatResponse(
         return formatDataviewQuery({ ...normalized, type: 'list', successful: true });
 
       // Bases operations
+      case 'bases.list':
+        return formatBasesList(normalized);
+      case 'bases.read':
+        return formatBasesRead(normalized);
+      case 'bases.create':
+        return formatBasesCreate(normalized);
       case 'bases.query':
       case 'bases.view':
         return formatBasesQuery(normalized);
+      case 'bases.export':
+        return formatBasesExport(normalized);
 
       // System operations
       case 'system.info':
         return formatSystemInfo(normalized);
       case 'system.commands':
         return formatSystemCommands(normalized);
+      case 'system.fetch_web':
+        return formatWebFetch(normalized);
 
       // Workflow operations
       case 'workflow.suggest':

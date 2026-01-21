@@ -332,3 +332,97 @@ export function formatFileMove(response: FileMoveResponse): string {
 
   return joinLines(lines);
 }
+
+/**
+ * Format file split response
+ */
+export interface FileSplitResponse {
+  success: boolean;
+  sourceFile: string;
+  createdFiles: string[];
+  totalFiles: number;
+  splitBy?: string;
+}
+
+export function formatFileSplit(response: FileSplitResponse): string {
+  const lines: string[] = [];
+
+  const icon = response.success ? '✓' : '✗';
+  lines.push(header(1, `${icon} Split: ${response.sourceFile}`));
+  lines.push('');
+
+  if (response.success) {
+    lines.push(property('Source', response.sourceFile, 0));
+    lines.push(property('Created', `${response.totalFiles} files`, 0));
+    if (response.splitBy) {
+      lines.push(property('Split by', response.splitBy, 0));
+    }
+    lines.push('');
+
+    lines.push(header(2, 'Created Files'));
+    response.createdFiles.slice(0, 20).forEach(file => {
+      const name = file.split('/').pop() || file;
+      lines.push(`- ${name}`);
+    });
+    if (response.createdFiles.length > 20) {
+      lines.push(`- ... and ${response.createdFiles.length - 20} more`);
+    }
+  } else {
+    lines.push('Failed to split file.');
+  }
+
+  lines.push('');
+  lines.push(divider());
+  lines.push(tip('Use `vault.read(path)` to read any of the created files'));
+  lines.push(summaryFooter());
+
+  return joinLines(lines);
+}
+
+/**
+ * Format file combine/concatenate response
+ */
+export interface FileCombineResponse {
+  success: boolean;
+  destination: string;
+  filesCombined: number;
+  totalSize?: number;
+  sourceFiles?: string[];
+}
+
+export function formatFileCombine(response: FileCombineResponse): string {
+  const lines: string[] = [];
+
+  const icon = response.success ? '✓' : '✗';
+  lines.push(header(1, `${icon} Combined: ${response.destination}`));
+  lines.push('');
+
+  if (response.success) {
+    lines.push(property('Destination', response.destination, 0));
+    lines.push(property('Files combined', response.filesCombined.toString(), 0));
+    if (response.totalSize !== undefined) {
+      lines.push(property('Total size', formatFileSize(response.totalSize), 0));
+    }
+    lines.push('');
+
+    if (response.sourceFiles && response.sourceFiles.length > 0) {
+      lines.push(header(2, 'Source Files'));
+      response.sourceFiles.slice(0, 10).forEach(file => {
+        const name = file.split('/').pop() || file;
+        lines.push(`- ${name}`);
+      });
+      if (response.sourceFiles.length > 10) {
+        lines.push(`- ... and ${response.sourceFiles.length - 10} more`);
+      }
+    }
+  } else {
+    lines.push('Failed to combine files.');
+  }
+
+  lines.push('');
+  lines.push(divider());
+  lines.push(tip('Use `vault.read(path)` to view the combined file'));
+  lines.push(summaryFooter());
+
+  return joinLines(lines);
+}
