@@ -9,7 +9,7 @@
     "build:worker": "node build-worker.js",
     "sync-version": "node sync-version.mjs",
     "version": "node sync-version.mjs && git add manifest.json",
-    "test": "jest",
+    "test": "node --no-warnings node_modules/.bin/jest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
