@@ -34,7 +34,7 @@
     "esbuild": "^0.27.2",
     "eslint": "^9.39.2",
     "eslint-plugin-obsidianmd": "^0.1.9",
-    "globals": "^17.0.0",
+    "globals": "^17.1.0",
     "jest": "^30.2.0",
     "jiti": "^2.6.1",
     "obsidian": "^1.11.4",
