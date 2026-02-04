@@ -1503,9 +1503,9 @@ export class SemanticRouter {
   private async executeSystemOperation(action: string, params: Params): Promise<unknown> {
     switch (action) {
       case 'info':
-        return await this.api.getServerInfo();
+        return this.api.getServerInfo();
       case 'commands':
-        return await this.api.getCommands();
+        return this.api.getCommands();
       case 'fetch_web': {
         // Import fetch tool dynamically
         const { fetchTool } = await import('../tools/fetch.js');

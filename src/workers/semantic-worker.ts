@@ -172,7 +172,7 @@ async function performBulkSearch(params: BulkSearchParams, fileContents: Record<
 
   // Search across all provided files
   for (const [filePath, content] of Object.entries(fileContents)) {
-    const results = await performTextSearch({
+    const results = performTextSearch({
       content,
       query,
       filePath,
@@ -215,7 +215,7 @@ function extractLineContext(lines: string[], lineIndex: number, contextSize: num
  * Perform text search operation on a single file
  * This is a CPU-intensive operation perfect for worker threads
  */
-async function performTextSearch(params: TextSearchParams): Promise<TextSearchResult[]> {
+function performTextSearch(params: TextSearchParams): TextSearchResult[] {
   const { content, query, filePath, maxResults = 10 } = params;
 
   if (!content || !query) {
@@ -268,7 +268,7 @@ async function performTextSearch(params: TextSearchParams): Promise<TextSearchRe
 /**
  * Extract fragments from content
  */
-async function extractFragments(params: FragmentParams): Promise<FragmentResult[]> {
+function extractFragments(params: FragmentParams): FragmentResult[] {
   const { content, query, maxFragments = 5 } = params;
 
   if (!content) {
@@ -350,7 +350,7 @@ async function performGraphTraversal(params: GraphTraversalParams): Promise<Grap
     // Search in current file content
     const content: string | undefined = fileContents[current.path];
     if (content) {
-      const searchResults: TextSearchResult[] = await performTextSearch({
+      const searchResults: TextSearchResult[] = performTextSearch({
         content,
         query: searchQuery,
         maxResults: 2

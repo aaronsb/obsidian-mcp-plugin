@@ -141,7 +141,7 @@ export class GraphSearchTool {
       options.nodeFilter = (node: GraphNode) => node.path.startsWith(params.folderFilter!);
     }
 
-    const result = await this.graphTraversal.breadthFirstTraversal(params.sourcePath, options);
+    const result = this.graphTraversal.breadthFirstTraversal(params.sourcePath, options);
     
     // Convert to response format
     const nodes = Array.from(result.nodes.values()).map(node => ({
@@ -247,7 +247,7 @@ export class GraphSearchTool {
     }
 
     // First try shortest path
-    const shortestPath = await this.graphTraversal.findShortestPath(
+    const shortestPath = this.graphTraversal.findShortestPath(
       params.sourcePath,
       params.targetPath,
       { followBacklinks: params.followBacklinks !== false }
@@ -259,7 +259,7 @@ export class GraphSearchTool {
       
       // Optionally find all paths if requested
       if (params.maxDepth && params.maxDepth > shortestPath.length) {
-        const allPaths = await this.graphTraversal.findAllPaths(
+        const allPaths = this.graphTraversal.findAllPaths(
           params.sourcePath,
           params.targetPath,
           params.maxDepth
@@ -305,7 +305,7 @@ export class GraphSearchTool {
   /**
    * Get link statistics for a file
    */
-  private async getStatistics(params: GraphSearchParams): Promise<GraphSearchResult> {
+  private getStatistics(params: GraphSearchParams): GraphSearchResult {
     if (!params.sourcePath) {
       throw new Error('Source path is required for statistics operation');
     }
@@ -344,7 +344,7 @@ export class GraphSearchTool {
   /**
    * Get backlinks (incoming links) for a file
    */
-  private async getBacklinks(params: GraphSearchParams): Promise<GraphSearchResult> {
+  private getBacklinks(params: GraphSearchParams): GraphSearchResult {
     if (!params.sourcePath) {
       throw new Error('Source path is required for backlinks operation');
     }
@@ -400,7 +400,7 @@ export class GraphSearchTool {
   /**
    * Get forward links (outgoing links) from a file
    */
-  private async getForwardLinks(params: GraphSearchParams): Promise<GraphSearchResult> {
+  private getForwardLinks(params: GraphSearchParams): GraphSearchResult {
     if (!params.sourcePath) {
       throw new Error('Source path is required for forward links operation');
     }

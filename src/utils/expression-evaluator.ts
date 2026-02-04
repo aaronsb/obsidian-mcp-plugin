@@ -17,7 +17,7 @@ export class ExpressionEvaluator {
   /**
    * Evaluate an expression string in the context of a note
    */
-  async evaluate(expression: string, context: NoteContext): Promise<unknown> {
+  evaluate(expression: string, context: NoteContext): unknown {
     try {
       // Create a safe evaluation context
       const evalContext = this.createEvalContext(context);

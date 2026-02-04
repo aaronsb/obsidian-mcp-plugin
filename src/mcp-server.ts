@@ -967,7 +967,7 @@ export class MCPHttpServer {
 
     // Shutdown MCP server pool if it exists
     if (this.mcpServerPool) {
-      await this.mcpServerPool.shutdown();
+      this.mcpServerPool.shutdown();
     }
 
     return new Promise<void>((resolve) => {

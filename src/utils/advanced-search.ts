@@ -72,7 +72,7 @@ export class AdvancedSearchService {
       
       switch (strategy) {
         case 'filename':
-          result = await this.searchFilename(file, queryTokens, includeMetadata);
+          result = this.searchFilename(file, queryTokens, includeMetadata);
           break;
         case 'content':
           result = await this.searchContent(file, queryTokens, snippetLength, includeMetadata);
@@ -96,11 +96,11 @@ export class AdvancedSearchService {
   /**
    * Search based on filename only
    */
-  private async searchFilename(
-    file: TFile, 
-    queryTokens: string[], 
+  private searchFilename(
+    file: TFile,
+    queryTokens: string[],
     includeMetadata: boolean
-  ): Promise<SearchResult | null> {
+  ): SearchResult | null {
     const filename = file.basename.toLowerCase();
     const filenameTokens = this.tokenize(filename);
     
@@ -184,7 +184,7 @@ export class AdvancedSearchService {
     snippetLength: number,
     includeMetadata: boolean
   ): Promise<SearchResult | null> {
-    const filenameResult = await this.searchFilename(file, queryTokens, false);
+    const filenameResult = this.searchFilename(file, queryTokens, false);
     const contentResult = await this.searchContent(file, queryTokens, snippetLength, false);
     
     const filenameScore = filenameResult?.score || 0;

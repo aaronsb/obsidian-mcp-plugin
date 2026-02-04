@@ -98,7 +98,7 @@ export class ObsidianAPI {
   }
 
   // Server info
-  async getServerInfo() {
+  getServerInfo() {
     const baseInfo = {
       authenticated: true,
       cors: true,
@@ -196,10 +196,10 @@ export class ObsidianAPI {
   }
 
   // Vault file operations
-  async listFiles(directory?: string): Promise<string[]> {
+  listFiles(directory?: string): Promise<string[]> {
     const vault = this.app.vault;
     let files: TAbstractFile[];
-    
+
     if (directory && directory !== '/') {
       const folder = vault.getAbstractFileByPath(directory);
       if (!folder || !(folder instanceof TFolder)) {
@@ -215,14 +215,15 @@ export class ObsidianAPI {
       .filter(file => file instanceof TFile)
       .map(file => file.path)
       .sort();
-    
+
     // Filter out excluded paths
-    return this.ignoreManager ? this.ignoreManager.filterPaths(filePaths) : filePaths;
+    const result = this.ignoreManager ? this.ignoreManager.filterPaths(filePaths) : filePaths;
+    return Promise.resolve(result);
   }
 
-  async listFilesPaginated(
-    directory?: string, 
-    page: number = 1, 
+  listFilesPaginated(
+    directory?: string,
+    page: number = 1,
     pageSize: number = 20
   ): Promise<{
     files: Array<{
@@ -276,7 +277,7 @@ export class ObsidianAPI {
       return a.name.localeCompare(b.name);
     });
 
-    return paginateFiles(fileObjects, page, pageSize, directory);
+    return Promise.resolve(paginateFiles(fileObjects, page, pageSize, directory));
   }
 
   async getFile(path: string): Promise<ObsidianFileResponse> {
@@ -422,7 +423,7 @@ export class ObsidianAPI {
 
     // Handle structured targeting (heading, block, frontmatter)
     if (params.targetType && params.target) {
-      content = await this.applyStructuredPatch(content, params);
+      content = this.applyStructuredPatch(content, params);
     }
     // Handle legacy patch operations
     else if (params.operation === 'replace') {
@@ -443,7 +444,7 @@ export class ObsidianAPI {
     return { success: true, updated_content: content };
   }
 
-  private async applyStructuredPatch(content: string, params: PatchParams): Promise<string> {
+  private applyStructuredPatch(content: string, params: PatchParams): string {
     const { targetType, target, operation, content: patchContent } = params;
 
     switch (targetType) {
@@ -803,7 +804,7 @@ export class ObsidianAPI {
     return { success: true };
   }
 
-  async getCommands(): Promise<Command[]> {
+  getCommands(): Command[] {
     const appInternal = this.app as unknown as AppInternal;
     const commands = appInternal.commands?.commands;
     if (!commands) {
@@ -817,7 +818,7 @@ export class ObsidianAPI {
     }));
   }
 
-  async executeCommand(commandId: string) {
+  executeCommand(commandId: string) {
     const appInternal = this.app as unknown as AppInternal;
     const success = appInternal.commands?.executeCommandById?.(commandId);
     return {

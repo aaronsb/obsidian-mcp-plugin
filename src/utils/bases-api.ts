@@ -129,7 +129,7 @@ export class BasesAPI {
       }
 
       // Create evaluated note
-      const evaluatedNote = await this.createEvaluatedNote(file, context, baseConfig);
+      const evaluatedNote = this.createEvaluatedNote(file, context, baseConfig);
       notes.push(evaluatedNote);
     }
 
@@ -295,7 +295,7 @@ export class BasesAPI {
     return true;
   }
 
-  private async createEvaluatedNote(file: TFile, context: NoteContext, baseConfig: BaseYAML): Promise<EvaluatedNote> {
+  private createEvaluatedNote(file: TFile, context: NoteContext, baseConfig: BaseYAML): EvaluatedNote {
     const fileProps = this.getFileProperties(file, context.cache);
     
     // Combine all properties

@@ -103,7 +103,7 @@ export class GraphTagTool {
         };
     }
 
-    private async analyzeTagConnections(params: GraphTagToolParams) {
+    private analyzeTagConnections(params: GraphTagToolParams) {
         if (!params.startPath) {
             throw new Error('startPath is required for tag-analysis action');
         }

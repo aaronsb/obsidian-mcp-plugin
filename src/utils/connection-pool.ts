@@ -51,7 +51,7 @@ export class ConnectionPool extends EventEmitter {
   /**
    * Initialize the connection pool
    */
-  async initialize(): Promise<void> {
+  initialize(): void {
     Debug.log(`🏊 Initializing connection pool with ${this.options.maxConnections} max connections`);
     
     // Initialize worker manager

@@ -408,7 +408,7 @@ export class MCPServerPool extends EventEmitter {
   /**
    * Clean up all servers
    */
-  async shutdown(): Promise<void> {
+  shutdown(): void {
     Debug.log(`🛑 Shutting down MCP server pool (${this.servers.size} servers)`);
     this.servers.clear();
   }

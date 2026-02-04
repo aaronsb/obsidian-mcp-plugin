@@ -159,10 +159,10 @@ export class GraphTraversal {
   /**
    * Perform breadth-first traversal from a starting node
    */
-  async breadthFirstTraversal(
+  breadthFirstTraversal(
     startPath: string,
     options: GraphTraversalOptions = {}
-  ): Promise<GraphTraversalResult> {
+  ): GraphTraversalResult {
     const startTime = Date.now();
     const {
       maxDepth = 3,
@@ -286,11 +286,11 @@ export class GraphTraversal {
   /**
    * Find shortest path between two nodes using BFS
    */
-  async findShortestPath(
+  findShortestPath(
     sourcePath: string,
     targetPath: string,
     options: Omit<GraphTraversalOptions, 'maxNodes'> = {}
-  ): Promise<string[] | null> {
+  ): string[] | null {
     const queue: Array<{ path: string; pathSoFar: string[] }> = [
       { path: sourcePath, pathSoFar: [sourcePath] }
     ];
@@ -330,11 +330,11 @@ export class GraphTraversal {
   /**
    * Find all paths between two nodes up to a certain depth
    */
-  async findAllPaths(
+  findAllPaths(
     sourcePath: string,
     targetPath: string,
     maxDepth: number = 5
-  ): Promise<string[][]> {
+  ): string[][] {
     const paths: string[][] = [];
     const visited = new Set<string>();
 
