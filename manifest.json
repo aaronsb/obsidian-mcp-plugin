@@ -1,7 +1,7 @@
 {
   "id": "semantic-vault-mcp",
   "name": "Semantic Notes Vault MCP",
-  "version": "0.11.10",
+  "version": "0.11.11",
   "minAppVersion": "0.15.0",
   "description": "Semantic MCP server providing AI tools with direct vault access via HTTP transport.",
   "author": "Aaron Bockelie",

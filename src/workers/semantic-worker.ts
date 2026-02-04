@@ -161,7 +161,7 @@ async function processGraphOperation(action: string, params: Record<string, unkn
  * Perform bulk search across multiple files
  * This is a CPU-intensive operation perfect for worker threads
  */
-async function performBulkSearch(params: BulkSearchParams, fileContents: Record<string, string>): Promise<BulkSearchResponse> {
+function performBulkSearch(params: BulkSearchParams, fileContents: Record<string, string>): BulkSearchResponse {
   const { query, page = 1, pageSize = 10 } = params;
 
   if (!query) {
@@ -318,7 +318,7 @@ function extractFragments(params: FragmentParams): FragmentResult[] {
 /**
  * Perform graph traversal operation
  */
-async function performGraphTraversal(params: GraphTraversalParams): Promise<GraphTraversalResponse> {
+function performGraphTraversal(params: GraphTraversalParams): GraphTraversalResponse {
   const {
     startNode,
     searchQuery,

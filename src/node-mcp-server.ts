@@ -41,11 +41,11 @@ export class NodeMCPServer {
 
     try {
       // Try to use Node.js HTTP server if available in Obsidian
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Dynamic require needed for Node.js http module in Obsidian desktop environment
       const http = require('http') as typeof import('http');
 
       this.server = http.createServer((req: IncomingMessage, res: ServerResponse) => {
-        void this.handleRequest(req, res);
+        this.handleRequest(req, res);
       });
 
       await new Promise<void>((resolve, reject) => {
@@ -84,7 +84,7 @@ export class NodeMCPServer {
     });
   }
 
-  private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private handleRequest(req: IncomingMessage, res: ServerResponse): void {
     // Set CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -99,9 +99,9 @@ export class NodeMCPServer {
 
     try {
       if (req.method === 'GET' && req.url === '/') {
-        await this.handleHealthCheck(req, res);
+        this.handleHealthCheck(req, res);
       } else if (req.method === 'POST' && req.url === '/mcp') {
-        await this.handleMCPRequest(req, res);
+        this.handleMCPRequest(req, res);
       } else {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Not found' }));
@@ -116,7 +116,7 @@ export class NodeMCPServer {
     }
   }
 
-  private async handleHealthCheck(_req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private handleHealthCheck(_req: IncomingMessage, res: ServerResponse): void {
     const response = {
       name: 'Semantic Notes Vault MCP',
       version: '0.1.4',
@@ -129,7 +129,7 @@ export class NodeMCPServer {
     res.end(JSON.stringify(response));
   }
 
-  private async handleMCPRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private handleMCPRequest(req: IncomingMessage, res: ServerResponse): void {
     let body = '';
 
     req.on('data', (chunk: Buffer) => {
@@ -137,47 +137,45 @@ export class NodeMCPServer {
     });
 
     req.on('end', () => {
-      void (async () => {
-        try {
-          const request = JSON.parse(body) as MCPRequest;
-          let response: MCPResponse;
+      try {
+        const request = JSON.parse(body) as MCPRequest;
+        let response: MCPResponse;
 
-          Debug.log('📨 MCP Request:', request.method, request.params);
+        Debug.log('📨 MCP Request:', request.method, request.params);
 
-          switch (request.method) {
-            case 'tools/list':
-              response = this.handleToolsList(request);
-              break;
+        switch (request.method) {
+          case 'tools/list':
+            response = this.handleToolsList(request);
+            break;
 
-            case 'tools/call':
-              response = await this.handleToolCall(request);
-              break;
+          case 'tools/call':
+            response = this.handleToolCall(request);
+            break;
 
-            default:
-              response = {
-                error: {
-                  code: -32601,
-                  message: `Method not found: ${request.method}`
-                },
-                id: request.id
-              };
-          }
-
-          Debug.log('📤 MCP Response:', response);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(response));
-
-        } catch (error: unknown) {
-          Debug.error('MCP request parsing error:', error);
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            error: {
-              code: -32700,
-              message: 'Parse error: ' + (error instanceof Error ? error.message : 'Invalid JSON')
-            }
-          }));
+          default:
+            response = {
+              error: {
+                code: -32601,
+                message: `Method not found: ${request.method}`
+              },
+              id: request.id
+            };
         }
-      })();
+
+        Debug.log('📤 MCP Response:', response);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(response));
+
+      } catch (error: unknown) {
+        Debug.error('MCP request parsing error:', error);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: {
+            code: -32700,
+            message: 'Parse error: ' + (error instanceof Error ? error.message : 'Invalid JSON')
+          }
+        }));
+      }
     });
   }
 
@@ -205,7 +203,7 @@ export class NodeMCPServer {
     };
   }
 
-  private async handleToolCall(request: MCPRequest): Promise<MCPResponse> {
+  private handleToolCall(request: MCPRequest): MCPResponse {
     const name = request.params?.name;
     const args = request.params?.arguments;
 

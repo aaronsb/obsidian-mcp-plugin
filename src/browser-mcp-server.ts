@@ -46,7 +46,7 @@ export class BrowserMCPServer {
     this.port = port;
   }
 
-  async start(): Promise<void> {
+  start(): void {
     if (this.isRunning) {
       Debug.log(`MCP server already running on port ${this.port}`);
       return;
@@ -79,7 +79,7 @@ export class BrowserMCPServer {
     }
   }
 
-  async stop(): Promise<void> {
+  stop(): void {
     if (!this.isRunning) {
       return;
     }
@@ -130,7 +130,7 @@ export class BrowserMCPServer {
     };
   }
 
-  private async handleMCPRequest(body?: string): Promise<MCPHTTPResponse> {
+  private handleMCPRequest(body?: string): MCPHTTPResponse {
     try {
       const request = JSON.parse(body ?? '{}') as MCPRequest;
       let response: MCPResponse;
@@ -141,9 +141,9 @@ export class BrowserMCPServer {
           break;
         
         case 'tools/call':
-          response = await this.handleToolCall(request);
+          response = this.handleToolCall(request);
           break;
-        
+
         default:
           response = {
             error: {
@@ -205,7 +205,7 @@ export class BrowserMCPServer {
     };
   }
 
-  private async handleToolCall(request: MCPRequest): Promise<MCPResponse> {
+  private handleToolCall(request: MCPRequest): MCPResponse {
     const params = request.params ?? {};
     const name = params.name;
     const args = params.arguments;

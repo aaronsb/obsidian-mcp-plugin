@@ -105,7 +105,7 @@ export class GraphSearchTraversal {
 
                 // Only continue traversal from nodes with good matches
                 if (depth < maxDepth) {
-                    const links = await this.getLinkedPaths(file);
+                    const links = this.getLinkedPaths(file);
                     for (const linkedPath of links) {
                         if (!visited.has(linkedPath)) {
                             queue.push([linkedPath, depth + 1, currentPath]);
@@ -185,7 +185,7 @@ export class GraphSearchTraversal {
     /**
      * Get all linked paths from a file (both forward and backlinks)
      */
-    protected async getLinkedPaths(file: TFile): Promise<string[]> {
+    protected getLinkedPaths(file: TFile): string[] {
         const linkedPaths = new Set<string>();
         
         // Get forward links

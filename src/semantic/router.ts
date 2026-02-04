@@ -222,7 +222,7 @@ export class SemanticRouter {
                   }
 
                   const docId = `file:${filePath}`;
-                  await this.fragmentRetriever.indexDocument(docId, filePath, content);
+                  this.fragmentRetriever.indexDocument(docId, filePath, content);
                 }
               } catch (e) {
                 // Skip files that can't be indexed
@@ -232,7 +232,7 @@ export class SemanticRouter {
           }
 
           // Search for fragments in indexed documents
-          const fragmentResponse = await this.fragmentRetriever.retrieveFragments(fragmentQuery, {
+          const fragmentResponse = this.fragmentRetriever.retrieveFragments(fragmentQuery, {
             strategy: (paramStr(params, 'strategy') as 'auto' | 'adaptive' | 'proximity' | 'semantic') || 'auto',
             maxFragments: paramNum(params, 'maxFragments') || 5
           });
@@ -566,7 +566,7 @@ export class SemanticRouter {
         }
 
         // Split the content
-        const splitFiles = await this.splitContent(sourceFile.content, params);
+        const splitFiles = this.splitContent(sourceFile.content, params);
         
         // Create output files
         const createdFiles = [];
@@ -670,7 +670,7 @@ export class SemanticRouter {
         
         // Sort files if requested
         if (sortBy) {
-          await this.sortFiles(sourceFiles, sortBy, sortOrder);
+          this.sortFiles(sourceFiles, sortBy, sortOrder);
         }
         
         // Combine content
@@ -786,7 +786,7 @@ export class SemanticRouter {
     });
   }
   
-  private async splitContent(content: string, params: Params): Promise<Array<{ content: string }>> {
+  private splitContent(content: string, params: Params): Array<{ content: string }> {
     const splitBy = paramStr(params, 'splitBy');
     const delimiter = paramStr(params, 'delimiter');
     const level = paramNum(params, 'level');
@@ -910,7 +910,7 @@ export class SemanticRouter {
     return splitFiles.length > 0 ? splitFiles : [{ content }];
   }
   
-  private async sortFiles(files: Array<{ path: string; content: string }>, sortBy: string, sortOrder: string): Promise<void> {
+  private sortFiles(files: Array<{ path: string; content: string }>, sortBy: string, sortOrder: string): void {
     // For file metadata, we'd need to use Obsidian's API
     // For now, we'll sort by name and size (which we can calculate)
     
@@ -1314,7 +1314,7 @@ export class SemanticRouter {
               }
               
               const docId = `file:${filePath}`;
-              await this.fragmentRetriever.indexDocument(docId, filePath, content);
+              this.fragmentRetriever.indexDocument(docId, filePath, content);
             } catch (e) {
               // Skip unreadable files
               Debug.warn(`Failed to index ${filePath}:`, e);
@@ -1491,7 +1491,7 @@ export class SemanticRouter {
     }
   }
   
-  private async executeWorkflowOperation(action: string, _params: Params): Promise<unknown> {
+  private executeWorkflowOperation(action: string, _params: Params): unknown {
     switch (action) {
       case 'suggest':
         return this.generateWorkflowSuggestions();

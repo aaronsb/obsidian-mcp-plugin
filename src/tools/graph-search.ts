@@ -117,7 +117,7 @@ export class GraphSearchTool {
   /**
    * Perform graph traversal from a starting point
    */
-  private async performTraversal(params: GraphSearchParams): Promise<GraphSearchResult> {
+  private performTraversal(params: GraphSearchParams): GraphSearchResult {
     if (!params.sourcePath && params.sourcePath !== '') {
       throw new Error('Source path is required for traversal operation');
     }
@@ -194,7 +194,7 @@ export class GraphSearchTool {
   /**
    * Get immediate neighbors of a node
    */
-  private async getNeighbors(params: GraphSearchParams): Promise<GraphSearchResult> {
+  private getNeighbors(params: GraphSearchParams): GraphSearchResult {
     if (!params.sourcePath) {
       throw new Error('Source path is required for neighbors operation');
     }
@@ -241,7 +241,7 @@ export class GraphSearchTool {
   /**
    * Find path(s) between two nodes
    */
-  private async findPath(params: GraphSearchParams): Promise<GraphSearchResult> {
+  private findPath(params: GraphSearchParams): GraphSearchResult {
     if (!params.sourcePath || !params.targetPath) {
       throw new Error('Both source and target paths are required for path operation');
     }

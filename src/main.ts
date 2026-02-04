@@ -318,7 +318,7 @@ export default class ObsidianMCPPlugin extends Plugin {
 			}
 
 			// Try to create a temporary server to test port availability
-			// eslint-disable-next-line @typescript-eslint/no-require-imports
+			// eslint-disable-next-line @typescript-eslint/no-require-imports -- Dynamic require needed for Node.js http module in Obsidian desktop environment
 			const http = require('http') as typeof import('http');
 			const testServer = http.createServer();
 			return new Promise((resolve) => {
@@ -503,12 +503,12 @@ export default class ObsidianMCPPlugin extends Plugin {
 		}
 	}
 
-	private async handleVaultSwitch(
-		oldVaultName: string, 
-		newVaultName: string, 
-		oldVaultPath: string, 
+	private handleVaultSwitch(
+		oldVaultName: string,
+		newVaultName: string,
+		oldVaultPath: string,
 		newVaultPath: string
-	): Promise<void> {
+	): void {
 		Debug.log(`🔄 Vault switch detected: ${oldVaultName} → ${newVaultName}`);
 		Debug.log(`📁 Path change: ${oldVaultPath} → ${newVaultPath}`);
 
@@ -950,7 +950,7 @@ class MCPSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName("Security").setHeading();
 		
 		new Setting(containerEl)
-			.setName('Read-Only mode')
+			.setName('Read-only mode')
 			.setDesc('Enable read-only mode - blocks all write operations (create, update, delete, move, rename)')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.readOnlyMode)
@@ -1077,13 +1077,13 @@ class MCPSettingTab extends PluginSettingTab {
 					try {
 						const adapter = this.app.vault.adapter;
 						const basePath = adapter instanceof FileSystemAdapter ? adapter.getBasePath() : '';
-						// eslint-disable-next-line @typescript-eslint/no-require-imports
+						// eslint-disable-next-line @typescript-eslint/no-require-imports -- Dynamic require needed for Node.js path module in Obsidian desktop environment
 						const nodePath = require('path') as typeof import('path');
 						const fullPath = nodePath.join(basePath, stats.filePath);
 						Debug.log(`Opening file at: ${fullPath}`);
 
 						// Try to access electron shell
-						// eslint-disable-next-line @typescript-eslint/no-require-imports
+						// eslint-disable-next-line @typescript-eslint/no-require-imports -- Dynamic require needed for Electron shell API in Obsidian desktop environment
 						const electron = require('electron') as { shell?: { openPath: (path: string) => Promise<string> } };
 						if (electron?.shell) {
 							const result = await electron.shell.openPath(fullPath);
@@ -1123,12 +1123,12 @@ class MCPSettingTab extends PluginSettingTab {
 					try {
 						const adapter = this.app.vault.adapter;
 						const basePath = adapter instanceof FileSystemAdapter ? adapter.getBasePath() : '';
-						// eslint-disable-next-line @typescript-eslint/no-require-imports
+						// eslint-disable-next-line @typescript-eslint/no-require-imports -- Dynamic require needed for Node.js path module in Obsidian desktop environment
 						const nodePath = require('path') as typeof import('path');
 						const fullPath = nodePath.join(basePath, stats.filePath);
 						Debug.log(`Showing file in explorer: ${fullPath}`);
 
-						// eslint-disable-next-line @typescript-eslint/no-require-imports
+						// eslint-disable-next-line @typescript-eslint/no-require-imports -- Dynamic require needed for Electron shell API in Obsidian desktop environment
 						const electron = require('electron') as { shell?: { showItemInFolder: (path: string) => void } };
 						if (electron?.shell) {
 							electron.shell.showItemInFolder(fullPath);

@@ -15,12 +15,12 @@ export class GraphSearchTagTraversal extends GraphSearchTraversal {
         const linkedPaths = new Set<string>();
         
         // First, get all normal links (forward and back)
-        const normalLinks = await this.getLinkedPaths(file);
+        const normalLinks = this.getLinkedPaths(file);
         normalLinks.forEach(path => linkedPaths.add(path));
-        
+
         // Then, add tag-based connections if enabled
         if (followTags) {
-            const tagLinks = await this.getTagConnectedPaths(file);
+            const tagLinks = this.getTagConnectedPaths(file);
             tagLinks.forEach(path => linkedPaths.add(path));
         }
         
@@ -30,7 +30,7 @@ export class GraphSearchTagTraversal extends GraphSearchTraversal {
     /**
      * Find all files that share at least one tag with the given file
      */
-    private async getTagConnectedPaths(file: TFile): Promise<string[]> {
+    private getTagConnectedPaths(file: TFile): string[] {
         const connectedPaths = new Set<string>();
         const cache = this.app.metadataCache.getFileCache(file);
         
@@ -126,7 +126,7 @@ export class GraphSearchTagTraversal extends GraphSearchTraversal {
                     for (const linkedPath of links) {
                         if (!visited.has(linkedPath)) {
                             // Check if this is a normal link or tag connection
-                            const normalLinks = await this.getLinkedPaths(file);
+                            const normalLinks = this.getLinkedPaths(file);
                             const isTagConnection = !normalLinks.includes(linkedPath);
                             
                             if (isTagConnection) {
@@ -161,7 +161,7 @@ export class GraphSearchTagTraversal extends GraphSearchTraversal {
     /**
      * Get shared tags between two files
      */
-    async getSharedTags(path1: string, path2: string): Promise<string[]> {
+    getSharedTags(path1: string, path2: string): string[] {
         const file1 = this.app.vault.getAbstractFileByPath(path1);
         const file2 = this.app.vault.getAbstractFileByPath(path2);
         

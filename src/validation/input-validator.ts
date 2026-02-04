@@ -278,7 +278,7 @@ export class PathSafetyValidator implements Validator {
     }
 
     // Check for invalid characters
-    // eslint-disable-next-line no-control-regex
+    // eslint-disable-next-line no-control-regex -- Intentionally matching control characters to reject invalid path characters
     const invalidChars = /[<>:"|?*\x00-\x1f]/;
     if (invalidChars.test(path)) {
       errors.push({

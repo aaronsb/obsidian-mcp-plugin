@@ -84,11 +84,11 @@ export async function readFileWithFragments(
   
   // Use fragment retrieval
   const docId = `file:${path}`;
-  await fragmentRetriever.indexDocument(docId, path, fileContent);
+  fragmentRetriever.indexDocument(docId, path, fileContent);
   
   // Retrieve relevant fragments based on query or path
   const fragmentQuery = query || path.split('/').pop()?.replace('.md', '') || '';
-  const fragmentResponse = await fragmentRetriever.retrieveFragments(fragmentQuery, {
+  const fragmentResponse = fragmentRetriever.retrieveFragments(fragmentQuery, {
     strategy: strategy || 'auto',
     maxFragments: maxFragments || 5
   });

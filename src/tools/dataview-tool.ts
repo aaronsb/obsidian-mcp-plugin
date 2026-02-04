@@ -178,7 +178,7 @@ export class DataviewTool {
   /**
    * List all pages with metadata
    */
-  async listPages(source?: string): Promise<unknown> {
+  listPages(source?: string): unknown {
     if (!this.isAvailable()) {
       throw new Error('Dataview plugin is not available or not enabled');
     }
@@ -220,7 +220,7 @@ export class DataviewTool {
   /**
    * Get metadata for a specific page
    */
-  async getPageMetadata(path: string): Promise<unknown> {
+  getPageMetadata(path: string): unknown {
     if (!this.isAvailable()) {
       throw new Error('Dataview plugin is not available or not enabled');
     }
@@ -269,7 +269,7 @@ export class DataviewTool {
   /**
    * Validate a DQL query syntax
    */
-  async validateQuery(query: string): Promise<unknown> {
+  validateQuery(query: string): unknown {
     if (!this.isAvailable()) {
       throw new Error('Dataview plugin is not available or not enabled');
     }

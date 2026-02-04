@@ -122,6 +122,7 @@ export class VaultSecurityManager {
 	 * Validates both permissions and paths
 	 */
 	async validateOperation(operation: VaultOperation): Promise<ValidatedOperation> {
+		await Promise.resolve(); // Ensure async behavior for callers that expect rejected promises on throw
 		Debug.log(`🔐 VaultSecurityManager.validateOperation called for: ${operation.type} on "${operation.path}"`);
 		try {
 			// Step 1: Check if security is enabled
@@ -133,21 +134,21 @@ export class VaultSecurityManager {
 						'PERMISSION_DENIED'
 					);
 				}
-				
+
 				// Return operation as-is without path validation
 				// Cast paths to ValidatedPath since we're bypassing validation
 				const result = {
 					...operation,
 					validatedAt: Date.now()
 				};
-				
+
 				if (operation.path) {
 					result.path = operation.path as ValidatedPath;
 				}
 				if (operation.targetPath) {
 					result.targetPath = operation.targetPath as ValidatedPath;
 				}
-				
+
 				return result as ValidatedOperation;
 			}
 

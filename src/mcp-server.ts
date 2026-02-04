@@ -109,7 +109,7 @@ interface ConnectionPoolStatsResponse {
 export class MCPHttpServer {
   private app: express.Application;
   private server?: Server | HttpsServer;
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Using Server (not McpServer) because McpServer requires Zod schemas
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Server (not McpServer) is required because this code uses setRequestHandler with JSON Schema, not Zod schemas
   private mcpServer?: MCPServer; // Single server for non-concurrent mode
   private mcpServerPool?: MCPServerPool; // Server pool for concurrent mode
   private transports: Map<string, StreamableHTTPServerTransport> = new Map();
@@ -230,7 +230,7 @@ export class MCPHttpServer {
             const sessionAPI = this.getSessionAPI(request.sessionId);
 
             // Check if this operation needs data preparation for worker threads
-            await this.prepareWorkerContext(request);
+            this.prepareWorkerContext(request);
 
             // Execute tool with session context
             const result = await tool.handler(sessionAPI, request.params);
@@ -257,7 +257,7 @@ export class MCPHttpServer {
       Debug.log(`🏊 Connection pool initialized with max ${maxConnections} connections`);
     } else {
       // Initialize single MCP Server for non-concurrent mode
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- Using Server (not McpServer) for JSON Schema support
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- Server (not McpServer) is required because this code uses setRequestHandler with JSON Schema, not Zod schemas
       this.mcpServer = new MCPServer(
         {
           name: 'Semantic Notes Vault MCP',
@@ -287,7 +287,7 @@ export class MCPHttpServer {
     const availableTools = createSemanticTools(this.obsidianAPI);
 
     // List tools handler
-    this.mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
+    this.mcpServer.setRequestHandler(ListToolsRequestSchema, () => {
       Debug.log('📋 Listing available tools');
       return {
         tools: availableTools.map(tool => ({
@@ -350,13 +350,13 @@ export class MCPHttpServer {
     }
 
     // List resources handler
-    this.mcpServer.setRequestHandler(ListResourcesRequestSchema, async () => {
+    this.mcpServer.setRequestHandler(ListResourcesRequestSchema, () => {
       Debug.log('📋 Listing available resources');
       return { resources };
     });
 
     // Read resource handler
-    this.mcpServer.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    this.mcpServer.setRequestHandler(ReadResourceRequestSchema, (request) => {
       const { uri } = request.params;
       Debug.log(`📖 Reading resource: ${uri}`);
 
@@ -577,7 +577,7 @@ export class MCPHttpServer {
       if (sessionId) {
         effectiveSessionId = sessionId;
       }
-      // eslint-disable-next-line @typescript-eslint/no-deprecated
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- Server (not McpServer) is required because this code uses setRequestHandler with JSON Schema, not Zod schemas
       let mcpServer: MCPServer;
 
       // Helper: create a null response shim so we can send an internal initialize
@@ -1034,7 +1034,7 @@ export class MCPHttpServer {
   /**
    * Prepare context data for worker thread operations
    */
-  private async prepareWorkerContext(request: PooledRequest): Promise<unknown> {
+  private prepareWorkerContext(request: PooledRequest): unknown {
     // Only prepare context for worker-compatible operations
     const workerOps = [
       'tool.vault.search',

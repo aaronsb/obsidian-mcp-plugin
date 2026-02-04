@@ -17,7 +17,7 @@ export class UniversalFragmentRetriever {
   /**
    * Index a document for fragment retrieval
    */
-  async indexDocument(docId: string, filePath: string, content: string, metadata?: Record<string, unknown>): Promise<void> {
+  indexDocument(docId: string, filePath: string, content: string, metadata?: Record<string, unknown>): void {
     // Index in all three strategies for flexibility
     this.adaptiveIndex.indexDocument(docId, filePath, content, metadata);
     this.proximityIndex.indexDocument(docId, filePath, content);
@@ -28,10 +28,10 @@ export class UniversalFragmentRetriever {
   /**
    * Retrieve fragments based on query with semantic hints
    */
-  async retrieveFragments(
+  retrieveFragments(
     query: string,
     options: RetrievalOptions = {}
-  ): Promise<SemanticResponse<Fragment[]>> {
+  ): SemanticResponse<Fragment[]> {
     const { strategy = 'auto', maxFragments = 5 } = options;
     
     let fragments: Fragment[] = [];

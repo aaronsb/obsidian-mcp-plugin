@@ -151,7 +151,7 @@ export class GraphTagTool {
             throw new Error('startPath and targetPath are required for shared-tags action');
         }
 
-        const sharedTags = await this.graphSearch.getSharedTags(params.startPath, params.targetPath);
+        const sharedTags = this.graphSearch.getSharedTags(params.startPath, params.targetPath);
         
         return {
             source: params.startPath,
