@@ -1,4 +1,4 @@
-import { App, TFile, getAllTags } from 'obsidian';
+import { App, TFile, getAllTags, CachedMetadata, LinkCache } from 'obsidian';
 import * as yaml from 'js-yaml';
 import {
   BaseYAML,
@@ -239,7 +239,7 @@ export class BasesAPI {
     const context: NoteContext = {
       file,
       frontmatter,
-      cache
+      cache: cache ?? undefined
     };
 
     // Evaluate formulas if defined
@@ -325,9 +325,9 @@ export class BasesAPI {
     };
   }
 
-  private getFileProperties(file: TFile, cache: any): FileProperties {
+  private getFileProperties(file: TFile, cache: CachedMetadata | null | undefined): FileProperties {
     const tags = cache ? (getAllTags(cache) || []) : [];
-    const links = cache?.links?.map((l: any) => l.link) || [];
+    const links: string[] = cache?.links?.map((l: LinkCache) => l.link) || [];
 
     return {
       name: file.basename,
@@ -365,7 +365,7 @@ export class BasesAPI {
     // Handle different property paths
     if (path.startsWith('file.')) {
       const prop = path.substring(5);
-      return (note.file as any)[prop];
+      return note.file[prop as keyof FileProperties];
     } else if (path.startsWith('formula.')) {
       const prop = path.substring(8);
       return note.formulas?.[prop];

@@ -17,7 +17,7 @@ export class UniversalFragmentRetriever {
   /**
    * Index a document for fragment retrieval
    */
-  async indexDocument(docId: string, filePath: string, content: string, metadata?: unknown): Promise<void> {
+  async indexDocument(docId: string, filePath: string, content: string, metadata?: Record<string, unknown>): Promise<void> {
     // Index in all three strategies for flexibility
     this.adaptiveIndex.indexDocument(docId, filePath, content, metadata);
     this.proximityIndex.indexDocument(docId, filePath, content);

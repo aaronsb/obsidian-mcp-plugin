@@ -1,9 +1,14 @@
 import { App } from 'obsidian';
 import { Debug } from './utils/debug';
 
+interface MCPRequestParams {
+  name?: string;
+  arguments?: Record<string, unknown>;
+}
+
 interface MCPRequest {
   method: string;
-  params?: any;
+  params?: MCPRequestParams;
   id?: string | number;
 }
 
@@ -16,10 +21,24 @@ interface MCPResponse {
   id?: string | number;
 }
 
+interface MCPHTTPResponse {
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+}
+
+type RequestHandler = (body?: string) => MCPHTTPResponse | Promise<MCPHTTPResponse>;
+
+interface MCPServerInstance {
+  port: number;
+  handlers: Map<string, RequestHandler>;
+  isRunning: boolean;
+}
+
 export class BrowserMCPServer {
   private app: App;
   private port: number;
-  private server: any;
+  private server: MCPServerInstance | undefined;
   private isRunning: boolean = false;
 
   constructor(app: App, port: number = 3001) {
@@ -71,17 +90,18 @@ export class BrowserMCPServer {
   }
 
   private setupMCPEndpoints(): void {
+    if (!this.server) return;
     // Health check endpoint
     this.server.handlers.set('GET /', this.handleHealthCheck.bind(this));
-    
+
     // MCP protocol endpoint
     this.server.handlers.set('POST /mcp', this.handleMCPRequest.bind(this));
-    
+
     // CORS preflight
     this.server.handlers.set('OPTIONS /mcp', this.handleCORS.bind(this));
   }
 
-  private handleHealthCheck(): unknown {
+  private handleHealthCheck(): MCPHTTPResponse {
     return {
       status: 200,
       headers: {
@@ -98,7 +118,7 @@ export class BrowserMCPServer {
     };
   }
 
-  private handleCORS(): unknown {
+  private handleCORS(): MCPHTTPResponse {
     return {
       status: 200,
       headers: {
@@ -110,9 +130,9 @@ export class BrowserMCPServer {
     };
   }
 
-  private async handleMCPRequest(body: string): Promise<unknown> {
+  private async handleMCPRequest(body?: string): Promise<MCPHTTPResponse> {
     try {
-      const request: MCPRequest = JSON.parse(body);
+      const request = JSON.parse(body ?? '{}') as MCPRequest;
       let response: MCPResponse;
 
       switch (request.method) {
@@ -143,7 +163,7 @@ export class BrowserMCPServer {
         body: JSON.stringify(response)
       };
 
-    } catch (error) {
+    } catch (error: unknown) {
       Debug.error('MCP request error:', error);
       return {
         status: 500,
@@ -186,10 +206,12 @@ export class BrowserMCPServer {
   }
 
   private async handleToolCall(request: MCPRequest): Promise<MCPResponse> {
-    const { name, arguments: args } = request.params || {};
+    const params = request.params ?? {};
+    const name = params.name;
+    const args = params.arguments;
 
     if (name === 'echo') {
-      const message = args?.message as string;
+      const message = (args?.message ?? '') as string;
       const vaultName = this.app.vault.getName();
       const activeFile = this.app.workspace.getActiveFile();
       const fileCount = this.app.vault.getAllLoadedFiles().length;
@@ -246,7 +268,7 @@ export class BrowserMCPServer {
   }
 
   // Method to simulate handling HTTP requests for testing
-  async simulateRequest(method: string, path: string, body?: string): Promise<unknown> {
+  async simulateRequest(method: string, path: string, body?: string): Promise<MCPHTTPResponse> {
     const key = `${method} ${path}`;
     const handler = this.server?.handlers.get(key);
     

@@ -1,9 +1,15 @@
 import { Debug } from './utils/debug';
 import { App } from 'obsidian';
+import type { IncomingMessage, ServerResponse, Server } from 'http';
+
+interface MCPToolCallParams {
+  name?: string;
+  arguments?: Record<string, unknown>;
+}
 
 interface MCPRequest {
   method: string;
-  params?: any;
+  params?: MCPToolCallParams;
   id?: string | number;
 }
 
@@ -19,7 +25,7 @@ interface MCPResponse {
 export class NodeMCPServer {
   private app: App;
   private port: number;
-  private server: any;
+  private server: Server | undefined;
   private isRunning: boolean = false;
 
   constructor(app: App, port: number = 3001) {
@@ -35,14 +41,15 @@ export class NodeMCPServer {
 
     try {
       // Try to use Node.js HTTP server if available in Obsidian
-      const http = require('http');
-      
-      this.server = http.createServer((req: any, res: any) => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const http = require('http') as typeof import('http');
+
+      this.server = http.createServer((req: IncomingMessage, res: ServerResponse) => {
         void this.handleRequest(req, res);
       });
 
       await new Promise<void>((resolve, reject) => {
-        this.server.listen(this.port, () => {
+        this.server!.listen(this.port, () => {
           this.isRunning = true;
           Debug.log(`🚀 MCP server started on port ${this.port}`);
           Debug.log(`📍 Health check: /`);
@@ -50,7 +57,7 @@ export class NodeMCPServer {
           resolve();
         });
 
-        this.server.on('error', (error: unknown) => {
+        this.server!.on('error', (error: unknown) => {
           Debug.error('❌ Failed to start MCP server:', error);
           reject(error instanceof Error ? error : new Error(String(error)));
         });
@@ -68,7 +75,7 @@ export class NodeMCPServer {
     }
 
     return new Promise<void>((resolve) => {
-      this.server.close(() => {
+      this.server!.close(() => {
         this.isRunning = false;
         this.server = undefined;
         Debug.log('👋 MCP server stopped');
@@ -77,7 +84,7 @@ export class NodeMCPServer {
     });
   }
 
-  private async handleRequest(req: any, res: any): Promise<void> {
+  private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     // Set CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -109,7 +116,7 @@ export class NodeMCPServer {
     }
   }
 
-  private async handleHealthCheck(req: any, res: any): Promise<void> {
+  private async handleHealthCheck(_req: IncomingMessage, res: ServerResponse): Promise<void> {
     const response = {
       name: 'Semantic Notes Vault MCP',
       version: '0.1.4',
@@ -122,53 +129,55 @@ export class NodeMCPServer {
     res.end(JSON.stringify(response));
   }
 
-  private async handleMCPRequest(req: any, res: any): Promise<void> {
+  private async handleMCPRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     let body = '';
 
-    req.on('data', (chunk: any) => {
+    req.on('data', (chunk: Buffer) => {
       body += chunk.toString();
     });
 
-    req.on('end', async () => {
-      try {
-        const request: MCPRequest = JSON.parse(body);
-        let response: MCPResponse;
+    req.on('end', () => {
+      void (async () => {
+        try {
+          const request = JSON.parse(body) as MCPRequest;
+          let response: MCPResponse;
 
-        Debug.log('📨 MCP Request:', request.method, request.params);
+          Debug.log('📨 MCP Request:', request.method, request.params);
 
-        switch (request.method) {
-          case 'tools/list':
-            response = this.handleToolsList(request);
-            break;
-          
-          case 'tools/call':
-            response = await this.handleToolCall(request);
-            break;
-          
-          default:
-            response = {
-              error: {
-                code: -32601,
-                message: `Method not found: ${request.method}`
-              },
-              id: request.id
-            };
-        }
+          switch (request.method) {
+            case 'tools/list':
+              response = this.handleToolsList(request);
+              break;
 
-        Debug.log('📤 MCP Response:', response);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(response));
+            case 'tools/call':
+              response = await this.handleToolCall(request);
+              break;
 
-      } catch (error) {
-        Debug.error('MCP request parsing error:', error);
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          error: {
-            code: -32700,
-            message: 'Parse error: ' + (error instanceof Error ? error.message : 'Invalid JSON')
+            default:
+              response = {
+                error: {
+                  code: -32601,
+                  message: `Method not found: ${request.method}`
+                },
+                id: request.id
+              };
           }
-        }));
-      }
+
+          Debug.log('📤 MCP Response:', response);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(response));
+
+        } catch (error: unknown) {
+          Debug.error('MCP request parsing error:', error);
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            error: {
+              code: -32700,
+              message: 'Parse error: ' + (error instanceof Error ? error.message : 'Invalid JSON')
+            }
+          }));
+        }
+      })();
     });
   }
 
@@ -197,10 +206,12 @@ export class NodeMCPServer {
   }
 
   private async handleToolCall(request: MCPRequest): Promise<MCPResponse> {
-    const { name, arguments: args } = request.params || {};
+    const name = request.params?.name;
+    const args = request.params?.arguments;
 
     if (name === 'echo') {
-      const message = args?.message as string;
+      const rawMessage = args?.message;
+      const message = typeof rawMessage === 'string' ? rawMessage : '';
       const vaultName = this.app.vault.getName();
       const activeFile = this.app.workspace.getActiveFile();
       const fileCount = this.app.vault.getAllLoadedFiles().length;

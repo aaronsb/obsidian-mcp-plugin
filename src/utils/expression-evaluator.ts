@@ -1,4 +1,4 @@
-import { App, getAllTags } from 'obsidian';
+import { App, getAllTags, LinkCache } from 'obsidian';
 import { NoteContext } from '../types/bases-yaml';
 import { Debug } from './debug';
 import { BasesReference } from './bases-reference';
@@ -30,10 +30,10 @@ export class ExpressionEvaluator {
 
         // Log specific values that might be referenced in the expression
         if (expression.includes('status')) {
-          Debug.log('status value:', (evalContext as any).status || (evalContext as any).note?.status);
+          Debug.log('status value:', evalContext['status'] || (evalContext['note'] as Record<string, unknown> | undefined)?.['status']);
         }
         if (expression.includes('priority')) {
-          Debug.log('priority value:', (evalContext as any).priority || (evalContext as any).note?.priority);
+          Debug.log('priority value:', evalContext['priority'] || (evalContext['note'] as Record<string, unknown> | undefined)?.['priority']);
         }
       }
       
@@ -45,11 +45,11 @@ export class ExpressionEvaluator {
         with (context) {
           return ${expression};
         }
-      `);
-      const result = func(evalContext);
+      `) as (ctx: Record<string, unknown>) => unknown;
+      const result: unknown = func(evalContext);
       
       if (Debug.isDebugMode()) {
-        Debug.log(`Expression result: ${result}`);
+        Debug.log(`Expression result: ${String(result)}`);
       }
       
       return result;
@@ -88,8 +88,8 @@ export class ExpressionEvaluator {
       ctime: new Date(file.stat.ctime),
       mtime: new Date(file.stat.mtime),
       tags: cache ? (getAllTags(cache) || []) : [],
-      links: cache?.links?.map((l: any) => l.link) || [],
-      
+      links: cache?.links?.map((l: LinkCache) => l.link) || [],
+
       // File functions
       hasTag: (...tags: string[]) => {
         const fileTags = cache ? (getAllTags(cache) || []) : [];
@@ -108,10 +108,10 @@ export class ExpressionEvaluator {
       },
       
       hasLink: (target: string) => {
-        const links = cache?.links || [];
+        const links: LinkCache[] = cache?.links || [];
         // Handle both [[Link]] and Link formats
         const normalizedTarget = target.replace(/^\[\[|\]\]$/g, '');
-        return links.some((link: any) => link.link === normalizedTarget);
+        return links.some((link: LinkCache) => link.link === normalizedTarget);
       },
       
       hasProperty: (name: string) => {
@@ -162,7 +162,7 @@ export class ExpressionEvaluator {
       },
       
       // List functions
-      list: (val: unknown) => Array.isArray(val) ? val : [val]
+      list: (val: unknown): unknown[] => Array.isArray(val) ? val as unknown[] : [val]
     };
 
     // Pre-process frontmatter to auto-convert date-like strings
@@ -238,7 +238,7 @@ export class ExpressionEvaluator {
       case 'tags':
         return cache ? (getAllTags(cache) || []) : [];
       case 'links':
-        return cache?.links?.map((l: any) => l.link) || [];
+        return cache?.links?.map((l: LinkCache) => l.link) || [];
       default:
         return undefined;
     }

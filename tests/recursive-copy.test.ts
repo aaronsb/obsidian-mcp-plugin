@@ -2,6 +2,26 @@ import { SemanticRouter } from '../src/semantic/router';
 import { ObsidianAPI } from '../src/utils/obsidian-api';
 import { App } from 'obsidian';
 
+// Result types for test assertions
+interface FileCopyResult {
+  success: boolean;
+  sourcePath: string;
+  copiedTo: string;
+}
+
+interface DirectoryCopyResult {
+  success: boolean;
+  sourcePath: string;
+  destinationPath: string;
+  filesCount: number;
+  copiedFiles: string[];
+  skippedFiles: string[];
+  workflow: {
+    message: string;
+    suggested_next: Array<{ description: string; command: string }>;
+  };
+}
+
 // Mock the ObsidianAPI
 class MockObsidianAPI extends ObsidianAPI {
   private mockFiles: Map<string, { content: string; isImage?: boolean }> = new Map();
@@ -201,7 +221,7 @@ describe('Recursive Directory Copy', () => {
       });
 
       // Should succeed because directory copying works by default
-      expect((result.result as any).success).toBe(true);
+      expect((result.result as DirectoryCopyResult).success).toBe(true);
     });
 
     test('should detect file correctly', async () => {
@@ -211,9 +231,9 @@ describe('Recursive Directory Copy', () => {
         params: { path: 'source/file1.md', destination: 'dest/file1.md' }
       });
 
-      expect((result.result as any).success).toBe(true);
-      expect((result.result as any).sourcePath).toBe('source/file1.md');
-      expect((result.result as any).copiedTo).toBe('dest/file1.md');
+      expect((result.result as FileCopyResult).success).toBe(true);
+      expect((result.result as FileCopyResult).sourcePath).toBe('source/file1.md');
+      expect((result.result as FileCopyResult).copiedTo).toBe('dest/file1.md');
     });
   });
 
@@ -225,11 +245,11 @@ describe('Recursive Directory Copy', () => {
         params: { path: 'source', destination: 'dest' }
       });
 
-      expect((result.result as any).success).toBe(true);
-      expect((result.result as any).sourcePath).toBe('source');
-      expect((result.result as any).destinationPath).toBe('dest');
-      expect((result.result as any).filesCount).toBe(4); // file1.md, file2.md, file3.md, file4.md
-      expect((result.result as any).skippedFiles).toContain('source/image.png'); // Image should be skipped
+      expect((result.result as DirectoryCopyResult).success).toBe(true);
+      expect((result.result as DirectoryCopyResult).sourcePath).toBe('source');
+      expect((result.result as DirectoryCopyResult).destinationPath).toBe('dest');
+      expect((result.result as DirectoryCopyResult).filesCount).toBe(4); // file1.md, file2.md, file3.md, file4.md
+      expect((result.result as DirectoryCopyResult).skippedFiles).toContain('source/image.png'); // Image should be skipped
     });
 
     test('should copy nested directory structure', async () => {
@@ -239,7 +259,7 @@ describe('Recursive Directory Copy', () => {
         params: { path: 'source', destination: 'dest' }
       });
 
-      const copiedFiles = (result.result as any).copiedFiles;
+      const copiedFiles = (result.result as DirectoryCopyResult).copiedFiles;
       expect(copiedFiles).toContain('dest/file1.md');
       expect(copiedFiles).toContain('dest/file2.md');
       expect(copiedFiles).toContain('dest/subdir/file3.md');
@@ -254,14 +274,15 @@ describe('Recursive Directory Copy', () => {
         params: { path: 'source', destination: 'dest' }
       });
 
-      // Second copy without overwrite should succeed in mock (mock doesn't simulate file existence errors)
+      // Second copy without overwrite should fail because files already exist
       const result = await router.route({
         operation: 'vault',
         action: 'copy',
         params: { path: 'source', destination: 'dest', overwrite: false }
       });
 
-      expect((result.result as any).success).toBe(true);
+      // result.result is null on error — the error details are in the response
+      expect(result.result).toBeNull();
     });
 
     test('should overwrite when overwrite=true', async () => {
@@ -279,8 +300,8 @@ describe('Recursive Directory Copy', () => {
         params: { path: 'source', destination: 'dest', overwrite: true }
       });
 
-      expect((result.result as any).success).toBe(true);
-      expect((result.result as any).filesCount).toBe(4);
+      expect((result.result as DirectoryCopyResult).success).toBe(true);
+      expect((result.result as DirectoryCopyResult).filesCount).toBe(4);
     });
 
     test('should skip image files but continue copying', async () => {
@@ -290,9 +311,9 @@ describe('Recursive Directory Copy', () => {
         params: { path: 'source', destination: 'dest' }
       });
 
-      expect((result.result as any).success).toBe(true);
-      expect((result.result as any).skippedFiles).toEqual(['source/image.png']);
-      expect((result.result as any).filesCount).toBe(4); // Only text files copied
+      expect((result.result as DirectoryCopyResult).success).toBe(true);
+      expect((result.result as DirectoryCopyResult).skippedFiles).toEqual(['source/image.png']);
+      expect((result.result as DirectoryCopyResult).filesCount).toBe(4); // Only text files copied
     });
 
     test('should provide helpful workflow suggestions', async () => {
@@ -302,10 +323,10 @@ describe('Recursive Directory Copy', () => {
         params: { path: 'source', destination: 'dest' }
       });
 
-      expect((result.result as any).workflow.message).toContain('Directory copied successfully');
-      expect((result.result as any).workflow.suggested_next).toHaveLength(3); // List, view, review skipped
+      expect((result.result as DirectoryCopyResult).workflow.message).toContain('Directory copied successfully');
+      expect((result.result as DirectoryCopyResult).workflow.suggested_next).toHaveLength(3); // List, view, review skipped
       
-      const suggestions = (result.result as any).workflow.suggested_next;
+      const suggestions = (result.result as DirectoryCopyResult).workflow.suggested_next;
       expect(suggestions[0].description).toBe('List copied directory contents');
       expect(suggestions[0].command).toContain('vault(action=\'list\', directory=\'dest\')');
       expect(suggestions[2].description).toBe('Review skipped files');
@@ -320,9 +341,9 @@ describe('Recursive Directory Copy', () => {
         params: { path: 'source/file1.md', destination: 'copied-file.md' }
       });
 
-      expect((result.result as any).success).toBe(true);
-      expect((result.result as any).sourcePath).toBe('source/file1.md');
-      expect((result.result as any).copiedTo).toBe('copied-file.md');
+      expect((result.result as FileCopyResult).success).toBe(true);
+      expect((result.result as FileCopyResult).sourcePath).toBe('source/file1.md');
+      expect((result.result as FileCopyResult).copiedTo).toBe('copied-file.md');
     });
 
     test('should default recursive=true for backward compatibility', async () => {
@@ -333,8 +354,8 @@ describe('Recursive Directory Copy', () => {
         // No recursive parameter - should default to true
       });
 
-      expect((result.result as any).success).toBe(true);
-      expect((result.result as any).filesCount).toBe(4);
+      expect((result.result as DirectoryCopyResult).success).toBe(true);
+      expect((result.result as DirectoryCopyResult).filesCount).toBe(4);
     });
   });
 });

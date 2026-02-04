@@ -48,14 +48,14 @@ export async function readFileWithFragments(
   
   // Extract content from the response
   let fileContent: string;
-  let metadata: any = {};
+  let metadata: Record<string, unknown> = {};
   
   if (typeof fileResponse === 'string') {
     fileContent = fileResponse;
   } else if (fileResponse && typeof fileResponse === 'object' && 'content' in fileResponse) {
     // Handle structured response from Obsidian API
     fileContent = fileResponse.content;
-    metadata = fileResponse;
+    metadata = { ...fileResponse };
     
     // If it's still not a string (might be an image or binary file)
     if (typeof fileContent !== 'string') {

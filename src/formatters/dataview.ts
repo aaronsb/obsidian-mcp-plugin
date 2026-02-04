@@ -18,11 +18,13 @@ import {
 export interface DataviewQueryResponse {
   query: string;
   type: 'list' | 'table' | 'task' | 'calendar';
-  values?: any[];
+  values?: DataviewValue[];
   headers?: string[];
   successful: boolean;
   error?: string;
 }
+
+type DataviewValue = Record<string, unknown> | unknown[] | string | number | boolean | null;
 
 export function formatDataviewQuery(response: DataviewQueryResponse): string {
   const lines: string[] = [];
@@ -65,7 +67,7 @@ export function formatDataviewQuery(response: DataviewQueryResponse): string {
   return joinLines(lines);
 }
 
-function formatDataviewTable(headers: string[], rows: any[]): string {
+function formatDataviewTable(headers: string[], rows: DataviewValue[]): string {
   const lines: string[] = [];
 
   // Limit columns for readability
@@ -79,8 +81,16 @@ function formatDataviewTable(headers: string[], rows: any[]): string {
   // Data rows (limit to 20)
   rows.slice(0, 20).forEach(row => {
     const cells = displayHeaders.map((_, i) => {
-      const val = Array.isArray(row) ? row[i] : row[headers[i]];
-      return truncate(String(val ?? ''), 30);
+      let val: unknown;
+      if (Array.isArray(row)) {
+        val = row[i];
+      } else if (row !== null && typeof row === 'object') {
+        val = row[headers[i]];
+      }
+      const display = val === null || val === undefined
+        ? ''
+        : typeof val === 'object' ? JSON.stringify(val) : String(val as string | number | boolean);
+      return truncate(display, 30);
     });
     lines.push('| ' + cells.join(' | ') + (hasMore ? ' | ...' : '') + ' |');
   });
@@ -92,7 +102,7 @@ function formatDataviewTable(headers: string[], rows: any[]): string {
   return lines.join('\n');
 }
 
-function formatDataviewList(items: any[]): string {
+function formatDataviewList(items: DataviewValue[]): string {
   const lines: string[] = [];
 
   items.slice(0, 30).forEach((item, i) => {
@@ -114,12 +124,25 @@ function formatDataviewList(items: any[]): string {
   return lines.join('\n');
 }
 
-function formatDataviewTasks(tasks: any[]): string {
+interface DataviewTask {
+  completed?: boolean;
+  text?: string;
+  task?: string;
+  path?: string;
+}
+
+function formatDataviewTasks(tasks: DataviewValue[]): string {
   const lines: string[] = [];
 
-  tasks.slice(0, 30).forEach(task => {
+  tasks.slice(0, 30).forEach(taskItem => {
+    const task = (taskItem !== null && typeof taskItem === 'object' && !Array.isArray(taskItem)
+      ? taskItem
+      : {}) as DataviewTask;
     const checkbox = task.completed ? '[x]' : '[ ]';
-    const text = task.text || task.task || String(task);
+    const taskString = taskItem !== null && typeof taskItem === 'object'
+      ? JSON.stringify(taskItem)
+      : String(taskItem);
+    const text = task.text || task.task || taskString;
     lines.push(`- ${checkbox} ${truncate(text, 60)}`);
     if (task.path) {
       lines.push(`      from: ${task.path}`);
@@ -166,9 +189,16 @@ export function formatDataviewStatus(response: DataviewStatusResponse): string {
 /**
  * Format bases.query response
  */
+interface BasesQueryResult {
+  title?: string;
+  name?: string;
+  path?: string;
+  [key: string]: unknown;
+}
+
 export interface BasesQueryResponse {
   basePath: string;
-  results: any[];
+  results: BasesQueryResult[];
   totalCount: number;
 }
 

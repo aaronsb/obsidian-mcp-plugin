@@ -4,7 +4,7 @@ import { App, TFile, CachedMetadata } from 'obsidian';
  * Represents a node in the Obsidian vault graph
  */
 export interface GraphNode {
-  file: TFile;
+  file: TFile | null;
   path: string;
   title: string;
   metadata?: CachedMetadata;
@@ -385,7 +385,7 @@ export class GraphTraversal {
 
       // Create a virtual root node
       const rootNode: GraphNode = {
-        file: null as any, // Virtual node, no actual file
+        file: null, // Virtual node, no actual file
         path: '/',
         title: 'Vault Root',
         metadata: undefined

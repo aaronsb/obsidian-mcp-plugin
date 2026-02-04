@@ -3,6 +3,36 @@
  * Tokens represent available states/resources that enable certain actions
  */
 
+/** Params shape for vault read/create/search/list operations */
+interface VaultParams {
+  path?: string;
+  directory?: string;
+  query?: string;
+}
+
+/** Result shape for vault read operations */
+interface VaultReadResult {
+  content?: string;
+  tags?: string[];
+}
+
+/** Result shape for vault search operations */
+interface VaultSearchResult {
+  totalResults: number;
+  results?: Array<{ path: string }>;
+}
+
+/** Params shape for edit operations */
+interface EditParams {
+  path?: string;
+  oldText?: string;
+}
+
+/** Params shape for view operations */
+interface ViewParams {
+  path?: string;
+}
+
 export interface StateTokens {
   // File tokens
   file_loaded?: string;           // Path of currently loaded file
@@ -65,94 +95,105 @@ export class StateTokenManager {
     }
   }
   
-  private updateVaultTokens(action: string, params: any, result: any, success: boolean) {
+  private updateVaultTokens(action: string, params: unknown, result: unknown, success: boolean) {
     if (!success) return;
-    
+
+    const vaultParams = params as VaultParams;
+
     switch (action) {
-      case 'read':
-        this.tokens.file_loaded = params.path;
+      case 'read': {
+        this.tokens.file_loaded = vaultParams.path;
         this.tokens.file_content = true;
-        this.tokens.file_is_markdown = params.path?.endsWith('.md');
+        this.tokens.file_is_markdown = vaultParams.path?.endsWith('.md');
 
         // Extract links and tags from result
-        if (typeof result === 'object') {
+        if (typeof result === 'object' && result !== null) {
+          const readResult = result as VaultReadResult;
           // Use tags from API response (includes frontmatter tags from metadataCache)
-          if (result.tags && Array.isArray(result.tags)) {
-            this.tokens.file_has_tags = result.tags;
-          } else if (result.content) {
+          if (readResult.tags && Array.isArray(readResult.tags)) {
+            this.tokens.file_has_tags = readResult.tags;
+          } else if (readResult.content) {
             // Fallback to content extraction
-            this.tokens.file_has_tags = this.extractTags(result.content);
+            this.tokens.file_has_tags = this.extractTags(readResult.content);
           }
 
           // Extract links from content
-          if (result.content) {
-            this.tokens.file_has_links = this.extractLinks(result.content);
+          if (readResult.content) {
+            this.tokens.file_has_links = this.extractLinks(readResult.content);
           }
         }
-        
+
         // Update history
-        this.addToFileHistory(params.path);
+        if (vaultParams.path) this.addToFileHistory(vaultParams.path);
         break;
-        
-      case 'list':
-        this.tokens.directory_listed = params.directory || '/';
-        this.tokens.directory_file_list = result;
-        this.tokens.directory_has_files = result && result.length > 0;
-        this.addToDirectoryHistory(params.directory);
+      }
+
+      case 'list': {
+        this.tokens.directory_listed = vaultParams.directory || '/';
+        const fileList = result as string[] | undefined;
+        this.tokens.directory_file_list = fileList;
+        this.tokens.directory_has_files = Array.isArray(fileList) && fileList.length > 0;
+        if (vaultParams.directory) this.addToDirectoryHistory(vaultParams.directory);
         break;
-        
-      case 'search':
+      }
+
+      case 'search': {
+        const searchResult = result as VaultSearchResult;
         this.tokens.search_performed = true;
-        this.tokens.search_query = params.query;
-        this.tokens.search_has_results = result.totalResults > 0;
-        this.tokens.search_result_count = result.totalResults;
-        this.tokens.search_result_paths = result.results?.map((r: any) => r.path) || [];
+        this.tokens.search_query = vaultParams.query;
+        this.tokens.search_has_results = searchResult.totalResults > 0;
+        this.tokens.search_result_count = searchResult.totalResults;
+        this.tokens.search_result_paths = searchResult.results?.map((r) => r.path) || [];
         break;
-        
+      }
+
       case 'create':
-        this.tokens.file_loaded = params.path;
+        this.tokens.file_loaded = vaultParams.path;
         this.tokens.file_content = true;
-        this.tokens.file_is_markdown = params.path?.endsWith('.md');
-        this.addToFileHistory(params.path);
+        this.tokens.file_is_markdown = vaultParams.path?.endsWith('.md');
+        if (vaultParams.path) this.addToFileHistory(vaultParams.path);
         break;
     }
   }
   
-  private updateEditTokens(action: string, params: any, result: any, success: boolean) {
-    this.tokens.edit_target_file = params.path;
-    
+  private updateEditTokens(action: string, params: unknown, _result: unknown, success: boolean) {
+    const editParams = params as EditParams;
+    this.tokens.edit_target_file = editParams.path;
+
     if (success) {
       this.tokens.edit_in_progress = false;
       this.tokens.edit_success_count = (this.tokens.edit_success_count || 0) + 1;
-      
+
       // If edit succeeded, file content may have changed
-      if (this.tokens.file_loaded === params.path) {
+      if (this.tokens.file_loaded === editParams.path) {
         this.tokens.file_has_links = undefined;
         this.tokens.file_has_tags = undefined;
       }
     } else {
       this.tokens.edit_in_progress = true;
-      
+
       // Buffer tokens for failed edits
       if (action === 'window') {
         this.tokens.buffer_available = true;
-        this.tokens.buffer_file = params.path;
-        this.tokens.buffer_search_text = params.oldText;
+        this.tokens.buffer_file = editParams.path;
+        this.tokens.buffer_search_text = editParams.oldText;
       }
     }
   }
   
-  private updateViewTokens(action: string, params: any, result: any, success: boolean) {
+  private updateViewTokens(action: string, params: unknown, _result: unknown, success: boolean) {
     if (!success) return;
-    
+
+    const viewParams = params as ViewParams;
+
     switch (action) {
       case 'file':
       case 'window':
-        this.tokens.file_loaded = params.path;
+        this.tokens.file_loaded = viewParams.path;
         this.tokens.file_content = true;
-        this.addToFileHistory(params.path);
+        if (viewParams.path) this.addToFileHistory(viewParams.path);
         break;
-        
+
       case 'open_in_obsidian':
         this.tokens.obsidian_available = true;
         break;
@@ -215,9 +256,9 @@ export class StateTokenManager {
   /**
    * Clear specific tokens
    */
-  clearTokens(tokenNames: string[]) {
+  clearTokens(tokenNames: (keyof StateTokens)[]) {
     for (const name of tokenNames) {
-      delete (this.tokens as any)[name];
+      delete this.tokens[name];
     }
   }
   

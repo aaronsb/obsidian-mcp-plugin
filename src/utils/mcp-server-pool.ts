@@ -13,6 +13,27 @@ import { SecureObsidianAPI } from '../security/secure-obsidian-api';
 import { createSemanticTools } from '../tools/semantic-tools';
 import { DataviewTool, isDataviewToolAvailable } from '../tools/dataview-tool';
 import { getVersion } from '../version';
+import type { SessionManager } from './session-manager';
+import type { ConnectionPool } from './connection-pool';
+
+/** Plugin interface with settings relevant to MCPServerPool.
+ * Includes fields from SecurePluginRef and ObsidianAPIPluginRef so the same object
+ * can be passed through the constructor chain. */
+interface PluginWithSettings {
+  settings?: {
+    enableConcurrentSessions?: boolean;
+    maxConcurrentConnections?: number;
+    readOnlyMode?: boolean;
+    // From SecurePluginRef (for SecureObsidianAPI)
+    security?: Partial<import('../security/vault-security-manager').SecuritySettings>;
+    // From ObsidianAPIPluginRef (for ObsidianAPI)
+    validation?: Partial<import('../validation/input-validator').ValidationConfig>;
+    httpPort?: number;
+  };
+  ignoreManager?: import('../security/mcp-ignore-manager').MCPIgnoreManager;
+  mcpServer?: { isServerRunning(): boolean; getConnectionCount(): number };
+  manifest?: { dir?: string };
+}
 
 interface PooledServer {
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- Using Server (not McpServer) for JSON Schema support
@@ -27,11 +48,11 @@ export class MCPServerPool extends EventEmitter {
   private servers: Map<string, PooledServer> = new Map();
   private maxServers: number;
   private obsidianAPI: ObsidianAPI | SecureObsidianAPI;
-  private plugin: any;
-  private sessionManager?: any;
-  private connectionPool?: any;
+  private plugin?: PluginWithSettings;
+  private sessionManager?: SessionManager;
+  private connectionPool?: ConnectionPool;
 
-  constructor(obsidianAPI: ObsidianAPI | SecureObsidianAPI, maxServers: number = 32, plugin?: any) {
+  constructor(obsidianAPI: ObsidianAPI | SecureObsidianAPI, maxServers: number = 32, plugin?: PluginWithSettings) {
     super();
     this.obsidianAPI = obsidianAPI;
     this.maxServers = maxServers;
@@ -41,7 +62,7 @@ export class MCPServerPool extends EventEmitter {
   /**
    * Set session manager and connection pool references
    */
-  setContexts(sessionManager: any, connectionPool: any) {
+  setContexts(sessionManager: SessionManager, connectionPool: ConnectionPool) {
     this.sessionManager = sessionManager;
     this.connectionPool = connectionPool;
   }
@@ -107,13 +128,13 @@ export class MCPServerPool extends EventEmitter {
     // Create session-specific API instance
     // Always create SecureObsidianAPI if the main API has security settings
     let sessionAPI: ObsidianAPI | SecureObsidianAPI;
-    if ('getSecuritySettings' in this.obsidianAPI) {
+    if (this.obsidianAPI instanceof SecureObsidianAPI) {
       // Main API is SecureObsidianAPI - create matching secure instance
       sessionAPI = new SecureObsidianAPI(
         this.obsidianAPI.getApp(),
         undefined,
         this.plugin,
-        (this.obsidianAPI as any).getSecuritySettings()
+        this.obsidianAPI.getSecuritySettings()
       );
       Debug.log(`🔐 Created secure session API for session ${sessionId}`);
     } else {
@@ -154,9 +175,9 @@ export class MCPServerPool extends EventEmitter {
       }
 
       try {
-        const result = await tool.handler(sessionAPI, args || {});
+        const result = await tool.handler(sessionAPI, args ?? {});
         return result as CallToolResult;
-      } catch (error) {
+      } catch (error: unknown) {
         Debug.error(`[Session ${sessionId}] Tool execution error (${name}):`, error);
         return {
           content: [{
@@ -219,7 +240,7 @@ export class MCPServerPool extends EventEmitter {
         const vaultInfo = {
           vault: {
             name: vaultName,
-            path: (app.vault.adapter as any).basePath || 'Unknown'
+            path: (app.vault.adapter as unknown as { basePath?: string }).basePath ?? 'Unknown'
           },
           activeFile: activeFile ? {
             name: activeFile.name,
@@ -251,12 +272,23 @@ export class MCPServerPool extends EventEmitter {
       }
 
       if (uri === 'obsidian://session-info' && this.plugin?.settings?.enableConcurrentSessions && this.sessionManager) {
-        const sessions = this.sessionManager!.getAllSessions();
-        const sessionStats = this.sessionManager!.getStats();
+        const sessions = this.sessionManager.getAllSessions();
+        const sessionStats = this.sessionManager.getStats();
         const poolStats = this.connectionPool?.getStats();
         const serverPoolStats = this.getStats();
 
-        const sessionData = sessions.map((session: any) => {
+        interface SessionDataItem {
+          sessionId: string;
+          isCurrentSession: boolean;
+          createdAt: string;
+          lastActivityAt: string;
+          requestCount: number;
+          ageSeconds: number;
+          idleSeconds: number;
+          status: string;
+        }
+
+        const sessionData: SessionDataItem[] = sessions.map((session) => {
           const idleTime = Date.now() - session.lastActivityAt;
           const age = Date.now() - session.createdAt;
           return {
@@ -271,7 +303,7 @@ export class MCPServerPool extends EventEmitter {
           };
         });
 
-        sessionData.sort((a: any, b: any) => {
+        sessionData.sort((a: SessionDataItem, b: SessionDataItem) => {
           if (a.isCurrentSession) return -1;
           if (b.isCurrentSession) return 1;
           return b.lastActivityAt.localeCompare(a.lastActivityAt);
@@ -301,7 +333,7 @@ export class MCPServerPool extends EventEmitter {
           sessions: sessionData,
           settings: {
             sessionTimeout: '1 hour',
-            maxConcurrentConnections: this.plugin?.settings?.maxConcurrentConnections || 32
+            maxConcurrentConnections: this.plugin?.settings?.maxConcurrentConnections ?? 32
           },
           timestamp: new Date().toISOString()
         };

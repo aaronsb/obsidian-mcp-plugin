@@ -103,7 +103,7 @@ export interface NoteContext {
   /**
    * The file being evaluated
    */
-  file: any; // TFile from Obsidian
+  file: import('obsidian').TFile;
 
   /**
    * Frontmatter properties from the note
@@ -118,7 +118,7 @@ export interface NoteContext {
   /**
    * File metadata cache
    */
-  cache?: any; // CachedMetadata from Obsidian
+  cache?: import('obsidian').CachedMetadata;
 }
 
 /**

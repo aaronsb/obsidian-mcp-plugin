@@ -3,6 +3,34 @@ import { findFuzzyMatches } from '../utils/fuzzy-match';
 import { ContentBufferManager } from '../utils/content-buffer';
 import { isImageFile } from '../types/obsidian';
 
+interface WindowEditArgs {
+  path: string;
+  oldText: string;
+  newText: string;
+  fuzzyThreshold?: number;
+  contextLines?: number;
+}
+
+interface BufferEditArgs {
+  path: string;
+  oldText?: string;
+  fuzzyThreshold?: number;
+}
+
+interface InsertAtLineArgs {
+  path: string;
+  lineNumber: number;
+  content?: string;
+  mode?: 'before' | 'after' | 'replace';
+}
+
+interface ViewWindowArgs {
+  path: string;
+  searchText?: string;
+  lineNumber?: number;
+  windowSize?: number;
+}
+
 // Shared edit logic to avoid circular references
 export async function performWindowEdit(
   api: ObsidianAPI,
@@ -119,7 +147,7 @@ export const windowEditTools = [
       },
       required: ['path', 'oldText', 'newText']
     },
-    handler: async (api: ObsidianAPI, args: any) => {
+    handler: async (api: ObsidianAPI, args: WindowEditArgs) => {
       try {
         return await performWindowEdit(
           api,
@@ -128,18 +156,18 @@ export const windowEditTools = [
           args.newText,
           args.fuzzyThreshold || 0.7
         );
-      } catch (error: any) {
+      } catch (error: unknown) {
         return {
           content: [{
             type: 'text',
-            text: `Error: ${error.message}`
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`
           }],
           isError: true
         };
       }
     }
   },
-  
+
   {
     name: 'edit_vault_from_buffer',
     description: 'Retry an edit using previously buffered content',
@@ -162,7 +190,7 @@ export const windowEditTools = [
       },
       required: ['path']
     },
-    handler: async (api: ObsidianAPI, args: any) => {
+    handler: async (api: ObsidianAPI, args: BufferEditArgs) => {
       const buffer = ContentBufferManager.getInstance();
       const buffered = buffer.retrieve();
 
@@ -188,18 +216,18 @@ export const windowEditTools = [
           buffered.content,
           args.fuzzyThreshold || 0.7
         );
-      } catch (error: any) {
+      } catch (error: unknown) {
         return {
           content: [{
             type: 'text',
-            text: `Error: ${error.message}`
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`
           }],
           isError: true
         };
       }
     }
   },
-  
+
   {
     name: 'insert_vault_at_line',
     description: 'Insert content at a specific line number',
@@ -227,7 +255,7 @@ export const windowEditTools = [
       },
       required: ['path', 'lineNumber']
     },
-    handler: async (api: ObsidianAPI, args: any) => {
+    handler: async (api: ObsidianAPI, args: InsertAtLineArgs) => {
       try {
         // Get content to insert
         let insertContent = args.content;
@@ -291,18 +319,18 @@ export const windowEditTools = [
           }]
         };
 
-      } catch (error: any) {
+      } catch (error: unknown) {
         return {
           content: [{
             type: 'text',
-            text: `Error: ${error.message}`
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`
           }],
           isError: true
         };
       }
     }
   },
-  
+
   {
     name: 'view_vault_window',
     description: 'View a portion of a file with optional search highlighting',
@@ -329,7 +357,7 @@ export const windowEditTools = [
       },
       required: ['path']
     },
-    handler: async (api: ObsidianAPI, args: any) => {
+    handler: async (api: ObsidianAPI, args: ViewWindowArgs) => {
       try {
         const file = await api.getFile(args.path);
         if (isImageFile(file)) {
@@ -376,11 +404,11 @@ export const windowEditTools = [
           }]
         };
 
-      } catch (error: any) {
+      } catch (error: unknown) {
         return {
           content: [{
             type: 'text',
-            text: `Error: ${error.message}`
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`
           }],
           isError: true
         };

@@ -2,6 +2,119 @@ import { ObsidianAPI } from '../utils/obsidian-api';
 import { PluginDetector } from '../utils/plugin-detector';
 
 /**
+ * Dataview plugin API type definitions (not provided by Dataview's package)
+ * These model the runtime API surface used by this tool.
+ */
+
+/** Dataview's array-like collection with .array() accessor */
+interface DataviewArray<T = unknown> {
+  length: number;
+  array(): T[];
+  slice(start?: number, end?: number): DataviewArray<T>;
+  map<U>(fn: (item: T) => U): DataviewArray<U>;
+}
+
+/** Dataview date/time value with ISO serialization */
+interface DataviewDateTime {
+  toISOString(): string;
+}
+
+/** Dataview link value */
+interface DataviewLink {
+  path: string;
+  display: string;
+}
+
+/** Dataview file metadata on a page object */
+interface DataviewFileInfo {
+  path: string;
+  name: string;
+  basename?: string;
+  extension?: string;
+  size: number;
+  ctime?: DataviewDateTime;
+  mtime?: DataviewDateTime;
+  tags?: DataviewArray<string>;
+  outlinks?: DataviewArray<DataviewLink>;
+  inlinks?: DataviewArray<DataviewLink>;
+  tasks?: DataviewArray<DataviewTask>;
+  lists?: DataviewArray<unknown>;
+}
+
+/** Dataview task item */
+interface DataviewTask {
+  text: string;
+  completed: boolean;
+  line: number;
+  path: string;
+}
+
+/** A Dataview page object (file + frontmatter fields) */
+interface DataviewPage {
+  file: DataviewFileInfo;
+  aliases?: DataviewArray<string>;
+  [key: string]: unknown;
+}
+
+/** Query result from dataviewAPI.query() */
+interface DataviewQueryResult {
+  successful?: boolean;
+  type: string;
+  values?: DataviewArray;
+  headers?: string[];
+}
+
+/** Row within a table result */
+interface DataviewTableRow {
+  array(): unknown[];
+}
+
+/** The Dataview plugin API surface we consume */
+interface DataviewAPI {
+  query(dql: string): Promise<DataviewQueryResult>;
+  pages(source?: string): DataviewArray<DataviewPage>;
+  page(path: string): DataviewPage | null;
+}
+
+/** Workflow suggestion shape */
+interface WorkflowSuggestion {
+  description: string;
+  command: string;
+  reason: string;
+}
+
+/** Workflow response */
+interface WorkflowResponse {
+  message: string;
+  suggested_next: WorkflowSuggestion[];
+}
+
+/** Query hints response */
+interface QueryHintsResponse {
+  performance: string[];
+  syntax: string[];
+  data: string[];
+  alternatives: string[];
+}
+
+/** Formatted query result */
+interface FormattedQueryResult {
+  type: string;
+  values?: unknown[];
+  headers?: string[];
+  data?: DataviewQueryResult;
+}
+
+/**
+ * Safely cast the detector's unknown API to our typed interface.
+ * The Dataview API is a runtime dependency without published types,
+ * so we use this helper to bridge the gap.
+ */
+function asDataviewAPI(api: unknown): DataviewAPI {
+  return api as DataviewAPI;
+}
+
+/**
  * Dataview tool implementation for querying vault data
  */
 export class DataviewTool {
@@ -33,12 +146,12 @@ export class DataviewTool {
       throw new Error('Dataview plugin is not available or not enabled');
     }
 
-    const dataviewAPI = this.detector.getDataviewAPI();
-    
+    const dataviewAPI = asDataviewAPI(this.detector.getDataviewAPI());
+
     try {
       if (format === 'dql') {
         // Execute DQL query
-        const result = await dataviewAPI.query(query);
+        const result: DataviewQueryResult = await dataviewAPI.query(query);
         return {
           success: true,
           query,
@@ -46,7 +159,7 @@ export class DataviewTool {
           result: this.formatQueryResult(result),
           type: result.type || 'unknown',
           workflow: this.generateQueryWorkflow(query, result),
-          hints: this.generateQueryHints(query, result)
+          hints: this.generateQueryHints(query)
         };
       } else {
         // Execute JavaScript query (if needed in the future)
@@ -70,11 +183,11 @@ export class DataviewTool {
       throw new Error('Dataview plugin is not available or not enabled');
     }
 
-    const dataviewAPI = this.detector.getDataviewAPI();
-    
+    const dataviewAPI = asDataviewAPI(this.detector.getDataviewAPI());
+
     try {
       // Get pages from source (folder, tag, etc.) or all pages
-      const pages = source 
+      const pages: DataviewArray<DataviewPage> = source
         ? dataviewAPI.pages(source)
         : dataviewAPI.pages();
 
@@ -82,15 +195,15 @@ export class DataviewTool {
         success: true,
         source: source || 'all',
         count: pages.length,
-        pages: pages.array().slice(0, 50).map((page: any) => ({
+        pages: pages.array().slice(0, 50).map((page: DataviewPage) => ({
           path: page.file.path,
           name: page.file.name,
           size: page.file.size,
           created: page.file.ctime?.toISOString(),
           modified: page.file.mtime?.toISOString(),
-          tags: page.file.tags?.array() || [],
-          links: page.file.outlinks?.array()?.length || 0,
-          aliases: page.aliases?.array() || [],
+          tags: page.file.tags?.array() ?? [],
+          links: page.file.outlinks?.array()?.length ?? 0,
+          aliases: page.aliases?.array() ?? [],
           // Include custom frontmatter fields
           ...this.extractCustomFields(page)
         }))
@@ -112,11 +225,11 @@ export class DataviewTool {
       throw new Error('Dataview plugin is not available or not enabled');
     }
 
-    const dataviewAPI = this.detector.getDataviewAPI();
-    
+    const dataviewAPI = asDataviewAPI(this.detector.getDataviewAPI());
+
     try {
-      const page = dataviewAPI.page(path);
-      
+      const page: DataviewPage | null = dataviewAPI.page(path);
+
       if (!page) {
         throw new Error(`Page not found: ${path}`);
       }
@@ -134,12 +247,12 @@ export class DataviewTool {
             created: page.file.ctime?.toISOString(),
             modified: page.file.mtime?.toISOString()
           },
-          tags: page.file.tags?.array() || [],
-          aliases: page.aliases?.array() || [],
-          outlinks: page.file.outlinks?.array() || [],
-          inlinks: page.file.inlinks?.array() || [],
-          tasks: page.file.tasks?.array()?.length || 0,
-          lists: page.file.lists?.array()?.length || 0,
+          tags: page.file.tags?.array() ?? [],
+          aliases: page.aliases?.array() ?? [],
+          outlinks: page.file.outlinks?.array() ?? [],
+          inlinks: page.file.inlinks?.array() ?? [],
+          tasks: page.file.tasks?.array()?.length ?? 0,
+          lists: page.file.lists?.array()?.length ?? 0,
           // Include all custom frontmatter fields
           custom: this.extractCustomFields(page)
         }
@@ -167,7 +280,7 @@ export class DataviewTool {
       const queryTypes = ['LIST', 'TABLE', 'TASK', 'CALENDAR'];
       const firstWord = trimmedQuery.split(/\s+/)[0]?.toUpperCase();
 
-      if (!queryTypes.includes(firstWord)) {
+      if (!firstWord || !queryTypes.includes(firstWord)) {
         return {
           valid: false,
           query,
@@ -193,7 +306,7 @@ export class DataviewTool {
   /**
    * Format query result for MCP response
    */
-  private formatQueryResult(result: any): any {
+  private formatQueryResult(result: DataviewQueryResult): FormattedQueryResult | null {
     if (!result) return null;
 
     // Handle different result types
@@ -201,28 +314,34 @@ export class DataviewTool {
       case 'list':
         return {
           type: 'list',
-          values: result.values?.array() || []
+          values: result.values?.array() ?? []
         };
       case 'table':
         return {
           type: 'table',
-          headers: result.headers || [],
-          values: result.values?.array()?.map((row: any) => row.array()) || []
+          headers: result.headers ?? [],
+          values: result.values?.array()?.map((row: unknown) => {
+            const tableRow = row as DataviewTableRow;
+            return typeof tableRow?.array === 'function' ? tableRow.array() : row;
+          }) ?? []
         };
       case 'task':
         return {
           type: 'task',
-          values: result.values?.array()?.map((task: any) => ({
-            text: task.text,
-            completed: task.completed,
-            line: task.line,
-            path: task.path
-          })) || []
+          values: result.values?.array()?.map((task: unknown) => {
+            const dvTask = task as DataviewTask;
+            return {
+              text: dvTask.text,
+              completed: dvTask.completed,
+              line: dvTask.line,
+              path: dvTask.path
+            };
+          }) ?? []
         };
       case 'calendar':
         return {
           type: 'calendar',
-          values: result.values || {}
+          values: result.values?.array() ?? []
         };
       default:
         return {
@@ -235,16 +354,16 @@ export class DataviewTool {
   /**
    * Extract custom frontmatter fields from a page
    */
-  private extractCustomFields(page: any): Record<string, unknown> {
+  private extractCustomFields(page: DataviewPage): Record<string, unknown> {
     const customFields: Record<string, unknown> = {};
-    
+
     // Standard fields to exclude
     const excludeFields = new Set([
       'file', 'tags', 'aliases', 'outlinks', 'inlinks', 'tasks', 'lists'
     ]);
 
     // Extract all non-standard fields
-    for (const [key, value] of Object.entries(page)) {
+    for (const [key, value] of Object.entries(page as Record<string, unknown>)) {
       if (!excludeFields.has(key) && !key.startsWith('$')) {
         // Convert Dataview values to plain JavaScript values
         customFields[key] = this.convertDataviewValue(value);
@@ -257,26 +376,29 @@ export class DataviewTool {
   /**
    * Convert Dataview values to plain JavaScript values
    */
-  private convertDataviewValue(value: any): any {
+  private convertDataviewValue(value: unknown): unknown {
     if (value === null || value === undefined) {
       return value;
     }
 
     // Handle Dataview arrays
-    if (value && typeof value.array === 'function') {
-      return value.array().map((item: any) => this.convertDataviewValue(item));
+    const dvArray = value as { array?: () => unknown[] };
+    if (typeof dvArray.array === 'function') {
+      return dvArray.array().map((item: unknown) => this.convertDataviewValue(item));
     }
 
     // Handle Dataview dates
-    if (value && value.toISOString && typeof value.toISOString === 'function') {
-      return value.toISOString();
+    const dvDate = value as { toISOString?: () => string };
+    if (typeof dvDate.toISOString === 'function') {
+      return dvDate.toISOString();
     }
 
     // Handle Dataview links
-    if (value && value.path && value.display) {
+    const dvLink = value as { path?: string; display?: string };
+    if (dvLink.path && dvLink.display) {
       return {
-        path: value.path,
-        display: value.display
+        path: dvLink.path,
+        display: dvLink.display
       };
     }
 
@@ -286,9 +408,9 @@ export class DataviewTool {
   /**
    * Generate workflow suggestions for query results
    */
-  private generateQueryWorkflow(query: string, result: any): any {
+  private generateQueryWorkflow(query: string, result: DataviewQueryResult): WorkflowResponse {
     const queryType = query.trim().split(/\s+/)[0]?.toUpperCase();
-    const suggestions: unknown[] = [];
+    const suggestions: WorkflowSuggestion[] = [];
 
     // Base suggestions for all query types
     suggestions.push({
@@ -331,7 +453,7 @@ export class DataviewTool {
     }
 
     return {
-      message: `${queryType} query executed successfully${result.successful ? '' : ' with warnings'}`,
+      message: `${queryType ?? 'Unknown'} query executed successfully${result.successful === false ? ' with warnings' : ''}`,
       suggested_next: suggestions.slice(0, 3) // Limit to 3 suggestions
     };
   }
@@ -339,7 +461,7 @@ export class DataviewTool {
   /**
    * Generate query optimization hints
    */
-  private generateQueryHints(query: string, result: any): any {
+  private generateQueryHints(query: string): QueryHintsResponse {
     const hints: string[] = [];
     const queryLower = query.toLowerCase();
 
@@ -529,28 +651,28 @@ LIMIT 5
 
 ### Project Management
 \`\`\`
-TABLE status, priority, file.mtime FROM #project 
-WHERE status != "completed" 
+TABLE status, priority, file.mtime FROM #project
+WHERE status != "completed"
 SORT priority DESC, file.mtime DESC
 \`\`\`
 
 ### Book Library
 \`\`\`
-TABLE author, rating, file.name FROM #books 
-WHERE rating >= 4 
-GROUP BY author 
+TABLE author, rating, file.name FROM #books
+WHERE rating >= 4
+GROUP BY author
 SORT rating DESC
 \`\`\`
 
 ### Daily Notes Analysis
 \`\`\`
-CALENDAR file.ctime FROM "Daily Notes" 
+CALENDAR file.ctime FROM "Daily Notes"
 WHERE file.ctime >= date(today) - dur(30 days)
 \`\`\`
 
 ### Task Tracking
 \`\`\`
-TASK FROM #todo 
+TASK FROM #todo
 WHERE !completed AND contains(text, "urgent")
 SORT file.mtime DESC
 \`\`\`
@@ -569,22 +691,22 @@ SORT file.mtime DESC
 
 ### Find Recent Files
 \`\`\`
-LIST FROM "Notes" 
+LIST FROM "Notes"
 WHERE file.mtime >= date(today) - dur(7 days)
 SORT file.mtime DESC
 \`\`\`
 
 ### Files Without Tags
 \`\`\`
-LIST FROM "Notes" 
+LIST FROM "Notes"
 WHERE length(file.tags) = 0
 \`\`\`
 
 ### High-Value Content
 \`\`\`
 TABLE rating, length(file.inlinks) AS "Backlinks"
-FROM #important 
-WHERE rating > 3 
+FROM #important
+WHERE rating > 3
 SORT length(file.inlinks) DESC
 \`\`\`
 `;

@@ -17,6 +17,13 @@ export interface WorkerResult {
   error?: string;
 }
 
+interface WorkerMessage {
+  type: string;
+  id?: string;
+  result?: unknown;
+  error?: string;
+}
+
 /**
  * Manages worker threads for the connection pool
  * Each session gets its own worker thread for isolation
@@ -44,7 +51,7 @@ export class WorkerManager extends EventEmitter {
       
       // Set up message handling
       worker.on('message', (message: unknown) => {
-        this.handleWorkerMessage(sessionId, message);
+        this.handleWorkerMessage(sessionId, message as WorkerMessage);
       });
       
       worker.on('error', (error: Error) => {
@@ -80,12 +87,13 @@ export class WorkerManager extends EventEmitter {
       });
       
       // Send task to worker
+      const taskData = task.data as Record<string, unknown> | undefined;
       worker.postMessage({
         id: task.id,
         type: 'process',
         request: {
           operation: task.operation,
-          action: (task.data as any).action,
+          action: taskData?.action,
           params: task.data
         }
       });
@@ -103,7 +111,7 @@ export class WorkerManager extends EventEmitter {
   /**
    * Handle message from worker
    */
-  private handleWorkerMessage(sessionId: string, message: any): void {
+  private handleWorkerMessage(sessionId: string, message: WorkerMessage): void {
     if (message.type === 'ready') {
       Debug.log(`✅ Worker for session ${sessionId} is ready`);
       this.emit('worker-ready', sessionId);

@@ -2,6 +2,7 @@ import { App, TFile } from 'obsidian';
 import { ObsidianAPI } from '../utils/obsidian-api';
 import { SearchCore } from '../utils/search-core';
 import { GraphSearchTagTraversal } from './graph-search-tag-traversal';
+import { TraversalNode, GraphSearchResult } from './graph-search-traversal';
 
 interface GraphTagToolParams {
     action: 'tag-traverse' | 'tag-analysis' | 'shared-tags';
@@ -13,6 +14,20 @@ interface GraphTagToolParams {
     scoreThreshold?: number;
     followTags?: boolean;
     tagWeight?: number;
+}
+
+/** Extended traversal node with connection type info */
+interface TagTraversalNode extends TraversalNode {
+    connectionType?: 'link' | 'tag';
+}
+
+/** Result type from searchTraverseWithTags */
+type TagSearchResult = GraphSearchResult & { tagConnections: number; followTags?: boolean };
+
+/** Tag connection strength entry */
+interface TagConnectionEntry {
+    tag: string;
+    connectionCount: number;
 }
 
 export class GraphTagTool {
@@ -69,18 +84,21 @@ export class GraphTagTool {
                 tagConnectionsFollowed: result.tagConnections,
                 executionTime: `${result.executionTime.toFixed(2)}ms`
             },
-            snippetChain: result.traversalChain.map((node: any) => ({
-                file: node.path,
-                depth: node.depth,
-                parent: node.parentPath,
-                connectionType: node.connectionType || 'link',
-                snippet: {
-                    text: node.snippet.text,
-                    score: node.snippet.score.toFixed(3),
-                    lineNumber: node.snippet.lineNumber,
-                    preview: this.truncateText(node.snippet.context, 200)
-                }
-            })),
+            snippetChain: result.traversalChain.map((node: TraversalNode) => {
+                const tagNode = node as TagTraversalNode;
+                return {
+                    file: tagNode.path,
+                    depth: tagNode.depth,
+                    parent: tagNode.parentPath,
+                    connectionType: tagNode.connectionType || 'link',
+                    snippet: {
+                        text: tagNode.snippet.text,
+                        score: tagNode.snippet.score.toFixed(3),
+                        lineNumber: tagNode.snippet.lineNumber,
+                        preview: this.truncateText(tagNode.snippet.context, 200)
+                    }
+                };
+            }),
             workflowSuggestions: this.generateWorkflowSuggestions(result)
         };
     }
@@ -146,7 +164,7 @@ export class GraphTagTool {
         };
     }
 
-    private generateSummary(result: any): string {
+    private generateSummary(result: TagSearchResult): string {
         const matchCount = result.traversalChain.length;
         const visitedCount = result.totalNodesVisited;
         const tagConnections = result.tagConnections || 0;
@@ -160,14 +178,15 @@ export class GraphTagTool {
                `Best match: "${result.traversalChain[0].path}" (score: ${topScore.toFixed(3)})`;
     }
 
-    private formatTraversalPath(chain: any[]): string {
+    private formatTraversalPath(chain: TraversalNode[]): string {
         if (chain.length === 0) return 'No path found';
 
         return chain
-            .map((node, index) => {
-                const indent = '  '.repeat(node.depth);
-                const arrow = index === 0 ? '🎯' : node.connectionType === 'tag' ? '🏷️' : '→';
-                return `${indent}${arrow} ${node.path}`;
+            .map((node: TraversalNode, index: number) => {
+                const tagNode = node as TagTraversalNode;
+                const indent = '  '.repeat(tagNode.depth);
+                const arrow = index === 0 ? '🎯' : tagNode.connectionType === 'tag' ? '🏷️' : '→';
+                return `${indent}${arrow} ${tagNode.path}`;
             })
             .join('\n');
     }
@@ -177,7 +196,7 @@ export class GraphTagTool {
         return text.substring(0, maxLength - 3) + '...';
     }
 
-    private generateWorkflowSuggestions(result: any): string[] {
+    private generateWorkflowSuggestions(result: TagSearchResult): string[] {
         const suggestions: string[] = [];
         const tagConnections = result.tagConnections || 0;
 
@@ -202,7 +221,7 @@ export class GraphTagTool {
         return suggestions;
     }
 
-    private findStrongestTagConnections(tagConnections: Record<string, string[]>): any[] {
+    private findStrongestTagConnections(tagConnections: Record<string, string[]>): TagConnectionEntry[] {
         return Object.entries(tagConnections)
             .map(([tag, files]) => ({ tag, connectionCount: files.length }))
             .sort((a, b) => b.connectionCount - a.connectionCount)

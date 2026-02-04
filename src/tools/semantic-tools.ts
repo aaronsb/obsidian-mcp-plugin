@@ -2,15 +2,89 @@ import { Debug } from '../utils/debug';
 import { ObsidianAPI } from '../utils/obsidian-api';
 import { SemanticRouter } from '../semantic/router';
 import { SemanticRequest } from '../types/semantic';
-import { isImageFile as isImageFileObject } from '../types/obsidian';
+import { ObsidianImageFile } from '../types/obsidian';
 import { DataviewTool, isDataviewToolAvailable } from './dataview-tool';
 import { formatResponse } from '../formatters';
+
+/** MCP content item for text responses */
+interface MCPTextContent {
+  type: 'text';
+  text: string;
+}
+
+/** MCP content item for image responses */
+interface MCPImageContent {
+  type: 'image';
+  data: string;
+  mimeType: string;
+}
+
+/** MCP tool handler result */
+interface MCPToolResult {
+  content: (MCPTextContent | MCPImageContent)[];
+  isError?: boolean;
+}
+
+/** JSON Schema property definition */
+interface JsonSchemaProperty {
+  type: string;
+  description: string;
+  enum?: string[];
+  default?: unknown;
+  items?: { type: string };
+}
+
+/** Tool arguments passed to handler */
+interface ToolArgs {
+  action: string;
+  raw?: boolean;
+  query?: string;
+  format?: string;
+  source?: string;
+  path?: string;
+  [key: string]: unknown;
+}
+
+/** Semantic tool definition */
+export interface SemanticTool {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: string;
+    properties: Record<string, JsonSchemaProperty | { type: string; description: string }>;
+    required: string[];
+  };
+  handler: (api: ObsidianAPI, args: unknown) => Promise<MCPToolResult>;
+}
+
+/** Plugin interface for checking read-only mode */
+interface PluginWithSettings {
+  settings?: {
+    readOnlyMode?: boolean;
+  };
+}
+
+/** Context for Dataview operation results */
+interface DataviewContext {
+  operation: string;
+  action: string;
+  query?: string;
+  source?: unknown;
+  path?: string;
+}
+
+/** Dataview operation result (either success with result or error) */
+interface DataviewResult {
+  result?: unknown;
+  error?: { code: string; message: string };
+  context: DataviewContext;
+}
 
 /**
  * Unified semantic tools that consolidate all operations into 5 main verbs
  */
 
-const createSemanticTool = (operation: string) => ({
+const createSemanticTool = (operation: string): SemanticTool => ({
   name: operation,
   description: getOperationDescription(operation),
   inputSchema: {
@@ -30,11 +104,13 @@ const createSemanticTool = (operation: string) => ({
     },
     required: ['action']
   },
-  handler: async (api: ObsidianAPI, args: any) => {
+  handler: async (api: ObsidianAPI, rawArgs: unknown): Promise<MCPToolResult> => {
+    const args = (rawArgs ?? {}) as ToolArgs;
     const app = api.getApp();
 
     // Check for read-only mode before processing write operations
-    if ((api as any).plugin?.settings?.readOnlyMode && operation === 'vault') {
+    const plugin = (api as unknown as { plugin?: PluginWithSettings }).plugin;
+    if (plugin?.settings?.readOnlyMode && operation === 'vault') {
       const writeOperations = ['create', 'update', 'delete', 'move', 'rename', 'copy', 'split', 'combine', 'concatenate'];
       if (writeOperations.includes(args.action)) {
         return {
@@ -60,7 +136,7 @@ const createSemanticTool = (operation: string) => ({
     // Handle Dataview operations separately
     if (operation === 'dataview') {
       const dataviewTool = new DataviewTool(api);
-      let result;
+      let result: DataviewResult;
 
       switch (args.action) {
         case 'status':
@@ -76,7 +152,8 @@ const createSemanticTool = (operation: string) => ({
               context: { operation, action: args.action }
             };
           } else {
-            const queryResult = await dataviewTool.executeQuery(args.query, args.format);
+            const dvFormat = args.format === 'js' ? 'js' : 'dql';
+            const queryResult = await dataviewTool.executeQuery(args.query, dvFormat);
             result = {
               result: queryResult,
               context: { operation, action: args.action, query: args.query }
@@ -183,37 +260,43 @@ const createSemanticTool = (operation: string) => ({
     }
     
     // Check if the result is an image file for vault read operations
-    if (operation === 'vault' && args.action === 'read' && response.result && isImageFileObject(response.result as any)) {
-      // Return image content for MCP
-      const imageResult = response.result as any;
-      return {
-        content: [{
-          type: 'image' as const,
-          data: imageResult.base64Data,
-          mimeType: imageResult.mimeType
-        }]
-      };
+    if (operation === 'vault' && args.action === 'read' && response.result) {
+      const resultObj = response.result as Record<string, unknown>;
+      if ('mimeType' in resultObj && 'base64Data' in resultObj) {
+        // Return image content for MCP
+        const imageResult = resultObj as unknown as ObsidianImageFile;
+        return {
+          content: [{
+            type: 'image' as const,
+            data: imageResult.base64Data,
+            mimeType: imageResult.mimeType
+          }]
+        };
+      }
     }
 
     // Only filter image files if they contain binary data that would cause JSON errors
     // For search results, we want to show image files in the results list
-    const filteredResult = response.result as any;
+    const filteredResult: unknown = response.result;
 
     // Special handling for image files in view operations
-    if (operation === 'view' && args.action === 'file' && filteredResult && filteredResult.base64Data) {
-      return {
-        content: [{
-          type: 'image' as const,
-          data: filteredResult.base64Data,
-          mimeType: filteredResult.mimeType
-        }]
-      };
+    if (operation === 'view' && args.action === 'file' && filteredResult && typeof filteredResult === 'object') {
+      const viewResult = filteredResult as Record<string, unknown>;
+      if (viewResult.base64Data) {
+        return {
+          content: [{
+            type: 'image' as const,
+            data: viewResult.base64Data as string,
+            mimeType: viewResult.mimeType as string
+          }]
+        };
+      }
     }
     
     try {
       // Format response through presentation facade
       const rawMode = args.raw === true;
-      const formattedOutput = rawMode
+      const formattedOutput: string = rawMode
         ? JSON.stringify({
             result: filteredResult,
             workflow: response.workflow,
@@ -228,7 +311,7 @@ const createSemanticTool = (operation: string) => ({
           text: formattedOutput
         }]
       };
-    } catch (error) {
+    } catch (error: unknown) {
       // Handle JSON serialization errors
       Debug.error('JSON serialization failed:', error);
       return {
@@ -658,7 +741,7 @@ function getParametersForOperation(operation: string): Record<string, unknown> {
 /**
  * Create semantic tools array with optional Dataview support
  */
-export function createSemanticTools(api?: ObsidianAPI): any[] {
+export function createSemanticTools(api?: ObsidianAPI): SemanticTool[] {
   const baseTools = [
     createSemanticTool('vault'),
     createSemanticTool('edit'),

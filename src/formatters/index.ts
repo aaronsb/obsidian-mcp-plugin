@@ -190,45 +190,104 @@ export {
   WebFetchResponse
 };
 
+/** Shape for a raw fragment from the router */
+interface RawFragment {
+  docPath?: string;
+  path?: string;
+  content?: string;
+  lineStart?: number;
+  lineEnd?: number;
+  score?: number;
+  heading?: string;
+}
+
+/** Shape for router move/rename responses */
+interface MoveRenameResponse {
+  oldPath?: string;
+  newPath?: string;
+  sourcePath?: string;
+  destination?: string;
+  success?: boolean;
+}
+
+/** Shape for router copy responses */
+interface CopyResponse {
+  sourcePath?: string;
+  copiedTo?: string;
+  source?: string;
+  destination?: string;
+  success?: boolean;
+}
+
+/** Shape for router fragment responses */
+interface FragmentsResponse {
+  result?: RawFragment[];
+  query?: string;
+}
+
+/** Shape for router edit responses */
+interface EditResponse2 {
+  isError?: boolean;
+  path?: string;
+  content?: string;
+  success?: boolean;
+  line?: number;
+  mode?: string;
+}
+
+/**
+ * Generic normalized response - all possible fields from various operations.
+ * Individual formatters will pick the fields they need.
+ */
+type NormalizedResponse = Record<string, unknown>;
+
 /**
  * Normalize response shapes to match formatter expectations.
  * Maps field names from router responses to what formatters expect.
  */
-function normalizeResponse(key: string, response: any): any {
+function normalizeResponse(key: string, response: unknown): NormalizedResponse {
+  // Ensure response is an object we can inspect
+  const resp = (typeof response === 'object' && response !== null ? response : {}) as Record<string, unknown>;
+
   switch (key) {
     // vault.move/rename: router returns {oldPath, newPath}, formatter expects {source, destination}
     case 'vault.move':
-    case 'vault.rename':
-      if (response.oldPath !== undefined || response.newPath !== undefined) {
+    case 'vault.rename': {
+      const moveResp = resp as MoveRenameResponse;
+      if (moveResp.oldPath !== undefined || moveResp.newPath !== undefined) {
         return {
-          source: response.oldPath || response.sourcePath,
-          destination: response.newPath || response.destination,
-          success: response.success ?? true,
+          source: moveResp.oldPath ?? moveResp.sourcePath,
+          destination: moveResp.newPath ?? moveResp.destination,
+          success: moveResp.success ?? true,
           operation: key === 'vault.move' ? 'move' : 'rename'
         };
       }
-      return response;
+      return resp;
+    }
 
     // vault.copy: router returns {sourcePath, copiedTo}, formatter expects {source, destination}
-    case 'vault.copy':
-      if (response.sourcePath !== undefined || response.copiedTo !== undefined) {
+    case 'vault.copy': {
+      const copyResp = resp as CopyResponse;
+      if (copyResp.sourcePath !== undefined || copyResp.copiedTo !== undefined) {
         return {
-          source: response.sourcePath || response.source,
-          destination: response.copiedTo || response.destination,
-          success: response.success ?? true,
+          source: copyResp.sourcePath ?? copyResp.source,
+          destination: copyResp.copiedTo ?? copyResp.destination,
+          success: copyResp.success ?? true,
           operation: 'copy'
         };
       }
-      return response;
+      return resp;
+    }
 
     // vault.fragments: router returns {result: [...fragments across files]}
     // Transform to grouped format for formatter
-    case 'vault.fragments':
-      if (response.result && Array.isArray(response.result)) {
+    case 'vault.fragments': {
+      const fragResp = resp as FragmentsResponse;
+      if (fragResp.result && Array.isArray(fragResp.result)) {
         // Group fragments by file path
-        const byFile = new Map<string, any[]>();
-        for (const frag of response.result) {
-          const path = frag.docPath || frag.path || 'unknown';
+        const byFile = new Map<string, RawFragment[]>();
+        for (const frag of fragResp.result) {
+          const path = frag.docPath ?? frag.path ?? 'unknown';
           if (!byFile.has(path)) {
             byFile.set(path, []);
           }
@@ -247,37 +306,42 @@ function normalizeResponse(key: string, response: any): any {
             fragments,
             totalFragments: fragments.length
           })),
-          totalResults: response.result.length,
-          query: response.query
+          totalResults: fragResp.result.length,
+          query: fragResp.query
         };
       }
-      return response;
+      return resp;
+    }
 
     // edit.window: router returns {isError, content}, formatter expects {success, path}
     case 'edit.window':
-    case 'edit.from_buffer':
-      if (response.isError !== undefined) {
+    case 'edit.from_buffer': {
+      const editResp = resp as EditResponse2;
+      if (editResp.isError !== undefined) {
         return {
-          success: !response.isError,
-          path: response.path || 'file',
+          success: !editResp.isError,
+          path: editResp.path ?? 'file',
           operation: 'window',
-          content: response.content
+          content: editResp.content
         };
       }
-      return response;
+      return resp;
+    }
 
     // edit.at_line: ensure consistent shape
-    case 'edit.at_line':
+    case 'edit.at_line': {
+      const lineResp = resp as EditResponse2;
       return {
-        success: response.success ?? true,
-        path: response.path || 'file',
+        success: lineResp.success ?? true,
+        path: lineResp.path ?? 'file',
         operation: 'at_line',
-        line: response.line,
-        mode: response.mode
+        line: lineResp.line,
+        mode: lineResp.mode
       };
+    }
 
     default:
-      return response;
+      return resp;
   }
 }
 
@@ -294,7 +358,7 @@ function normalizeResponse(key: string, response: any): any {
 export function formatResponse(
   tool: string,
   action: string,
-  response: any,
+  response: unknown,
   raw: boolean = false
 ): string {
   // If raw requested, return JSON
@@ -306,96 +370,98 @@ export function formatResponse(
   const key = `${tool}.${action}`;
 
   // Normalize response shape before formatting
-  const normalized = normalizeResponse(key, response);
+  // Cast to unknown since normalizeResponse returns Record<string, unknown>
+  // which needs to be narrowed to specific formatter types
+  const normalized: unknown = normalizeResponse(key, response);
 
   try {
     switch (key) {
       // Vault operations
       case 'vault.list':
-        return formatFileList(normalized);
+        return formatFileList(normalized as FileListResponse);
       case 'vault.read':
-        return formatFileRead(normalized);
+        return formatFileRead(normalized as FileReadResponse);
       case 'vault.create':
-        return formatFileWrite(normalized, 'create');
+        return formatFileWrite(normalized as FileWriteResponse, 'create');
       case 'vault.update':
-        return formatFileWrite(normalized, 'update');
+        return formatFileWrite(normalized as FileWriteResponse, 'update');
       case 'vault.delete':
-        return formatFileDelete(normalized);
+        return formatFileDelete(normalized as FileDeleteResponse);
       case 'vault.move':
       case 'vault.rename':
       case 'vault.copy':
-        return formatFileMove(normalized);
+        return formatFileMove(normalized as FileMoveResponse);
       case 'vault.search':
-        return formatSearchResults(normalized);
+        return formatSearchResults(normalized as SearchResponse);
       case 'vault.fragments':
-        return formatFragmentResults(normalized);
+        return formatFragmentResults(normalized as FragmentResult);
       case 'vault.split':
-        return formatFileSplit(normalized);
+        return formatFileSplit(normalized as FileSplitResponse);
       case 'vault.combine':
       case 'vault.concatenate':
-        return formatFileCombine(normalized);
+        return formatFileCombine(normalized as FileCombineResponse);
 
       // View operations
       case 'view.file':
-        return formatViewFile(normalized);
+        return formatViewFile(normalized as ViewFileResponse);
       case 'view.window':
-        return formatViewWindow(normalized);
+        return formatViewWindow(normalized as ViewWindowResponse);
       case 'view.active':
-        return formatViewActive(normalized);
+        return formatViewActive(normalized as ViewActiveResponse);
       case 'view.open_in_obsidian':
-        return formatOpenInObsidian(normalized);
+        return formatOpenInObsidian(normalized as OpenInObsidianResponse);
 
       // Graph operations
       case 'graph.traverse':
       case 'graph.advanced-traverse':
       case 'graph.tag-traverse':
-        return formatGraphTraverse(normalized);
+        return formatGraphTraverse(normalized as GraphTraverseResponse);
       case 'graph.neighbors':
-        return formatGraphNeighbors(normalized);
+        return formatGraphNeighbors(normalized as GraphNeighborsResponse);
       case 'graph.path':
-        return formatGraphPath(normalized);
+        return formatGraphPath(normalized as GraphPathResponse);
       case 'graph.statistics':
       case 'graph.backlinks':
       case 'graph.forwardlinks':
-        return formatGraphStats(normalized);
+        return formatGraphStats(normalized as GraphStatsResponse);
       case 'graph.tag-analysis':
-        return formatTagAnalysis(normalized);
+        return formatTagAnalysis(normalized as TagAnalysisResponse);
       case 'graph.shared-tags':
-        return formatSharedTags(normalized);
+        return formatSharedTags(normalized as SharedTagsResponse);
 
       // Dataview operations
       case 'dataview.query':
-        return formatDataviewQuery(normalized);
+        return formatDataviewQuery(normalized as DataviewQueryResponse);
       case 'dataview.status':
-        return formatDataviewStatus(normalized);
+        return formatDataviewStatus(normalized as DataviewStatusResponse);
       case 'dataview.list':
       case 'dataview.metadata':
-        return formatDataviewQuery({ ...normalized, type: 'list', successful: true });
+        return formatDataviewQuery({ ...(normalized as Record<string, unknown>), type: 'list', successful: true } as DataviewQueryResponse);
 
       // Bases operations
       case 'bases.list':
-        return formatBasesList(normalized);
+        return formatBasesList(normalized as BasesListResponse);
       case 'bases.read':
-        return formatBasesRead(normalized);
+        return formatBasesRead(normalized as BasesReadResponse);
       case 'bases.create':
-        return formatBasesCreate(normalized);
+        return formatBasesCreate(normalized as BasesCreateResponse);
       case 'bases.query':
       case 'bases.view':
-        return formatBasesQuery(normalized);
+        return formatBasesQuery(normalized as BasesQueryResponse);
       case 'bases.export':
-        return formatBasesExport(normalized);
+        return formatBasesExport(normalized as BasesExportResponse);
 
       // System operations
       case 'system.info':
-        return formatSystemInfo(normalized);
+        return formatSystemInfo(normalized as SystemInfoResponse);
       case 'system.commands':
-        return formatSystemCommands(normalized);
+        return formatSystemCommands(normalized as SystemCommandsResponse);
       case 'system.fetch_web':
-        return formatWebFetch(normalized);
+        return formatWebFetch(normalized as WebFetchResponse);
 
       // Workflow operations
       case 'workflow.suggest':
-        return formatWorkflowSuggest(normalized);
+        return formatWorkflowSuggest(normalized as WorkflowSuggestResponse);
 
       // Edit operations
       case 'edit.window':
@@ -403,7 +469,7 @@ export function formatResponse(
       case 'edit.append':
       case 'edit.patch':
       case 'edit.at_line':
-        return formatEditResult(normalized);
+        return formatEditResult(normalized as EditResponse);
 
       // Default: return formatted JSON with hint
       default:

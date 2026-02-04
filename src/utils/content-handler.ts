@@ -1,6 +1,36 @@
 import { Debug } from './debug';
 
 /**
+ * Represents a content fragment that may have text in various properties
+ */
+interface ContentFragment {
+  content?: unknown;
+  text?: unknown;
+  data?: unknown;
+}
+
+/**
+ * Type guard to check if a value is a ContentFragment (an object with content/text/data properties)
+ */
+function isContentFragment(value: unknown): value is ContentFragment {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Extract text from a potential fragment object
+ */
+function extractFragmentText(item: unknown): string {
+  if (typeof item === 'string') {
+    return item;
+  }
+  if (isContentFragment(item)) {
+    const raw = item.content ?? item.text ?? item.data ?? '';
+    return typeof raw === 'string' ? raw : '';
+  }
+  return '';
+}
+
+/**
  * Safely ensures content is converted to string format
  * Handles various input types including Fragment arrays, Buffers, and objects
  */
@@ -34,14 +64,7 @@ export function ensureStringContent(content: unknown, context?: string): string 
     // Handle Fragment array - extract text content from each fragment
     if (Array.isArray(content)) {
       return content
-        .map(item => {
-          if (typeof item === 'string') {
-            return item;
-          }
-          // Fragment objects may have content, text, or data properties
-          const fragmentText = (item)?.content || (item)?.text || (item)?.data || '';
-          return typeof fragmentText === 'string' ? fragmentText : '';
-        })
+        .map(item => extractFragmentText(item))
         .filter(text => text.length > 0)
         .join('\n');
     }
@@ -127,12 +150,11 @@ export function countFragmentMatches(
     
     let totalCount = 0;
     
-    fragments.forEach(fragment => {
+    fragments.forEach((fragment: unknown) => {
       // Handle different possible fragment structures
-      const fragmentText = typeof fragment === 'string' ? fragment : 
-                          (fragment?.content || fragment?.text || fragment?.data || '');
-      
-      if (typeof fragmentText === 'string' && fragmentText.length > 0) {
+      const fragmentText = extractFragmentText(fragment);
+
+      if (fragmentText.length > 0) {
         const matches = fragmentText.match(pattern);
         totalCount += matches ? matches.length : 0;
       }

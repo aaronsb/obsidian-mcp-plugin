@@ -1,13 +1,27 @@
 import { App } from 'obsidian';
-import { ObsidianAPI } from '../utils/obsidian-api';
+import { ObsidianAPI, PatchParams } from '../utils/obsidian-api';
 import {
 	VaultSecurityManager,
 	OperationType,
 	SecuritySettings,
 	SecurityLogEntry
 } from './vault-security-manager';
-import { ObsidianConfig, ObsidianFileResponse } from '../types/obsidian';
+import { MCPIgnoreManager } from './mcp-ignore-manager';
+import { ObsidianConfig, ObsidianFile, ObsidianFileResponse } from '../types/obsidian';
 import { Debug } from '../utils/debug';
+
+/** Minimal plugin interface for security-relevant properties.
+ * Includes ObsidianAPIPluginRef fields so the same object can be passed to the base class. */
+interface SecurePluginRef {
+	settings?: {
+		security?: Partial<SecuritySettings>;
+		validation?: Partial<import('../validation/input-validator').ValidationConfig>;
+		httpPort?: number;
+	};
+	ignoreManager?: MCPIgnoreManager;
+	mcpServer?: { isServerRunning(): boolean; getConnectionCount(): number };
+	manifest?: { dir?: string };
+}
 
 /**
  * Secure wrapper for ObsidianAPI that enforces path validation and operation permissions
@@ -16,12 +30,12 @@ import { Debug } from '../utils/debug';
 export class SecureObsidianAPI extends ObsidianAPI {
 	private security: VaultSecurityManager;
 
-	constructor(app: App, config?: ObsidianConfig, plugin?: any, securitySettings?: Partial<SecuritySettings>) {
+	constructor(app: App, config?: ObsidianConfig, plugin?: SecurePluginRef, securitySettings?: Partial<SecuritySettings>) {
 		super(app, config, plugin);
 
 		// Initialize security manager with provided or default settings
-		const settings = securitySettings || (plugin?.settings?.security) || {};
-		const ignoreManager = plugin?.ignoreManager;
+		const settings: Partial<SecuritySettings> = securitySettings || plugin?.settings?.security || {};
+		const ignoreManager: MCPIgnoreManager | undefined = plugin?.ignoreManager;
 		this.security = new VaultSecurityManager(app, settings, ignoreManager);
 		
 		Debug.log('🔐 SecureObsidianAPI initialized with security settings:', this.security.getSettings());
@@ -52,7 +66,7 @@ export class SecureObsidianAPI extends ObsidianAPI {
 		return super.listFiles(listPath);
 	}
 
-	async listFilesPaginated(directory?: string, page: number = 1, pageSize: number = 20): Promise<any> {
+	async listFilesPaginated(directory?: string, page: number = 1, pageSize: number = 20): ReturnType<ObsidianAPI['listFilesPaginated']> {
 		const validated = await this.security.validateOperation({
 			type: OperationType.READ,
 			path: directory || '.',
@@ -64,7 +78,7 @@ export class SecureObsidianAPI extends ObsidianAPI {
 		return super.listFilesPaginated(listPath, page, pageSize);
 	}
 
-	async getActiveFile(): Promise<any> {
+	async getActiveFile(): Promise<ObsidianFile> {
 		// This doesn't need path validation as it gets the currently active file
 		await this.security.validateOperation({
 			type: OperationType.READ,
@@ -79,7 +93,7 @@ export class SecureObsidianAPI extends ObsidianAPI {
 
 	// File Operations - CREATE
 
-	async createFile(path: string, content: string): Promise<any> {
+	async createFile(path: string, content: string): ReturnType<ObsidianAPI['createFile']> {
 		const validated = await this.security.validateOperation({
 			type: OperationType.CREATE,
 			path: path,
@@ -94,7 +108,7 @@ export class SecureObsidianAPI extends ObsidianAPI {
 
 	// File Operations - UPDATE
 
-	async updateFile(path: string, content: string): Promise<any> {
+	async updateFile(path: string, content: string): ReturnType<ObsidianAPI['updateFile']> {
 		const validated = await this.security.validateOperation({
 			type: OperationType.UPDATE,
 			path: path,
@@ -104,7 +118,7 @@ export class SecureObsidianAPI extends ObsidianAPI {
 		return super.updateFile(validated.path!, content);
 	}
 
-	async appendToFile(path: string, content: string): Promise<any> {
+	async appendToFile(path: string, content: string): ReturnType<ObsidianAPI['appendToFile']> {
 		const validated = await this.security.validateOperation({
 			type: OperationType.UPDATE,
 			path: path,
@@ -114,7 +128,7 @@ export class SecureObsidianAPI extends ObsidianAPI {
 		return super.appendToFile(validated.path!, content);
 	}
 
-	async patchVaultFile(path: string, params: unknown): Promise<any> {
+	async patchVaultFile(path: string, params: PatchParams): ReturnType<ObsidianAPI['patchVaultFile']> {
 		const validated = await this.security.validateOperation({
 			type: OperationType.UPDATE,
 			path: path,
@@ -126,7 +140,7 @@ export class SecureObsidianAPI extends ObsidianAPI {
 
 	// File Operations - DELETE
 
-	async deleteFile(path: string): Promise<any> {
+	async deleteFile(path: string): ReturnType<ObsidianAPI['deleteFile']> {
 		const validated = await this.security.validateOperation({
 			type: OperationType.DELETE,
 			path: path,
@@ -142,7 +156,7 @@ export class SecureObsidianAPI extends ObsidianAPI {
 
 	// File Operations - EXECUTE
 
-	async openFile(path: string): Promise<any> {
+	async openFile(path: string): ReturnType<ObsidianAPI['openFile']> {
 		const validated = await this.security.validateOperation({
 			type: OperationType.EXECUTE,
 			path: path,

@@ -16,7 +16,7 @@ export class AdaptiveTextIndex {
   private termStats = new Map<string, TermStatistics>();
   private filePathMap = new Map<string, string>(); // docId -> filePath mapping
 
-  indexDocument(docId: string, filePath: string, content: string, metadata?: any) {
+  indexDocument(docId: string, filePath: string, content: string, metadata?: Record<string, unknown>) {
     const lines = content.split('\n');
     const tokens = this.tokenize(content);
     const uniqueTerms = new Set(tokens);

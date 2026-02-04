@@ -2,6 +2,14 @@
 // Using built-in fetch instead of axios
 import TurndownService from 'turndown';
 
+/** Arguments for the fetch tool */
+interface FetchToolArgs {
+  url: string;
+  raw?: boolean;
+  maxLength?: number;
+  startIndex?: number;
+}
+
 export const fetchTool = {
   name: 'fetch',
   description: 'Fetch and convert web content to markdown',
@@ -28,7 +36,7 @@ export const fetchTool = {
     },
     required: ['url']
   },
-  handler: async (_: unknown, args: any) => {
+  handler: async (_: unknown, args: FetchToolArgs) => {
     try {
       const response = await fetch(args.url, {
         headers: {
@@ -51,8 +59,8 @@ export const fetchTool = {
       }
 
       if (args.startIndex || args.maxLength) {
-        const start = args.startIndex || 0;
-        const end = args.maxLength ? start + args.maxLength : undefined;
+        const start: number = args.startIndex || 0;
+        const end: number | undefined = args.maxLength ? start + args.maxLength : undefined;
         content = content.slice(start, end);
       }
 
@@ -62,11 +70,12 @@ export const fetchTool = {
           text: content
         }]
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
       return {
         content: [{
           type: 'text',
-          text: `Error fetching URL: ${error.message}`
+          text: `Error fetching URL: ${message}`
         }],
         isError: true
       };

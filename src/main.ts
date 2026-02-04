@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, Notice, TFolder, setIcon, Modal } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Notice, TFolder, setIcon, Modal, TextComponent, ButtonComponent, FileSystemAdapter } from 'obsidian';
 import { MCPHttpServer } from './mcp-server';
 import { getVersion } from './version';
 import { Debug } from './utils/debug';
@@ -7,6 +7,20 @@ import { randomBytes } from 'crypto';
 import { PluginDetector } from './utils/plugin-detector';
 import { CertificateConfig } from './utils/certificate-manager';
 import { ValidationConfig } from './validation/input-validator';
+
+interface MCPServerEntry {
+	command?: string;
+	args?: string[];
+	env?: Record<string, string>;
+	transport?: {
+		type: string;
+		url: string;
+	};
+}
+
+interface MCPClientConfig {
+	mcpServers: Record<string, MCPServerEntry>;
+}
 
 interface MCPPluginSettings {
 	httpEnabled: boolean;
@@ -276,7 +290,7 @@ export default class ObsidianMCPPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MCPPluginSettings>);
 		
 		// Generate API key on first load if not present
 		if (!this.settings.apiKey) {
@@ -304,7 +318,9 @@ export default class ObsidianMCPPlugin extends Plugin {
 			}
 
 			// Try to create a temporary server to test port availability
-			const testServer = require('http').createServer();
+			// eslint-disable-next-line @typescript-eslint/no-require-imports
+			const http = require('http') as typeof import('http');
+			const testServer = http.createServer();
 			return new Promise((resolve) => {
 				testServer.listen(port, '127.0.0.1', () => {
 					testServer.close(() => resolve('available')); // Port is available
@@ -355,7 +371,8 @@ export default class ObsidianMCPPlugin extends Plugin {
 			this.updateStatusBar();
 			
 			// Update live stats in settings panel if it's open
-			const settingsTab = (this.app as any).setting?.activeTab;
+			const appWithSetting = this.app as unknown as { setting?: { activeTab?: PluginSettingTab } };
+			const settingsTab = appWithSetting.setting?.activeTab;
 			if (settingsTab && settingsTab instanceof MCPSettingTab) {
 				settingsTab.updateLiveStats();
 			}
@@ -371,7 +388,11 @@ export default class ObsidianMCPPlugin extends Plugin {
 	private getVaultPath(): string {
 		try {
 			// Try to get the vault path from the adapter
-			return (this.app.vault.adapter as any).basePath || '';
+			const adapter = this.app.vault.adapter;
+			if (adapter instanceof FileSystemAdapter) {
+				return adapter.getBasePath();
+			}
+			return '';
 		} catch {
 			return '';
 		}
@@ -670,8 +691,8 @@ class MCPSettingTab extends PluginSettingTab {
 				button.setButtonText('Apply')
 					.setClass('mod-cta')
 					.onClick(async () => {
-						const textComponent = portSetting.components.find(c => (c as any).inputEl) as any;
-						const newPort = parseInt(textComponent.inputEl.value);
+						const textComponent = portSetting.components.find((c): c is TextComponent => c instanceof TextComponent);
+						const newPort = parseInt(textComponent?.inputEl.value ?? '');
 						
 						if (!isNaN(newPort) && newPort > 0 && newPort < 65536) {
 							const oldPort = this.plugin.settings.httpPort;
@@ -1054,13 +1075,16 @@ class MCPSettingTab extends PluginSettingTab {
 					// Whether or not Obsidian has the file indexed, we know it exists
 					// So let's construct the path directly
 					try {
-						const adapter = this.app.vault.adapter as any;
-						const path = require('path');
-						const fullPath = path.join(adapter.basePath || '', stats.filePath);
+						const adapter = this.app.vault.adapter;
+						const basePath = adapter instanceof FileSystemAdapter ? adapter.getBasePath() : '';
+						// eslint-disable-next-line @typescript-eslint/no-require-imports
+						const nodePath = require('path') as typeof import('path');
+						const fullPath = nodePath.join(basePath, stats.filePath);
 						Debug.log(`Opening file at: ${fullPath}`);
-						
+
 						// Try to access electron shell
-						const electron = require('electron');
+						// eslint-disable-next-line @typescript-eslint/no-require-imports
+						const electron = require('electron') as { shell?: { openPath: (path: string) => Promise<string> } };
 						if (electron?.shell) {
 							const result = await electron.shell.openPath(fullPath);
 							Debug.log(`Shell.openPath result: ${result}`);
@@ -1097,12 +1121,15 @@ class MCPSettingTab extends PluginSettingTab {
 					
 					// Construct path directly, don't rely on Obsidian's file cache
 					try {
-						const adapter = this.app.vault.adapter as any;
-						const path = require('path');
-						const fullPath = path.join(adapter.basePath || '', stats.filePath);
+						const adapter = this.app.vault.adapter;
+						const basePath = adapter instanceof FileSystemAdapter ? adapter.getBasePath() : '';
+						// eslint-disable-next-line @typescript-eslint/no-require-imports
+						const nodePath = require('path') as typeof import('path');
+						const fullPath = nodePath.join(basePath, stats.filePath);
 						Debug.log(`Showing file in explorer: ${fullPath}`);
-						
-						const electron = require('electron');
+
+						// eslint-disable-next-line @typescript-eslint/no-require-imports
+						const electron = require('electron') as { shell?: { showItemInFolder: (path: string) => void } };
 						if (electron?.shell) {
 							electron.shell.showItemInFolder(fullPath);
 							new Notice('📁 .mcpignore file location shown in explorer');
@@ -1380,46 +1407,19 @@ class MCPSettingTab extends PluginSettingTab {
 			(this.plugin.settings.certificateConfig.autoGenerate !== false || 
 			!this.plugin.settings.certificateConfig.certPath);
 		
-		let remoteJson: any;
-		if (this.plugin.settings.dangerouslyDisableAuth) {
-			remoteJson = {
-				"mcpServers": {
-					[this.app.vault.getName()]: {
-						"command": "npx",
-						"args": [
-							"mcp-remote",
-							`${baseUrl}/mcp`
-						]
-					}
-				}
-			};
-			// Add NODE_TLS env var if using self-signed cert
-			if (isUsingSelfSignedCert) {
-				remoteJson.mcpServers[this.app.vault.getName()].env = {
-					"NODE_TLS_REJECT_UNAUTHORIZED": "0"
-				};
-			}
-		} else {
-			remoteJson = {
-				"mcpServers": {
-					[this.app.vault.getName()]: {
-						"command": "npx",
-						"args": [
-							"mcp-remote",
-							`${baseUrl}/mcp`,
-							"--header",
-							`Authorization: Bearer ${this.plugin.settings.apiKey}`
-						]
-					}
-				}
-			};
-			// Add NODE_TLS env var if using self-signed cert
-			if (isUsingSelfSignedCert) {
-				remoteJson.mcpServers[this.app.vault.getName()].env = {
-					"NODE_TLS_REJECT_UNAUTHORIZED": "0"
-				};
-			}
+		const vaultName = this.app.vault.getName();
+		const remoteEntry: MCPServerEntry = {
+			command: "npx",
+			args: this.plugin.settings.dangerouslyDisableAuth
+				? ["mcp-remote", `${baseUrl}/mcp`]
+				: ["mcp-remote", `${baseUrl}/mcp`, "--header", `Authorization: Bearer ${this.plugin.settings.apiKey}`]
+		};
+		if (isUsingSelfSignedCert) {
+			remoteEntry.env = { "NODE_TLS_REJECT_UNAUTHORIZED": "0" };
 		}
+		const remoteJson: MCPClientConfig = {
+			mcpServers: { [vaultName]: remoteEntry }
+		};
 
 		const remoteJsonText = JSON.stringify(remoteJson, null, 2);
 		remoteEl.textContent = remoteJsonText;
@@ -1446,39 +1446,25 @@ class MCPSettingTab extends PluginSettingTab {
 		const windowsEl = windowsExample.createEl('pre');
 		windowsEl.classList.add('mcp-config-example');
 		
-		const windowsJson: any = {
-			"mcpServers": {
-				[this.app.vault.getName()]: {
-					"command": "npx",
-					"args": this.plugin.settings.dangerouslyDisableAuth ?
-						[
-							"mcp-remote",
-							`${baseUrl}/mcp`
-						] :
-						[
-							"mcp-remote",
-							`${baseUrl}/mcp`,
-							"--header",
-							"Authorization:${OBSIDIAN_API_KEY}"
-						]
-				}
-			}
+		const windowsEntry: MCPServerEntry = {
+			command: "npx",
+			args: this.plugin.settings.dangerouslyDisableAuth
+				? ["mcp-remote", `${baseUrl}/mcp`]
+				: ["mcp-remote", `${baseUrl}/mcp`, "--header", "Authorization:${OBSIDIAN_API_KEY}"]
 		};
-
-		// Add env section if auth is enabled
+		const windowsEnv: Record<string, string> = {};
 		if (!this.plugin.settings.dangerouslyDisableAuth) {
-			windowsJson.mcpServers[this.app.vault.getName()].env = {
-				"OBSIDIAN_API_KEY": `Bearer ${this.plugin.settings.apiKey}`
-			};
+			windowsEnv["OBSIDIAN_API_KEY"] = `Bearer ${this.plugin.settings.apiKey}`;
 		}
-
-		// Add NODE_TLS env var if using self-signed cert
 		if (isUsingSelfSignedCert) {
-			if (!windowsJson.mcpServers[this.app.vault.getName()].env) {
-				windowsJson.mcpServers[this.app.vault.getName()].env = {};
-			}
-			windowsJson.mcpServers[this.app.vault.getName()].env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0";
+			windowsEnv["NODE_TLS_REJECT_UNAUTHORIZED"] = "0";
 		}
+		if (Object.keys(windowsEnv).length > 0) {
+			windowsEntry.env = windowsEnv;
+		}
+		const windowsJson: MCPClientConfig = {
+			mcpServers: { [vaultName]: windowsEntry }
+		};
 
 		const windowsJsonText = JSON.stringify(windowsJson, null, 2);
 		windowsEl.textContent = windowsJsonText;
@@ -1588,7 +1574,7 @@ class MCPSettingTab extends PluginSettingTab {
 	}
 
 	private updatePortApplyButton(setting: Setting, hasChanges: boolean, pendingPort: number): void {
-		const button = setting.components.find(c => (c as any).buttonEl) as any;
+		const button = setting.components.find((c): c is ButtonComponent => c instanceof ButtonComponent);
 		if (button) {
 			if (hasChanges) {
 				button.buttonEl.classList.remove('mcp-hidden');

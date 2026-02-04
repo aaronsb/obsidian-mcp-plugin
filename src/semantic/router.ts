@@ -5,19 +5,52 @@ import {
   WorkflowConfig,
   SemanticContext,
   SemanticRequest,
-  SuggestedAction
+  SuggestedAction,
+  ConditionalSuggestions,
+  EfficiencyRule
 } from '../types/semantic';
 import { ContentBufferManager } from '../utils/content-buffer';
 import { StateTokenManager } from './state-tokens';
 import { limitResponse } from '../utils/response-limiter';
-import { isImageFile } from '../types/obsidian';
+import { isImageFile, ObsidianFileResponse } from '../types/obsidian';
 import { UniversalFragmentRetriever } from '../indexing/fragment-retriever';
 import { readFileWithFragments } from '../utils/file-reader';
-import { GraphSearchTool } from '../tools/graph-search';
+import { GraphSearchTool, GraphSearchParams } from '../tools/graph-search';
 import { GraphSearchTool as GraphSearchTraversalTool } from '../tools/graph-search-tool';
 import { GraphTagTool } from '../tools/graph-tag-tool';
 import { App } from 'obsidian';
 import { InputValidator, ValidationException } from '../validation/input-validator';
+import { BaseYAML } from '../types/bases-yaml';
+
+/** Type alias for operation parameters passed through the semantic router */
+type Params = Record<string, unknown>;
+
+/** Search result item from vault search */
+interface SearchResultItem {
+  path: string;
+  title?: string;
+  score?: number;
+  type?: string;
+  context?: string;
+}
+
+/** Helper to safely extract a string from params */
+function paramStr(params: Params, key: string): string | undefined {
+  const val = params[key];
+  return typeof val === 'string' ? val : undefined;
+}
+
+/** Helper to safely extract a number from params */
+function paramNum(params: Params, key: string): number | undefined {
+  const val = params[key];
+  return typeof val === 'number' ? val : undefined;
+}
+
+/** Helper to safely extract a boolean from params */
+function paramBool(params: Params, key: string): boolean | undefined {
+  const val = params[key];
+  return typeof val === 'boolean' ? val : undefined;
+}
 
 export class SemanticRouter {
   private config!: WorkflowConfig;
@@ -100,7 +133,7 @@ export class SemanticRouter {
     }
   }
   
-  private async executeOperation(operation: string, action: string, params: any): Promise<unknown> {
+  private async executeOperation(operation: string, action: string, params: Params): Promise<unknown> {
     // Map semantic operations to actual tool calls
     switch (operation) {
       case 'vault':
@@ -122,33 +155,37 @@ export class SemanticRouter {
     }
   }
   
-  private async executeVaultOperation(action: string, params: any): Promise<unknown> {
+  private async executeVaultOperation(action: string, params: Params): Promise<unknown> {
     switch (action) {
       case 'list': {
         // Translate "/" to undefined for root directory
-        const directory = params.directory === '/' ? undefined : params.directory;
-        
+        const dirParam = paramStr(params, 'directory');
+        const directory = dirParam === '/' ? undefined : dirParam;
+
         // Use paginated list if page parameters are provided
         if (params.page || params.pageSize) {
-          const page = parseInt(params.page) || 1;
-          const pageSize = parseInt(params.pageSize) || 20;
+          const page = parseInt(paramStr(params, 'page') ?? '1') || 1;
+          const pageSize = parseInt(paramStr(params, 'pageSize') ?? '20') || 20;
           return await this.api.listFilesPaginated(directory, page, pageSize);
         }
-        
+
         // Fallback to simple list for backwards compatibility
         return await this.api.listFiles(directory);
       }
-      case 'read':
+      case 'read': {
+        const path = paramStr(params, 'path') ?? '';
+        const strategy = paramStr(params, 'strategy') as 'auto' | 'adaptive' | 'proximity' | 'semantic' | undefined;
         return await readFileWithFragments(this.api, this.fragmentRetriever, {
-          path: params.path,
-          returnFullFile: params.returnFullFile,
-          query: params.query,
-          strategy: params.strategy,
-          maxFragments: params.maxFragments
+          path,
+          returnFullFile: paramBool(params, 'returnFullFile'),
+          query: paramStr(params, 'query'),
+          strategy,
+          maxFragments: paramNum(params, 'maxFragments')
         });
+      }
       case 'fragments': {
         // Dedicated fragment search across multiple files
-        const fragmentQuery = params.query || params.path || '';
+        const fragmentQuery = paramStr(params, 'query') ?? paramStr(params, 'path') ?? '';
 
         // Skip indexing if no query provided
         if (!fragmentQuery || fragmentQuery.trim().length === 0) {
@@ -196,8 +233,8 @@ export class SemanticRouter {
 
           // Search for fragments in indexed documents
           const fragmentResponse = await this.fragmentRetriever.retrieveFragments(fragmentQuery, {
-            strategy: params.strategy || 'auto',
-            maxFragments: params.maxFragments || 5
+            strategy: (paramStr(params, 'strategy') as 'auto' | 'adaptive' | 'proximity' | 'semantic') || 'auto',
+            maxFragments: paramNum(params, 'maxFragments') || 5
           });
 
           return fragmentResponse;
@@ -214,16 +251,17 @@ export class SemanticRouter {
         }
       }
       case 'create':
-        return await this.api.createFile(params.path, params.content || '');
+        return await this.api.createFile(paramStr(params, 'path') ?? '', paramStr(params, 'content') ?? '');
       case 'update':
-        return await this.api.updateFile(params.path, params.content);
+        return await this.api.updateFile(String(params.path), String(params.content));
       case 'delete':
-        return await this.api.deleteFile(params.path);
+        return await this.api.deleteFile(String(params.path));
       case 'search': {
         // Validate query
-        if (!params.query || params.query.trim().length === 0) {
+        const queryStr = paramStr(params, 'query');
+        if (!queryStr || queryStr.trim().length === 0) {
           return {
-            query: params.query || '',
+            query: queryStr || '',
             page: 1,
             pageSize: 10,
             totalResults: 0,
@@ -237,10 +275,10 @@ export class SemanticRouter {
 
         // Use advanced search with ranking and snippets
         try {
-          const page = parseInt(params.page) || 1;
-          const pageSize = parseInt(params.pageSize) || 10;
+          const page = parseInt(paramStr(params, 'page') ?? '1') || 1;
+          const pageSize = parseInt(paramStr(params, 'pageSize') ?? '10') || 10;
           // Use searchStrategy for search, fall back to strategy for backward compatibility
-          const strategy = params.searchStrategy || params.strategy || 'combined';
+          const strategy = (paramStr(params, 'searchStrategy') || paramStr(params, 'strategy') || 'combined') as 'filename' | 'content' | 'combined';
           const includeContent = params.includeContent !== false; // Default to true
 
           // Build search options from new parameters
@@ -251,17 +289,17 @@ export class SemanticRouter {
           } = {};
 
           if (params.ranked !== undefined) {
-            searchOptions.ranked = params.ranked;
+            searchOptions.ranked = Boolean(params.ranked);
           }
           if (params.includeSnippets !== undefined) {
-            searchOptions.includeSnippets = params.includeSnippets;
+            searchOptions.includeSnippets = Boolean(params.includeSnippets);
           }
           if (params.snippetLength !== undefined) {
-            searchOptions.snippetLength = parseInt(params.snippetLength);
+            searchOptions.snippetLength = parseInt(paramStr(params, 'snippetLength') ?? '0');
           }
 
           const searchResults = await this.api.searchPaginated(
-            params.query,
+            queryStr,
             page,
             pageSize,
             strategy,
@@ -281,7 +319,7 @@ export class SemanticRouter {
           // Try fallback with basic search strategy
           try {
             const fallbackResults = await this.api.searchPaginated(
-              params.query,
+              queryStr,
               1,
               10,
               'filename', // Use simple filename search as fallback
@@ -301,7 +339,7 @@ export class SemanticRouter {
 
           // Return error with helpful information
           return {
-            query: params.query,
+            query: queryStr,
             page: 1,
             pageSize: 10,
             totalResults: 0,
@@ -314,18 +352,20 @@ export class SemanticRouter {
         }
       }
       case 'move': {
-        const { path, destination, overwrite = false } = params;
-        
+        const path = paramStr(params, 'path');
+        const destination = paramStr(params, 'destination');
+        const overwrite = paramBool(params, 'overwrite') ?? false;
+
         if (!path || !destination) {
           throw new Error('Both path and destination are required for move operation');
         }
-        
+
         // Check if source file exists
         const sourceFile = await this.api.getFile(path);
         if (!sourceFile) {
           throw new Error(`Source file not found: ${path}`);
         }
-        
+
         // Check if destination already exists
         try {
           const destFile = await this.api.getFile(destination);
@@ -335,9 +375,9 @@ export class SemanticRouter {
         } catch {
           // File doesn't exist, which is what we want
         }
-        
+
         // Directory creation is handled automatically by createFile
-        
+
         // Use Obsidian's rename method (which handles moves)
         if (this.app) {
           const file = this.app.vault.getAbstractFileByPath(path);
@@ -394,23 +434,25 @@ export class SemanticRouter {
       }
       
       case 'rename': {
-        const { path, newName, overwrite = false } = params;
-        
+        const path = paramStr(params, 'path');
+        const newName = paramStr(params, 'newName');
+        const overwrite = paramBool(params, 'overwrite') ?? false;
+
         if (!path || !newName) {
           throw new Error('Both path and newName are required for rename operation');
         }
-        
+
         // Check if source file exists
         const sourceFile = await this.api.getFile(path);
         if (!sourceFile) {
           throw new Error(`File not found: ${path}`);
         }
-        
+
         // Extract directory from current path
         const lastSlash = path.lastIndexOf('/');
         const dir = lastSlash >= 0 ? path.substring(0, lastSlash) : '';
         const newPath = dir ? `${dir}/${newName}` : newName;
-        
+
         // Check if destination already exists
         try {
           const destFile = await this.api.getFile(newPath);
@@ -420,7 +462,7 @@ export class SemanticRouter {
         } catch {
           // File doesn't exist, which is what we want
         }
-        
+
         // Use Obsidian's rename method
         if (this.app) {
           const file = this.app.vault.getAbstractFileByPath(path);
@@ -477,12 +519,14 @@ export class SemanticRouter {
       }
       
       case 'copy': {
-        const { path, destination, overwrite = false } = params;
-        
+        const path = paramStr(params, 'path');
+        const destination = paramStr(params, 'destination');
+        const overwrite = paramBool(params, 'overwrite') ?? false;
+
         if (!path || !destination) {
           throw new Error('Both path and destination are required for copy operation');
         }
-        
+
         // First try as a file (this will go through security validation)
         try {
           const sourceFile = await this.api.getFile(path);
@@ -502,22 +546,25 @@ export class SemanticRouter {
       }
       
       case 'split': {
-        const { path, splitBy, outputPattern, outputDirectory } = params;
-        
+        const path = paramStr(params, 'path');
+        const splitBy = paramStr(params, 'splitBy');
+        const outputPattern = paramStr(params, 'outputPattern');
+        const outputDirectory = paramStr(params, 'outputDirectory');
+
         if (!path || !splitBy) {
           throw new Error('Both path and splitBy are required for split operation');
         }
-        
+
         // Get the source file
         const sourceFile = await this.api.getFile(path);
         if (!sourceFile) {
           throw new Error(`File not found: ${path}`);
         }
-        
+
         if (isImageFile(sourceFile)) {
           throw new Error('Cannot split image files');
         }
-        
+
         // Split the content
         const splitFiles = await this.splitContent(sourceFile.content, params);
         
@@ -573,7 +620,13 @@ export class SemanticRouter {
       }
       
       case 'combine': {
-        const { paths, destination, separator = '\n\n---\n\n', includeFilenames = false, overwrite = false, sortBy, sortOrder = 'asc' } = params;
+        const paths = params.paths as string[] | undefined;
+        const destination = paramStr(params, 'destination');
+        const separator = paramStr(params, 'separator') ?? '\n\n---\n\n';
+        const includeFilenames = paramBool(params, 'includeFilenames') ?? false;
+        const overwrite = paramBool(params, 'overwrite') ?? false;
+        const sortBy = paramStr(params, 'sortBy');
+        const sortOrder = paramStr(params, 'sortOrder') ?? 'asc';
 
         // Validate batch operation
         const validationResult = this.validator.validate('batch.combine', { paths, path: destination });
@@ -666,19 +719,22 @@ export class SemanticRouter {
       }
       
       case 'concatenate': {
-        const { path1, path2, destination, mode = 'append' } = params;
-        
+        const path1 = paramStr(params, 'path1');
+        const path2 = paramStr(params, 'path2');
+        const concatDest = paramStr(params, 'destination');
+        const mode = paramStr(params, 'mode') ?? 'append';
+
         if (!path1 || !path2) {
           throw new Error('Both path1 and path2 are required for concatenate operation');
         }
-        
+
         // Determine paths and destination based on mode
-        const paths = mode === 'prepend' ? [path2, path1] : [path1, path2];
-        const dest = destination || (mode === 'new' ? `${path1}-concatenated` : path1);
+        const concatPaths = mode === 'prepend' ? [path2, path1] : [path1, path2];
+        const dest = concatDest || (mode === 'new' ? `${path1}-concatenated` : path1);
         
         // Use combine operation internally
         return this.executeVaultOperation('combine', {
-          paths,
+          paths: concatPaths,
           destination: dest,
           separator: '\n\n',
           overwrite: mode !== 'new',
@@ -691,17 +747,17 @@ export class SemanticRouter {
     }
   }
   
-  private combineSearchResults(apiResults: any[], fallbackResults: any[]): any[] {
+  private combineSearchResults(apiResults: SearchResultItem[], fallbackResults: SearchResultItem[]): SearchResultItem[] {
     const combined = [...apiResults];
     const existingPaths = new Set(apiResults.map(r => r.path));
-    
+
     // Add fallback results that aren't already in API results
     for (const fallbackResult of fallbackResults) {
       if (!existingPaths.has(fallbackResult.path)) {
         combined.push(fallbackResult);
       }
     }
-    
+
     // Sort by score (API results have negative scores, higher is better)
     // Fallback results have positive scores, higher is better
     return combined.sort((a, b) => {
@@ -730,8 +786,12 @@ export class SemanticRouter {
     });
   }
   
-  private async splitContent(content: string, params: any): Promise<Array<{ content: string }>> {
-    const { splitBy, delimiter, level, linesPerFile, maxSize } = params;
+  private async splitContent(content: string, params: Params): Promise<Array<{ content: string }>> {
+    const splitBy = paramStr(params, 'splitBy');
+    const delimiter = paramStr(params, 'delimiter');
+    const level = paramNum(params, 'level');
+    const linesPerFile = paramNum(params, 'linesPerFile');
+    const maxSize = paramNum(params, 'maxSize');
     const splitFiles: Array<{ content: string }> = [];
     
     switch (splitBy) {
@@ -890,7 +950,7 @@ export class SemanticRouter {
   /**
    * Copy a single file
    */
-  private async copyFile(path: string, destination: string, overwrite: boolean, sourceFile: any): Promise<any> {
+  private async copyFile(path: string, destination: string, overwrite: boolean, sourceFile: ObsidianFileResponse): Promise<unknown> {
     // Check if destination already exists
     try {
       const destFile = await this.api.getFile(destination);
@@ -1013,14 +1073,14 @@ export class SemanticRouter {
               try {
                 await this.api.getFile(destFilePath);
                 throw new Error(`Destination exists: ${destFilePath}. Set overwrite=true to replace.`);
-              } catch (e: any) {
+              } catch (e: unknown) {
                 // File doesn't exist - good to proceed
-                if (!e.message?.includes('Destination exists')) {
-                  // Some other error occurred, but continue
+                if (e instanceof Error && e.message?.includes('Destination exists')) {
+                  throw e;
                 }
               }
             }
-            
+
             const content = sourceFile.content;
             if (overwrite) {
               await this.api.updateFile(destFilePath, content);
@@ -1028,12 +1088,13 @@ export class SemanticRouter {
               await this.api.createFile(destFilePath, content);
             }
             copiedFiles.push(destFilePath);
-          } catch (error: any) {
-            if (error.message?.includes('Destination exists')) {
+          } catch (error: unknown) {
+            if (error instanceof Error && error.message?.includes('Destination exists')) {
               throw error; // Re-throw destination exists errors
             }
             // Log other errors but continue
-            Debug.warn(`Failed to copy ${srcPath}: ${error.message}`);
+            const errMsg = error instanceof Error ? error.message : String(error);
+            Debug.warn(`Failed to copy ${srcPath}: ${errMsg}`);
             skippedFiles.push(srcPath);
           }
         }
@@ -1100,7 +1161,7 @@ export class SemanticRouter {
     return 'binary';
   }
   
-  private getSearchWorkflowHints(results: any[]): any {
+  private getSearchWorkflowHints(results: SearchResultItem[]): { available_actions: string[]; note: string } {
     const hasEditableFiles = results.some(r => {
       const type = r.type || this.getFileType(r.path);
       return type === 'text';
@@ -1126,7 +1187,7 @@ export class SemanticRouter {
   
   private async performFileBasedSearch(query: string, page: number, pageSize: number, includeContent: boolean = false): Promise<unknown> {
     const lowerQuery = query.toLowerCase();
-    const allResults: any[] = [];
+    const allResults: SearchResultItem[] = [];
     
     const searchDirectory = async (directory?: string) => {
       try {
@@ -1269,19 +1330,19 @@ export class SemanticRouter {
     await indexDirectory();
   }
   
-  private async executeEditOperation(action: string, params: any): Promise<unknown> {
+  private async executeEditOperation(action: string, params: Params): Promise<unknown> {
     // Import window edit tools dynamically to avoid circular dependencies
     const { performWindowEdit } = await import('../tools/window-edit.js');
     const buffer = ContentBufferManager.getInstance();
-    
+
     switch (action) {
       case 'window': {
         const result = await performWindowEdit(
           this.api,
-          params.path,
-          params.oldText,
-          params.newText,
-          params.fuzzyThreshold
+          String(params.path),
+          String(params.oldText),
+          String(params.newText),
+          paramNum(params, 'fuzzyThreshold')
         );
         if (result.isError) {
           throw new Error(result.content[0].text);
@@ -1289,19 +1350,19 @@ export class SemanticRouter {
         return result;
       }
       case 'append':
-        return await this.api.appendToFile(params.path, params.content);
+        return await this.api.appendToFile(String(params.path), String(params.content));
       case 'patch':
-        return await this.api.patchVaultFile(params.path, {
-          operation: params.operation,
-          targetType: params.targetType,
-          target: params.target,
-          content: params.content,
-          old_text: params.oldText,
-          new_text: params.newText
+        return await this.api.patchVaultFile(String(params.path), {
+          operation: paramStr(params, 'operation'),
+          targetType: paramStr(params, 'targetType'),
+          target: paramStr(params, 'target'),
+          content: paramStr(params, 'content'),
+          old_text: paramStr(params, 'oldText'),
+          new_text: paramStr(params, 'newText')
         });
       case 'at_line': {
         // Get content to insert
-        let insertContent = params.content;
+        let insertContent = paramStr(params, 'content');
         if (!insertContent) {
           const buffered = buffer.retrieve();
           if (!buffered) {
@@ -1309,22 +1370,24 @@ export class SemanticRouter {
           }
           insertContent = buffered.content;
         }
-        
+
         // Get file and perform line-based edit
-        const file = await this.api.getFile(params.path);
+        const filePath = String(params.path);
+        const file = await this.api.getFile(filePath);
         if (isImageFile(file)) {
           throw new Error('Cannot perform line-based edits on image files');
         }
         const content = typeof file === 'string' ? file : file.content;
         const lines = content.split('\n');
-        
-        if (params.lineNumber < 1 || params.lineNumber > lines.length + 1) {
-          throw new Error(`Invalid line number ${params.lineNumber}. File has ${lines.length} lines.`);
+        const lineNumber = paramNum(params, 'lineNumber') ?? 1;
+
+        if (lineNumber < 1 || lineNumber > lines.length + 1) {
+          throw new Error(`Invalid line number ${lineNumber}. File has ${lines.length} lines.`);
         }
-        
-        const lineIndex = params.lineNumber - 1;
-        const mode = params.mode || 'replace';
-        
+
+        const lineIndex = lineNumber - 1;
+        const mode = paramStr(params, 'mode') || 'replace';
+
         switch (mode) {
           case 'before':
             lines.splice(lineIndex, 0, insertContent);
@@ -1336,9 +1399,9 @@ export class SemanticRouter {
             lines[lineIndex] = insertContent;
             break;
         }
-        
-        await this.api.updateFile(params.path, lines.join('\n'));
-        return { success: true, line: params.lineNumber, mode };
+
+        await this.api.updateFile(filePath, lines.join('\n'));
+        return { success: true, line: lineNumber, mode };
       }
       case 'from_buffer': {
         const buffered = buffer.retrieve();
@@ -1347,10 +1410,10 @@ export class SemanticRouter {
         }
         return await performWindowEdit(
           this.api,
-          params.path,
-          params.oldText || buffered.searchText || '',
+          String(params.path),
+          paramStr(params, 'oldText') || buffered.searchText || '',
           buffered.content,
-          params.fuzzyThreshold
+          paramNum(params, 'fuzzyThreshold')
         );
       }
       default:
@@ -1358,60 +1421,62 @@ export class SemanticRouter {
     }
   }
   
-  private async executeViewOperation(action: string, params: any): Promise<unknown> {
+  private async executeViewOperation(action: string, params: Params): Promise<unknown> {
     switch (action) {
       case 'file':
-        return await this.api.getFile(params.path);
+        return await this.api.getFile(String(params.path));
       case 'window': {
         // View a portion of a file
-        const file = await this.api.getFile(params.path);
+        const viewPath = String(params.path);
+        const file = await this.api.getFile(viewPath);
         if (isImageFile(file)) {
           throw new Error('Cannot view window of image files');
         }
         const content = typeof file === 'string' ? file : file.content;
         const lines = content.split('\n');
-        
-        let centerLine = params.lineNumber || 1;
-        
+        const searchText = paramStr(params, 'searchText');
+
+        let centerLine = paramNum(params, 'lineNumber') || 1;
+
         // If search text provided, find it
-        if (params.searchText && !params.lineNumber) {
+        if (searchText && !params.lineNumber) {
           const { findFuzzyMatches } = await import('../utils/fuzzy-match.js');
-          const matches = findFuzzyMatches(content, params.searchText, 0.6);
+          const matches = findFuzzyMatches(content, searchText, 0.6);
           if (matches.length > 0) {
             centerLine = matches[0].lineNumber;
           }
         }
-        
+
         // Calculate window
-        const windowSize = params.windowSize || 20;
+        const windowSize = paramNum(params, 'windowSize') || 20;
         const halfWindow = Math.floor(windowSize / 2);
         const startLine = Math.max(1, centerLine - halfWindow);
         const endLine = Math.min(lines.length, centerLine + halfWindow);
-        
+
         return {
-          path: params.path,
+          path: viewPath,
           lines: lines.slice(startLine - 1, endLine),
           startLine,
           endLine,
           totalLines: lines.length,
           centerLine,
-          searchText: params.searchText
+          searchText
         };
       }
         
       case 'active':
         // Add timeout to prevent hanging when no file is active
         try {
-          const timeoutPromise = new Promise((_, reject) => 
+          const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Timeout: No active file in Obsidian. Please open a file first.')), 5000)
           );
-          const result = await Promise.race([
+          const activeResult = await Promise.race([
             this.api.getActiveFile(),
             timeoutPromise
           ]);
-          return result;
-        } catch (error: any) {
-          if (error.message?.includes('Timeout')) {
+          return activeResult;
+        } catch (error: unknown) {
+          if (error instanceof Error && error.message?.includes('Timeout')) {
             throw error;
           }
           // Re-throw original error if not timeout
@@ -1419,14 +1484,14 @@ export class SemanticRouter {
         }
         
       case 'open_in_obsidian':
-        return await this.api.openFile(params.path);
+        return await this.api.openFile(String(params.path));
         
       default:
         throw new Error(`Unknown view action: ${action}`);
     }
   }
   
-  private async executeWorkflowOperation(action: string, params: any): Promise<unknown> {
+  private async executeWorkflowOperation(action: string, _params: Params): Promise<unknown> {
     switch (action) {
       case 'suggest':
         return this.generateWorkflowSuggestions();
@@ -1435,7 +1500,7 @@ export class SemanticRouter {
     }
   }
   
-  private async executeSystemOperation(action: string, params: any): Promise<unknown> {
+  private async executeSystemOperation(action: string, params: Params): Promise<unknown> {
     switch (action) {
       case 'info':
         return await this.api.getServerInfo();
@@ -1444,14 +1509,14 @@ export class SemanticRouter {
       case 'fetch_web': {
         // Import fetch tool dynamically
         const { fetchTool } = await import('../tools/fetch.js');
-        return await fetchTool.handler(this.api, params);
+        return await (fetchTool.handler as unknown as (api: unknown, args: Params) => Promise<unknown>)(this.api, params);
       }
       default:
         throw new Error(`Unknown system action: ${action}`);
     }
   }
   
-  private async executeGraphOperation(action: string, params: any): Promise<unknown> {
+  private async executeGraphOperation(action: string, params: Params): Promise<unknown> {
     // Handle graph search traversal operations
     if (action === 'search-traverse' || action === 'advanced-traverse') {
       if (!this.graphSearchTraversalTool) {
@@ -1459,10 +1524,20 @@ export class SemanticRouter {
       }
       return await this.graphSearchTraversalTool.execute({
         action,
-        ...params
+        startPath: paramStr(params, 'startPath') ?? '',
+        searchQuery: paramStr(params, 'searchQuery'),
+        searchQueries: params.searchQueries as string[] | undefined,
+        maxDepth: paramNum(params, 'maxDepth'),
+        maxSnippetsPerNode: paramNum(params, 'maxSnippetsPerNode'),
+        scoreThreshold: paramNum(params, 'scoreThreshold'),
+        strategy: paramStr(params, 'strategy') as 'breadth-first' | 'best-first' | 'beam-search' | undefined,
+        beamWidth: paramNum(params, 'beamWidth'),
+        includeOrphans: paramBool(params, 'includeOrphans'),
+        followTags: paramBool(params, 'followTags'),
+        filePattern: paramStr(params, 'filePattern')
       });
     }
-    
+
     // Handle tag-based graph operations
     if (action === 'tag-traverse' || action === 'tag-analysis' || action === 'shared-tags') {
       if (!this.graphTagTool) {
@@ -1470,25 +1545,42 @@ export class SemanticRouter {
       }
       return await this.graphTagTool.execute({
         action,
-        ...params
+        startPath: paramStr(params, 'startPath'),
+        targetPath: paramStr(params, 'targetPath'),
+        searchQuery: paramStr(params, 'searchQuery'),
+        maxDepth: paramNum(params, 'maxDepth'),
+        maxSnippetsPerNode: paramNum(params, 'maxSnippetsPerNode'),
+        scoreThreshold: paramNum(params, 'scoreThreshold'),
+        followTags: paramBool(params, 'followTags'),
+        tagWeight: paramNum(params, 'tagWeight')
       });
     }
-    
+
     // Handle standard graph operations
     if (!this.graphSearchTool) {
       throw new Error('Graph operations require Obsidian app context');
     }
-    
+
     // Map action to graph operation
-    const graphParams = {
-      ...params,
-      operation: action
+    const graphParams: GraphSearchParams = {
+      operation: action as GraphSearchParams['operation'],
+      sourcePath: paramStr(params, 'sourcePath'),
+      targetPath: paramStr(params, 'targetPath'),
+      maxDepth: paramNum(params, 'maxDepth'),
+      maxNodes: paramNum(params, 'maxNodes'),
+      includeUnresolved: paramBool(params, 'includeUnresolved'),
+      followBacklinks: paramBool(params, 'followBacklinks'),
+      followForwardLinks: paramBool(params, 'followForwardLinks'),
+      followTags: paramBool(params, 'followTags'),
+      fileFilter: paramStr(params, 'fileFilter'),
+      tagFilter: params.tagFilter as string[] | undefined,
+      folderFilter: paramStr(params, 'folderFilter')
     };
-    
+
     return await this.graphSearchTool.search(graphParams);
   }
   
-  private enrichResponse(result: any, operation: string, action: string, params: any, isError: boolean): SemanticResponse {
+  private enrichResponse(result: unknown, operation: string, action: string, params: Params, isError: boolean): SemanticResponse {
     const operationConfig = this.config?.operations?.[operation];
     const actionConfig = operationConfig?.actions?.[action];
     
@@ -1544,13 +1636,18 @@ export class SemanticRouter {
     return response;
   }
   
-  private interpolateMessage(template: string, params: any, result: any): string {
-    return template.replace(/{(\w+)}/g, (match, key) => {
-      return params?.[key] || result?.[key] || match;
+  private interpolateMessage(template: string, params: Params, result: unknown): string {
+    const resultRecord = (result && typeof result === 'object') ? result as Record<string, unknown> : {};
+    return template.replace(/{(\w+)}/g, (match, key: string) => {
+      const paramVal = params[key];
+      const resultVal = resultRecord[key];
+      if (typeof paramVal === 'string') return paramVal;
+      if (typeof resultVal === 'string') return resultVal;
+      return match;
     });
   }
   
-  private generateSuggestions(conditionalSuggestions: any[], params: any, result: any): SuggestedAction[] {
+  private generateSuggestions(conditionalSuggestions: ConditionalSuggestions[], params: Params, result: unknown): SuggestedAction[] {
     const suggestions: SuggestedAction[] = [];
     
     if (!Array.isArray(conditionalSuggestions)) {
@@ -1577,22 +1674,39 @@ export class SemanticRouter {
     return suggestions;
   }
   
-  private evaluateCondition(condition: string, params: any, result: any): boolean {
+  private evaluateCondition(condition: string, params: Params, result: unknown): boolean {
+    const resultObj = (result && typeof result === 'object') ? result as Record<string, unknown> : null;
     switch (condition) {
       case 'always':
         return true;
-      case 'has_results':
-        return result && (result.results?.length > 0 || result.totalResults > 0);
-      case 'no_results':
-        return !result || (result.results?.length === 0 && result.totalResults === 0);
-      case 'has_links':
-        return result?.links?.length > 0;
-      case 'has_tags':
-        return result?.tags?.length > 0;
+      case 'has_results': {
+        if (!resultObj) return false;
+        const results = resultObj.results;
+        const totalResults = resultObj.totalResults;
+        return (Array.isArray(results) && results.length > 0) || (typeof totalResults === 'number' && totalResults > 0);
+      }
+      case 'no_results': {
+        if (!resultObj) return true;
+        const results = resultObj.results;
+        const totalResults = resultObj.totalResults;
+        return (!Array.isArray(results) || results.length === 0) && (!totalResults || totalResults === 0);
+      }
+      case 'has_links': {
+        if (!resultObj) return false;
+        const links = resultObj.links;
+        return Array.isArray(links) && links.length > 0;
+      }
+      case 'has_tags': {
+        if (!resultObj) return false;
+        const tags = resultObj.tags;
+        return Array.isArray(tags) && tags.length > 0;
+      }
       case 'has_markdown_files':
-        return Array.isArray(result) && result.some(f => f.endsWith('.md'));
-      case 'is_daily_note':
-        return this.matchesPattern(params.path, this.config.context_triggers?.daily_note_pattern);
+        return Array.isArray(result) && result.some(f => typeof f === 'string' && f.endsWith('.md'));
+      case 'is_daily_note': {
+        const pathVal = paramStr(params, 'path');
+        return pathVal ? this.matchesPattern(pathVal, this.config.context_triggers?.daily_note_pattern) : false;
+      }
       default:
         return false;
     }
@@ -1608,10 +1722,10 @@ export class SemanticRouter {
     }
   }
   
-  private checkEfficiencyRules(operation: string, action: string, params: any): any[] {
+  private checkEfficiencyRules(operation: string, action: string, params: Params): EfficiencyRule[] {
     if (!this.config.efficiency_rules) return [];
-    
-    const matches = [];
+
+    const matches: EfficiencyRule[] = [];
     for (const rule of this.config.efficiency_rules) {
       // Simple pattern matching for now
       if (rule.pattern === 'multiple_edits_same_file' && 
@@ -1624,19 +1738,20 @@ export class SemanticRouter {
     return matches;
   }
   
-  private updateContext(operation: string, action: string, params: any) {
+  private updateContext(operation: string, action: string, params: Params) {
     this.context.operation = operation;
     this.context.action = action;
-    
-    if (params.path) {
-      this.context.last_file = params.path;
+    const pathVal = paramStr(params, 'path');
+
+    if (pathVal) {
+      this.context.last_file = pathVal;
       
       // Track file history
       if (!this.context.file_history) {
         this.context.file_history = [];
       }
-      if (!this.context.file_history.includes(params.path)) {
-        this.context.file_history.push(params.path);
+      if (!this.context.file_history.includes(pathVal)) {
+        this.context.file_history.push(pathVal);
         // Keep only last 10 files
         if (this.context.file_history.length > 10) {
           this.context.file_history.shift();
@@ -1644,15 +1759,17 @@ export class SemanticRouter {
       }
     }
     
-    if (params.directory) {
-      this.context.last_directory = params.directory;
+    const dirVal = paramStr(params, 'directory');
+    if (dirVal) {
+      this.context.last_directory = dirVal;
     }
-    
-    if (params.query) {
+
+    const queryVal = paramStr(params, 'query');
+    if (queryVal) {
       if (!this.context.search_history) {
         this.context.search_history = [];
       }
-      this.context.search_history.push(params.query);
+      this.context.search_history.push(queryVal);
       // Keep only last 5 searches
       if (this.context.search_history.length > 5) {
         this.context.search_history.shift();
@@ -1660,7 +1777,7 @@ export class SemanticRouter {
     }
   }
   
-  private updateContextAfterSuccess(response: SemanticResponse, params: any) {
+  private updateContextAfterSuccess(response: SemanticResponse, _params: Params) {
     // Update buffer status
     const buffer = ContentBufferManager.getInstance();
     this.context.buffer_content = buffer.retrieve()?.content;
@@ -1706,7 +1823,7 @@ export class SemanticRouter {
     };
   }
   
-  private handleError(error: any, operation: string, action: string, params: any): SemanticResponse {
+  private handleError(error: unknown, operation: string, action: string, params: Params): SemanticResponse {
     const errorResponse = this.enrichResponse(
       null,
       operation,
@@ -1714,19 +1831,22 @@ export class SemanticRouter {
       params,
       true // isError
     );
-    
+
     // Extract parent directory from the directory parameter for suggestions
-    if (operation === 'vault' && action === 'list' && params.directory) {
-      const parts = params.directory.split('/');
+    const dirParam = paramStr(params, 'directory');
+    if (operation === 'vault' && action === 'list' && dirParam) {
+      const parts = dirParam.split('/');
       if (parts.length > 1) {
         parts.pop();
         params.parent_directory = parts.join('/') || undefined;
       }
     }
-    
+
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorCode = (error && typeof error === 'object' && 'code' in error) ? String((error as Record<string, unknown>).code) : undefined;
     errorResponse.error = {
-      code: error.code || 'UNKNOWN_ERROR',
-      message: error.message,
+      code: errorCode || 'UNKNOWN_ERROR',
+      message: errorMessage,
       recovery_hints: errorResponse.workflow?.suggested_next
     };
     
@@ -1735,7 +1855,7 @@ export class SemanticRouter {
     return errorResponse;
   }
   
-  private generateWorkflowSuggestions(): any {
+  private generateWorkflowSuggestions(): { current_context: ReturnType<SemanticRouter['getCurrentContext']>; suggestions: SuggestedAction[] } {
     // Generate contextual workflow suggestions based on current state
     const suggestions: SuggestedAction[] = [];
     
@@ -1774,41 +1894,44 @@ export class SemanticRouter {
   /**
    * Generate enhanced semantic hints that encourage graph exploration over simple search
    */
-  private generateEnhancedSemanticHints(operation: string, action: string, params: any, result: any): { message: string; suggested_next: SuggestedAction[] } | null {
+  private generateEnhancedSemanticHints(operation: string, action: string, params: Params, result: unknown): { message: string; suggested_next: SuggestedAction[] } | null {
     const suggestions: SuggestedAction[] = [];
     let message = '';
 
+    const resultObj = (result && typeof result === 'object') ? result as Record<string, unknown> : null;
+
     // Enhanced hints for search operations
     if (operation === 'vault' && action === 'search') {
-      if (result?.results && Array.isArray(result.results) && result.results.length > 0) {
+      const searchResults = resultObj?.results;
+      if (searchResults && Array.isArray(searchResults) && searchResults.length > 0) {
         message = 'Consider exploring connections between these files using graph operations.';
-        
+
         // Get first few results for graph exploration suggestions
-        const firstResult = result.results[0];
-        const hasMultipleResults = result.results.length > 1;
-        
+        const firstResult = searchResults[0] as SearchResultItem | undefined;
+        const hasMultipleResults = searchResults.length > 1;
+
         if (firstResult?.path) {
           suggestions.push({
             description: 'Explore connections from first result',
             command: `graph(action='traverse', sourcePath='${firstResult.path}', maxDepth=2)`,
             reason: 'Discover related files through links and references'
           });
-          
+
           suggestions.push({
             description: 'Find files linking to this result',
             command: `graph(action='backlinks', sourcePath='${firstResult.path}')`,
             reason: 'See what files reference this content'
           });
-          
+
           suggestions.push({
             description: 'Find files linked from this result',
             command: `graph(action='forwardlinks', sourcePath='${firstResult.path}')`,
             reason: 'See what this file references'
           });
         }
-        
+
         if (hasMultipleResults) {
-          const secondResult = result.results[1];
+          const secondResult = searchResults[1] as SearchResultItem | undefined;
           if (secondResult?.path && firstResult?.path) {
             suggestions.push({
               description: 'Find connection path between top results',
@@ -1817,10 +1940,11 @@ export class SemanticRouter {
             });
           }
         }
-        
+
         // Tag-based exploration if we detect potential tag-related content
-        if (params.query && params.query.includes('#')) {
-          const tagQuery = params.query.replace('#', '');
+        const queryParam = paramStr(params, 'query');
+        if (queryParam && queryParam.includes('#')) {
+          const tagQuery = queryParam.replace('#', '');
           suggestions.push({
             description: 'Explore files with similar tags',
             command: `graph(action='tag-analysis', tagFilter=['${tagQuery}'])`,
@@ -1829,89 +1953,99 @@ export class SemanticRouter {
         }
       }
     }
-    
+
     // Enhanced hints for read operations - suggest exploring connections
     if (operation === 'vault' && action === 'read') {
-      if (params.path && !result?.error) {
+      const readPath = paramStr(params, 'path');
+      const hasError = resultObj ? 'error' in resultObj : false;
+      if (readPath && !hasError) {
         message = 'Explore connections and references for deeper context.';
-        
+
         suggestions.push({
           description: 'Explore graph connections from this file',
-          command: `graph(action='neighbors', sourcePath='${params.path}')`,
+          command: `graph(action='neighbors', sourcePath='${readPath}')`,
           reason: 'Find directly connected files'
         });
-        
+
         suggestions.push({
           description: 'Find files that reference this one',
-          command: `graph(action='backlinks', sourcePath='${params.path}')`,
+          command: `graph(action='backlinks', sourcePath='${readPath}')`,
           reason: 'See where this file is mentioned or linked'
         });
-        
+
         // Check if the content suggests it might have many connections
-        const content = typeof result === 'string' ? result : result?.content || '';
-        
+        const rawContent = typeof result === 'string' ? result : (resultObj?.content ?? '');
+
         // Safely count links and tags, handling both string content and Fragment arrays
         let linkCount = 0;
         let tagCount = 0;
-        
-        if (typeof content === 'string') {
-          linkCount = (content.match(/\[\[.*?\]\]/g) || []).length;
-          tagCount = (content.match(/#\w+/g) || []).length;
-        } else if (Array.isArray(content)) {
+
+        if (typeof rawContent === 'string') {
+          linkCount = (rawContent.match(/\[\[.*?\]\]/g) || []).length;
+          tagCount = (rawContent.match(/#\w+/g) || []).length;
+        } else if (Array.isArray(rawContent)) {
           // Handle Fragment[] - extract content from each fragment
-          content.forEach(fragment => {
-            const fragmentText = typeof fragment === 'string' ? fragment : 
-                                (fragment?.content || fragment?.text || fragment?.data || '');
-            if (typeof fragmentText === 'string' && fragmentText.length > 0) {
+          for (const fragment of rawContent) {
+            let fragmentText = '';
+            if (typeof fragment === 'string') {
+              fragmentText = fragment;
+            } else if (fragment && typeof fragment === 'object') {
+              const fObj = fragment as Record<string, unknown>;
+              const fVal = fObj.content ?? fObj.text ?? fObj.data;
+              fragmentText = typeof fVal === 'string' ? fVal : '';
+            }
+            if (fragmentText.length > 0) {
               linkCount += (fragmentText.match(/\[\[.*?\]\]/g) || []).length;
               tagCount += (fragmentText.match(/#\w+/g) || []).length;
             }
-          });
+          }
         }
-        
+
         if (linkCount > 2) {
           suggestions.push({
             description: 'Traverse the link network from this file',
-            command: `graph(action='traverse', sourcePath='${params.path}', maxDepth=3)`,
+            command: `graph(action='traverse', sourcePath='${readPath}', maxDepth=3)`,
             reason: `This file has ${linkCount} links - explore the broader network`
           });
         }
-        
+
         if (tagCount > 0) {
           suggestions.push({
             description: 'Find files with similar tags',
-            command: `graph(action='tag-traverse', startPath='${params.path}', maxDepth=2)`,
+            command: `graph(action='tag-traverse', startPath='${readPath}', maxDepth=2)`,
             reason: `This file has ${tagCount} tags - explore related content`
           });
         }
       }
     }
-    
+
     // Enhanced hints for list operations - suggest exploring discovered files
     if (operation === 'vault' && action === 'list') {
       if (result && Array.isArray(result) && result.length > 1) {
         message = 'Consider exploring relationships between these files.';
-        
-        const mdFiles = result.filter(f => typeof f === 'string' && f.endsWith('.md'));
+
+        const mdFiles = result.filter((f): f is string => typeof f === 'string' && f.endsWith('.md'));
         if (mdFiles.length >= 2) {
           suggestions.push({
             description: 'Find connections between files in this directory',
             command: `graph(action='path', sourcePath='${mdFiles[0]}', targetPath='${mdFiles[1]}')`,
             reason: 'Discover how files in this directory relate to each other'
           });
-          
+
           suggestions.push({
             description: 'Analyze tag relationships in this directory',
-            command: `graph(action='tag-analysis', folderFilter='${params.directory || '/'}')`,
+            command: `graph(action='tag-analysis', folderFilter='${paramStr(params, 'directory') || '/'}')`,
             reason: 'Find common themes and tags among these files'
           });
         }
-      } else if (result && typeof result === 'object' && result.files && Array.isArray(result.files)) {
+      } else if (resultObj && 'files' in resultObj && Array.isArray(resultObj.files)) {
         // Handle paginated results
-        const mdFiles = result.files.filter((f: any) => f.name && f.name.endsWith('.md'));
+        interface PaginatedFile { name: string; path: string; type: string }
+        const paginatedFiles = resultObj.files as PaginatedFile[];
+        const mdFiles = paginatedFiles.filter(f => f.name && f.name.endsWith('.md'));
         if (mdFiles.length >= 2) {
           message = 'Consider exploring relationships between these files.';
-          
+
           suggestions.push({
             description: 'Find connections between files in this directory',
             command: `graph(action='path', sourcePath='${mdFiles[0].path}', targetPath='${mdFiles[1].path}')`,
@@ -1920,16 +2054,17 @@ export class SemanticRouter {
         }
       }
     }
-    
+
     // Enhanced hints for fragments operation - suggest broader exploration
     if (operation === 'vault' && action === 'fragments') {
-      if (result?.fragments && result.fragments.length > 0) {
+      const fragments = resultObj?.fragments;
+      if (fragments && Array.isArray(fragments) && fragments.length > 0) {
         message = 'Explore connections between documents containing these fragments.';
-        
+
         const sourcePathsSet = new Set<string>();
-        for (const f of result.fragments) {
-          if (f && typeof f === 'object' && 'source' in f) {
-            const source = String(f.source);
+        for (const f of fragments) {
+          if (f && typeof f === 'object' && 'source' in (f as Record<string, unknown>)) {
+            const source = String((f as Record<string, unknown>).source);
             if (source.length > 0) sourcePathsSet.add(source);
           }
         }
@@ -1955,46 +2090,58 @@ export class SemanticRouter {
     return suggestions.length > 0 ? { message, suggested_next: suggestions } : null;
   }
 
-  private async executeBasesOperation(action: string, params: any): Promise<unknown> {
+  private async executeBasesOperation(action: string, params: Params): Promise<unknown> {
     switch (action) {
       case 'list':
         return await this.api.listBases();
-      
-      case 'read':
-        if (!params.path) {
+
+      case 'read': {
+        const basePath = paramStr(params, 'path');
+        if (!basePath) {
           throw new Error('Path parameter is required for reading a base');
         }
-        return await this.api.readBase(params.path);
-      
-      case 'create':
-        if (!params.path || !params.config) {
+        return await this.api.readBase(basePath);
+      }
+
+      case 'create': {
+        const basePath = paramStr(params, 'path');
+        const config = params.config as BaseYAML | undefined;
+        if (!basePath || !config) {
           throw new Error('Path and config parameters are required for creating a base');
         }
-        await this.api.createBase(params.path, params.config);
-        return { success: true, path: params.path };
-      
-      case 'query':
-        if (!params.path) {
+        await this.api.createBase(basePath, config);
+        return { success: true, path: basePath };
+      }
+
+      case 'query': {
+        const basePath = paramStr(params, 'path');
+        if (!basePath) {
           throw new Error('Path parameter is required for querying a base');
         }
-        return await this.api.queryBase(params.path, params.viewName);
-      
-      case 'view':
-        if (!params.path || !params.viewName) {
+        return await this.api.queryBase(basePath, paramStr(params, 'viewName'));
+      }
+
+      case 'view': {
+        const basePath = paramStr(params, 'path');
+        const viewName = paramStr(params, 'viewName');
+        if (!basePath || !viewName) {
           throw new Error('Path and viewName parameters are required for getting a base view');
         }
         // View is handled by query with viewName
-        return await this.api.queryBase(params.path, params.viewName);
-      
+        return await this.api.queryBase(basePath, viewName);
+      }
+
       case 'export': {
-        if (!params.path || !params.format) {
+        const basePath = paramStr(params, 'path');
+        const format = paramStr(params, 'format') as 'csv' | 'json' | 'markdown' | undefined;
+        if (!basePath || !format) {
           throw new Error('Path and format parameters are required for exporting a base');
         }
-        const exportData = await this.api.exportBase(params.path, params.format, params.viewName);
+        const exportData = await this.api.exportBase(basePath, format, paramStr(params, 'viewName'));
         return {
           success: true,
           data: exportData,
-          format: params.format
+          format
         };
       }
       

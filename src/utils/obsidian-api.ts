@@ -9,18 +9,75 @@ import { MCPIgnoreManager } from '../security/mcp-ignore-manager';
 import { Debug } from './debug';
 import { BasesAPI } from './bases-api';
 import { BaseYAML, BaseQueryResult as BasesQueryResult } from '../types/bases-yaml';
-import { InputValidator, ValidationException } from '../validation/input-validator';
+import { InputValidator, ValidationException, ValidationConfig } from '../validation/input-validator';
+
+/** MCP server info used by ObsidianAPI */
+interface ObsidianAPIMCPServerInfo {
+  isServerRunning(): boolean;
+  getConnectionCount(): number;
+}
+
+/** Minimal plugin interface for ObsidianAPI dependency */
+export interface ObsidianAPIPluginRef {
+  settings?: {
+    validation?: Partial<ValidationConfig>;
+    httpPort?: number;
+  };
+  ignoreManager?: MCPIgnoreManager;
+  mcpServer?: ObsidianAPIMCPServerInfo;
+  manifest?: { dir?: string };
+}
+
+/** Internal Obsidian App interface exposing appVersion and commands */
+interface AppInternal extends App {
+  appVersion?: string;
+  commands?: {
+    commands?: Record<string, ObsidianCommand>;
+    executeCommandById?(id: string): boolean;
+  };
+}
+
+/** Internal Obsidian command structure */
+interface ObsidianCommand {
+  id: string;
+  name: string;
+  icon?: string;
+}
+
+/** Structured patch parameters for vault file operations */
+export interface PatchParams {
+  targetType?: string;
+  target?: string;
+  operation?: string;
+  content?: string;
+  old_text?: string;
+  new_text?: string;
+  position?: number;
+  text?: string;
+  start?: number;
+  end?: number;
+}
+
+/** File listing detail object */
+interface FileDetailObject {
+  path: string;
+  name: string;
+  type: 'file' | 'folder';
+  size?: number;
+  extension?: string;
+  modified?: number;
+}
 
 export class ObsidianAPI {
   private app: App;
   private config: ObsidianConfig;
-  private plugin?: any; // Reference to the plugin for accessing MCP server info
+  private plugin?: ObsidianAPIPluginRef; // Reference to the plugin for accessing MCP server info
   private ignoreManager?: MCPIgnoreManager;
   private basesAPI: BasesAPI;
   private validator: InputValidator;
   private searchFacade: SearchFacade;
 
-  constructor(app: App, config?: ObsidianConfig, plugin?: any) {
+  constructor(app: App, config?: ObsidianConfig, plugin?: ObsidianAPIPluginRef) {
     this.app = app;
     this.config = config || { apiKey: '', apiUrl: '' };
     this.plugin = plugin;
@@ -29,7 +86,8 @@ export class ObsidianAPI {
     this.searchFacade = new SearchFacade(app);
 
     // Initialize input validator with plugin settings or defaults
-    this.validator = new InputValidator(plugin?.settings?.validation || {});
+    const validationSettings: Partial<ValidationConfig> = plugin?.settings?.validation ?? {};
+    this.validator = new InputValidator(validationSettings);
 
     Debug.log(`ObsidianAPI initialized with ignoreManager: ${!!this.ignoreManager}, enabled: ${this.ignoreManager?.getEnabled()}`);
   }
@@ -47,19 +105,21 @@ export class ObsidianAPI {
       ok: true,
       service: 'Obsidian MCP Plugin',
       versions: {
-        obsidian: (this.app as any).appVersion || '1.0.0',
+        obsidian: (this.app as unknown as AppInternal).appVersion || '1.0.0',
         'self': getVersion()
       }
     };
 
     // Add MCP server connection info if plugin is available
-    if (this.plugin && this.plugin.mcpServer) {
+    if (this.plugin?.mcpServer) {
+      const mcpServer = this.plugin.mcpServer;
+      const pluginSettings = this.plugin.settings;
       return {
         ...baseInfo,
         mcp: {
-          running: this.plugin.mcpServer.isServerRunning(),
-          port: this.plugin.settings?.httpPort || 3001,
-          connections: this.plugin.mcpServer.getConnectionCount() || 0,
+          running: mcpServer.isServerRunning(),
+          port: pluginSettings?.httpPort ?? 3001,
+          connections: mcpServer.getConnectionCount() || 0,
           vault: this.app.vault.getName()
         }
       };
@@ -126,7 +186,7 @@ export class ObsidianAPI {
     return { success: true };
   }
 
-  async patchActiveFile(params: unknown) {
+  async patchActiveFile(params: PatchParams) {
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) {
       throw new Error('No active file');
@@ -193,9 +253,9 @@ export class ObsidianAPI {
     }
 
     // Create detailed file objects
-    const fileObjects = files.map(file => {
+    const fileObjects: FileDetailObject[] = files.map(file => {
       const isFile = file instanceof TFile;
-      const result: any = {
+      const result: FileDetailObject = {
         path: file.path,
         name: file.name,
         type: isFile ? 'file' : 'folder'
@@ -208,7 +268,7 @@ export class ObsidianAPI {
       }
 
       return result;
-    }).sort((a: any, b: any) => {
+    }).sort((a: FileDetailObject, b: FileDetailObject) => {
       // Sort folders first, then files, alphabetically
       if (a.type !== b.type) {
         return a.type === 'folder' ? -1 : 1;
@@ -352,18 +412,18 @@ export class ObsidianAPI {
     return { success: true };
   }
 
-  async patchVaultFile(path: string, params: any) {
+  async patchVaultFile(path: string, params: PatchParams) {
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!file || !(file instanceof TFile)) {
       throw new Error(`File not found: ${path}`);
     }
 
     let content = await this.app.vault.read(file);
-    
+
     // Handle structured targeting (heading, block, frontmatter)
     if (params.targetType && params.target) {
       content = await this.applyStructuredPatch(content, params);
-    } 
+    }
     // Handle legacy patch operations
     else if (params.operation === 'replace') {
       if (params.old_text && params.new_text) {
@@ -371,7 +431,7 @@ export class ObsidianAPI {
       }
     } else if (params.operation === 'insert') {
       if (params.position !== undefined) {
-        content = content.slice(0, params.position) + params.text + content.slice(params.position);
+        content = content.slice(0, params.position) + (params.text ?? '') + content.slice(params.position);
       }
     } else if (params.operation === 'delete') {
       if (params.start !== undefined && params.end !== undefined) {
@@ -383,18 +443,18 @@ export class ObsidianAPI {
     return { success: true, updated_content: content };
   }
 
-  private async applyStructuredPatch(content: string, params: any): Promise<string> {
+  private async applyStructuredPatch(content: string, params: PatchParams): Promise<string> {
     const { targetType, target, operation, content: patchContent } = params;
-    
+
     switch (targetType) {
       case 'heading':
-        return this.patchHeading(content, target, operation, patchContent);
+        return this.patchHeading(content, target ?? '', operation ?? '', patchContent ?? '');
       case 'block':
-        return this.patchBlock(content, target, operation, patchContent);
+        return this.patchBlock(content, target ?? '', operation ?? '', patchContent ?? '');
       case 'frontmatter':
-        return this.patchFrontmatter(content, target, operation, patchContent);
+        return this.patchFrontmatter(content, target ?? '', operation ?? '', patchContent ?? '');
       default:
-        throw new Error(`Unknown targetType: ${targetType}`);
+        throw new Error(`Unknown targetType: ${String(targetType)}`);
     }
   }
 
@@ -593,7 +653,7 @@ export class ObsidianAPI {
   /**
    * Check if a file is readable as text (not binary)
    */
-  private isTextFile(file: any): boolean {
+  private isTextFile(file: TFile): boolean {
     const textExtensions = new Set([
       'md', 'txt', 'json', 'js', 'ts', 'css', 'html', 'xml', 'yaml', 'yml',
       'csv', 'log', 'py', 'java', 'cpp', 'c', 'h', 'php', 'rb', 'go', 'rs',
@@ -744,12 +804,13 @@ export class ObsidianAPI {
   }
 
   async getCommands(): Promise<Command[]> {
-    const commands = (this.app as any).commands?.commands;
+    const appInternal = this.app as unknown as AppInternal;
+    const commands = appInternal.commands?.commands;
     if (!commands) {
       return [];
     }
 
-    return Object.values(commands).map((cmd: any) => ({
+    return Object.values(commands).map((cmd: ObsidianCommand) => ({
       id: cmd.id,
       name: cmd.name,
       icon: cmd.icon
@@ -757,10 +818,11 @@ export class ObsidianAPI {
   }
 
   async executeCommand(commandId: string) {
-    const success = (this.app as any).commands?.executeCommandById(commandId);
-    return { 
+    const appInternal = this.app as unknown as AppInternal;
+    const success = appInternal.commands?.executeCommandById?.(commandId);
+    return {
       success: !!success,
-      commandId 
+      commandId
     };
   }
 
@@ -806,22 +868,23 @@ export class ObsidianAPI {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         return await operation();
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Check if this is a sync-related conflict error
-        const isSyncConflictError = error.message && (
-          error.message.includes('already exists') ||
-          error.message.includes('file exists') ||
-          error.message.includes('folder exists') ||
-          error.message.includes('EEXIST') ||
-          error.message.includes('ENOENT') || // File disappeared during sync
-          error.message.includes('EBUSY') ||  // File locked by sync process
-          error.message.includes('EPERM')     // Permission denied during sync
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const isSyncConflictError = errorMessage && (
+          errorMessage.includes('already exists') ||
+          errorMessage.includes('file exists') ||
+          errorMessage.includes('folder exists') ||
+          errorMessage.includes('EEXIST') ||
+          errorMessage.includes('ENOENT') || // File disappeared during sync
+          errorMessage.includes('EBUSY') ||  // File locked by sync process
+          errorMessage.includes('EPERM')     // Permission denied during sync
         );
 
         if (isSyncConflictError && attempt < maxRetries - 1) {
           // Exponential backoff: allow time for sync processes to stabilize
           const delay = Math.pow(2, attempt) * baseDelayMs;
-          Debug.log(`${operationType} failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delay}ms... Error: ${error.message}`);
+          Debug.log(`${operationType} failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delay}ms... Error: ${errorMessage}`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }

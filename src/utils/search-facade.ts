@@ -1,4 +1,4 @@
-import { App, TFile } from 'obsidian';
+import { App, TFile, CachedMetadata, getAllTags } from 'obsidian';
 import { Debug } from './debug';
 import { AdvancedSearchService, SearchResult as AdvancedSearchResult } from './advanced-search';
 
@@ -397,12 +397,11 @@ export class SearchFacade {
         break;
 
       case 'tag': {
-        const cache = this.app.metadataCache.getFileCache(file);
+        const cache: CachedMetadata | null = this.app.metadataCache.getFileCache(file);
         if (cache) {
-          const { getAllTags } = require('obsidian');
-          const tags = getAllTags(cache) || [];
+          const tags: string[] = getAllTags(cache) || [];
           const target = termLower.startsWith('#') ? termLower : `#${termLower}`;
-          const matchedTags = tags.filter((t: string) => {
+          const matchedTags: string[] = tags.filter((t: string) => {
             const tl = String(t).toLowerCase();
             return tl === target || tl.startsWith(`${target}/`);
           });

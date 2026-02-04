@@ -1,7 +1,7 @@
 import { App } from 'obsidian';
 import { ObsidianAPI } from '../utils/obsidian-api';
 import { SearchCore } from '../utils/search-core';
-import { GraphSearchTraversal } from './graph-search-traversal';
+import { GraphSearchTraversal, GraphSearchResult, TraversalNode } from './graph-search-traversal';
 
 interface GraphSearchToolParams {
     action: 'search-traverse' | 'advanced-traverse';
@@ -111,7 +111,7 @@ export class GraphSearchTool {
         };
     }
 
-    private generateSummary(result: any): string {
+    private generateSummary(result: GraphSearchResult): string {
         const matchCount = result.traversalChain.length;
         const visitedCount = result.totalNodesVisited;
 
@@ -119,12 +119,12 @@ export class GraphSearchTool {
             return `No matches found for "${result.searchQuery}" after visiting ${visitedCount} notes.`;
         }
 
-        const topScore = result.traversalChain[0]?.snippet.score || 0;
+        const topScore = result.traversalChain[0]?.snippet.score ?? 0;
         return `Found ${matchCount} matching notes out of ${visitedCount} visited. ` +
                `Best match: "${result.traversalChain[0].path}" (score: ${topScore.toFixed(3)})`;
     }
 
-    private formatTraversalPath(chain: any[]): string {
+    private formatTraversalPath(chain: TraversalNode[]): string {
         if (chain.length === 0) return 'No path found';
 
         return chain
@@ -141,7 +141,7 @@ export class GraphSearchTool {
         return text.substring(0, maxLength - 3) + '...';
     }
 
-    private generateWorkflowSuggestions(result: any): string[] {
+    private generateWorkflowSuggestions(result: GraphSearchResult): string[] {
         const suggestions: string[] = [];
 
         if (result.traversalChain.length === 0) {
@@ -155,7 +155,7 @@ export class GraphSearchTool {
                 suggestions.push('Consider increasing maxDepth to explore deeper connections');
             }
 
-            const avgScore = result.traversalChain.reduce((sum: number, node: any) =>
+            const avgScore = result.traversalChain.reduce((sum: number, node: TraversalNode) =>
                 sum + node.snippet.score, 0) / result.traversalChain.length;
 
             if (avgScore < 0.7) {
