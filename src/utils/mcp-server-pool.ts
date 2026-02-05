@@ -36,7 +36,6 @@ interface PluginWithSettings {
 }
 
 interface PooledServer {
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Server (not McpServer) is required because this code uses setRequestHandler with JSON Schema, not Zod schemas
   server: Server;
   sessionId: string;
   createdAt: number;
@@ -70,7 +69,6 @@ export class MCPServerPool extends EventEmitter {
   /**
    * Get or create an MCP server for a session
    */
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Server (not McpServer) is required because this code uses setRequestHandler with JSON Schema, not Zod schemas
   getOrCreateServer(sessionId: string): Server {
     // Check if server exists
     let pooledServer = this.servers.get(sessionId);
@@ -109,10 +107,8 @@ export class MCPServerPool extends EventEmitter {
   /**
    * Create a new MCP server instance with handlers
    */
-  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Server (not McpServer) is required because this code uses setRequestHandler with JSON Schema, not Zod schemas
   private createNewServer(sessionId: string): Server {
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Server (not McpServer) is required because this code uses setRequestHandler with JSON Schema, not Zod schemas
-    const server = new Server(
+      const server = new Server(
       {
         name: 'Semantic Notes Vault MCP',
         version: getVersion()
