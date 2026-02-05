@@ -121,7 +121,7 @@ async function processRequest(request: SemanticRequest, context?: WorkerContext)
 /**
  * Process vault operations that can be parallelized
  */
-async function processVaultOperation(action: string, params: Record<string, unknown>, context?: WorkerContext): Promise<unknown> {
+function processVaultOperation(action: string, params: Record<string, unknown>, context?: WorkerContext): unknown {
   switch (action) {
     case 'search':
       // Implement file content searching logic
@@ -140,7 +140,7 @@ async function processVaultOperation(action: string, params: Record<string, unkn
 /**
  * Process graph operations that can be parallelized
  */
-async function processGraphOperation(action: string, params: Record<string, unknown>, context?: WorkerContext): Promise<unknown> {
+function processGraphOperation(action: string, params: Record<string, unknown>, context?: WorkerContext): unknown {
   switch (action) {
     case 'search-traverse':
       // Implement graph traversal logic

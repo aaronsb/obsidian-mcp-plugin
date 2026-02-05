@@ -37,6 +37,15 @@ export default tseslint.config(
 			"obsidianmd/ui/sentence-case": ["error", { allowAutoFix: true }],
 		},
 	},
+	// MCP SDK's Server class is deprecated in favor of McpServer, but McpServer
+	// requires Zod schemas for tool registration. This codebase uses raw JSON Schema
+	// with setRequestHandler, which is only available on the deprecated Server class.
+	{
+		files: ["src/mcp-server.ts", "src/utils/mcp-server-pool.ts"],
+		rules: {
+			"@typescript-eslint/no-deprecated": "off",
+		},
+	},
 	// builtin-modules is build-tooling only (esbuild.config.mjs), not plugin code.
 	// js-yaml is used for YAML parsing in Bases API — no built-in alternative exists.
 	{

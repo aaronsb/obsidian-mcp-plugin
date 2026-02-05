@@ -1577,7 +1577,7 @@ export class SemanticRouter {
       folderFilter: paramStr(params, 'folderFilter')
     };
 
-    return await this.graphSearchTool.search(graphParams);
+    return this.graphSearchTool.search(graphParams);
   }
   
   private enrichResponse(result: unknown, operation: string, action: string, params: Params, isError: boolean): SemanticResponse {

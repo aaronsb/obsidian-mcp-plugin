@@ -146,7 +146,7 @@ export class GraphTagTool {
         };
     }
 
-    private async getSharedTags(params: GraphTagToolParams) {
+    private getSharedTags(params: GraphTagToolParams) {
         if (!params.startPath || !params.targetPath) {
             throw new Error('startPath and targetPath are required for shared-tags action');
         }

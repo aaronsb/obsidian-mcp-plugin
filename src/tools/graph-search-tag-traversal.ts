@@ -11,7 +11,7 @@ export class GraphSearchTagTraversal extends GraphSearchTraversal {
     /**
      * Get all linked paths including tag-based connections
      */
-    protected async getLinkedPathsWithTags(file: TFile, followTags: boolean = true): Promise<string[]> {
+    protected getLinkedPathsWithTags(file: TFile, followTags: boolean = true): string[] {
         const linkedPaths = new Set<string>();
         
         // First, get all normal links (forward and back)
@@ -120,7 +120,7 @@ export class GraphSearchTagTraversal extends GraphSearchTraversal {
                 // Only continue traversal from nodes with good matches
                 if (depth < maxDepth) {
                     // Get both link and tag connections
-                    const links = await this.getLinkedPathsWithTags(file, followTags);
+                    const links = this.getLinkedPathsWithTags(file, followTags);
                     
                     // For each linked path, determine if it's a tag or link connection
                     for (const linkedPath of links) {

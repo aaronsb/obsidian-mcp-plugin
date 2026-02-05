@@ -91,7 +91,7 @@ export class GraphSearchTool {
   /**
    * Execute a graph search operation
    */
-  async search(params: GraphSearchParams): Promise<GraphSearchResult> {
+  search(params: GraphSearchParams): GraphSearchResult {
     const { operation } = params;
     
     switch (operation) {
