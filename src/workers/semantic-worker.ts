@@ -102,7 +102,7 @@ interface GraphTraversalResponse {
 /**
  * Process a semantic request in the worker thread
  */
-async function processRequest(request: SemanticRequest, context?: WorkerContext): Promise<unknown> {
+function processRequest(request: SemanticRequest, context?: WorkerContext): unknown {
   const { operation, action, params } = request;
 
   // For worker threads, we need to implement lightweight versions of operations
@@ -398,7 +398,7 @@ if (parentPort) {
 
       try {
         if (type === 'process' && request) {
-          const result: unknown = await processRequest(request, context);
+          const result: unknown = processRequest(request, context);
           const response: WorkerResponse = {
             id,
             type: 'result',
