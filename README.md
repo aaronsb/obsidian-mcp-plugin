@@ -186,4 +186,4 @@ Key configuration options:
 
 ## License
 
-MIT
+[MIT](LICENSE)
