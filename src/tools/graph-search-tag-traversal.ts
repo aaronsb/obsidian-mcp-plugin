@@ -1,35 +1,7 @@
-import { App, TFile, CachedMetadata } from 'obsidian';
+import { App, TFile, getAllTags } from 'obsidian';
 import { ObsidianAPI } from '../utils/obsidian-api';
 import { SearchCore } from '../utils/search-core';
 import { GraphSearchTraversal, TraversalNode, GraphSearchResult } from './graph-search-traversal';
-
-/**
- * Get all tags from a cache entry (both inline and frontmatter)
- */
-function getAllTagsFromCache(cache: CachedMetadata | null): string[] {
-    if (!cache) return [];
-    const tags = new Set<string>();
-
-    if (cache.tags) {
-        for (const t of cache.tags) tags.add(t.tag);
-    }
-
-    const fm = cache.frontmatter;
-    if (fm?.tags) {
-        const fmTags = Array.isArray(fm.tags) ? fm.tags : [fm.tags];
-        for (const t of fmTags) {
-            if (typeof t === 'string') tags.add(t.startsWith('#') ? t : `#${t}`);
-        }
-    }
-    if (fm?.tag) {
-        const fmTags = Array.isArray(fm.tag) ? fm.tag : [fm.tag];
-        for (const t of fmTags) {
-            if (typeof t === 'string') tags.add(t.startsWith('#') ? t : `#${t}`);
-        }
-    }
-
-    return Array.from(tags);
-}
 
 export class GraphSearchTagTraversal extends GraphSearchTraversal {
     constructor(app: App, api: ObsidianAPI, searchCore: SearchCore) {
@@ -62,7 +34,7 @@ export class GraphSearchTagTraversal extends GraphSearchTraversal {
         const connectedPaths = new Set<string>();
         const cache = this.app.metadataCache.getFileCache(file);
         
-        const fileTags = new Set(getAllTagsFromCache(cache));
+        const fileTags = new Set(cache ? getAllTags(cache) || [] : []);
         if (fileTags.size === 0) {
             return [];
         }
@@ -73,8 +45,8 @@ export class GraphSearchTagTraversal extends GraphSearchTraversal {
             if (otherFile.path === file.path) continue;
 
             const otherCache = this.app.metadataCache.getFileCache(otherFile);
-            const otherTags = getAllTagsFromCache(otherCache);
-            if (otherTags.some(t => fileTags.has(t))) {
+            const otherTags = otherCache ? getAllTags(otherCache) || [] : [];
+            if (otherTags.some((t: string) => fileTags.has(t))) {
                 connectedPaths.add(otherFile.path);
             }
         }
@@ -194,8 +166,8 @@ export class GraphSearchTagTraversal extends GraphSearchTraversal {
         const cache1 = this.app.metadataCache.getFileCache(file1);
         const cache2 = this.app.metadataCache.getFileCache(file2);
 
-        const tags1 = new Set(getAllTagsFromCache(cache1));
-        const tags2 = getAllTagsFromCache(cache2);
+        const tags1 = new Set(cache1 ? getAllTags(cache1) || [] : []);
+        const tags2 = cache2 ? getAllTags(cache2) || [] : [];
 
         return tags2.filter(tag => tags1.has(tag));
     }

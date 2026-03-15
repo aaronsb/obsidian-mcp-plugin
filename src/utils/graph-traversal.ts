@@ -1,4 +1,4 @@
-import { App, TFile, CachedMetadata } from 'obsidian';
+import { App, TFile, CachedMetadata, getAllTags } from 'obsidian';
 
 /**
  * Represents a node in the Obsidian vault graph
@@ -123,47 +123,6 @@ export class GraphTraversal {
   /**
    * Get all files that share tags with the given file
    */
-  /**
-   * Get all tags for a file (both inline #tags and frontmatter tags)
-   */
-  private getAllTags(cache: CachedMetadata | null): string[] {
-    if (!cache) return [];
-
-    const tags = new Set<string>();
-
-    // Inline tags (e.g., #tag in content)
-    if (cache.tags) {
-      for (const t of cache.tags) {
-        tags.add(t.tag);
-      }
-    }
-
-    // Frontmatter tags (YAML tags array)
-    const fm = cache.frontmatter;
-    if (fm?.tags) {
-      const fmTags = Array.isArray(fm.tags) ? fm.tags : [fm.tags];
-      for (const t of fmTags) {
-        if (typeof t === 'string') {
-          tags.add(t.startsWith('#') ? t : `#${t}`);
-        }
-      }
-    }
-    // Also handle "tag" (singular) in frontmatter
-    if (fm?.tag) {
-      const fmTags = Array.isArray(fm.tag) ? fm.tag : [fm.tag];
-      for (const t of fmTags) {
-        if (typeof t === 'string') {
-          tags.add(t.startsWith('#') ? t : `#${t}`);
-        }
-      }
-    }
-
-    return Array.from(tags);
-  }
-
-  /**
-   * Get all files that share tags with the given file
-   */
   getTagConnections(filePath: string): GraphEdge[] {
     const edges: GraphEdge[] = [];
     const file = this.app.vault.getAbstractFileByPath(filePath);
@@ -171,7 +130,7 @@ export class GraphTraversal {
     if (!(file instanceof TFile)) return edges;
 
     const cache = this.app.metadataCache.getFileCache(file);
-    const fileTags = new Set(this.getAllTags(cache));
+    const fileTags = new Set(cache ? getAllTags(cache) || [] : []);
     if (fileTags.size === 0) return edges;
 
     // Find other files with matching tags
@@ -180,7 +139,7 @@ export class GraphTraversal {
       if (otherFile.path === filePath) continue;
 
       const otherCache = this.app.metadataCache.getFileCache(otherFile);
-      const otherTags = this.getAllTags(otherCache);
+      const otherTags = otherCache ? getAllTags(otherCache) || [] : [];
 
       const sharedTags = otherTags.filter(t => fileTags.has(t));
       if (sharedTags.length > 0) {
@@ -500,7 +459,7 @@ export class GraphTraversal {
     let tagCount = 0;
     if (file instanceof TFile) {
       const cache = this.app.metadataCache.getFileCache(file);
-      tagCount = this.getAllTags(cache).length;
+      tagCount = (cache ? getAllTags(cache) || [] : []).length;
     }
 
     return {

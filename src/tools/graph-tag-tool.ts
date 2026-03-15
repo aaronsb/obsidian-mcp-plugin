@@ -1,4 +1,4 @@
-import { App, TFile, CachedMetadata } from 'obsidian';
+import { App, TFile, getAllTags } from 'obsidian';
 import { ObsidianAPI } from '../utils/obsidian-api';
 import { SearchCore } from '../utils/search-core';
 import { GraphSearchTagTraversal } from './graph-search-tag-traversal';
@@ -28,34 +28,6 @@ type TagSearchResult = GraphSearchResult & { tagConnections: number; followTags?
 interface TagConnectionEntry {
     tag: string;
     connectionCount: number;
-}
-
-/**
- * Get all tags from a cache entry (both inline and frontmatter)
- */
-function getAllTagsFromCache(cache: CachedMetadata | null): string[] {
-    if (!cache) return [];
-    const tags = new Set<string>();
-
-    if (cache.tags) {
-        for (const t of cache.tags) tags.add(t.tag);
-    }
-
-    const fm = cache.frontmatter;
-    if (fm?.tags) {
-        const fmTags = Array.isArray(fm.tags) ? fm.tags : [fm.tags];
-        for (const t of fmTags) {
-            if (typeof t === 'string') tags.add(t.startsWith('#') ? t : `#${t}`);
-        }
-    }
-    if (fm?.tag) {
-        const fmTags = Array.isArray(fm.tag) ? fm.tag : [fm.tag];
-        for (const t of fmTags) {
-            if (typeof t === 'string') tags.add(t.startsWith('#') ? t : `#${t}`);
-        }
-    }
-
-    return Array.from(tags);
 }
 
 export class GraphTagTool {
@@ -143,7 +115,7 @@ export class GraphTagTool {
         }
 
         const cache = this.app.metadataCache.getFileCache(file);
-        const tags = getAllTagsFromCache(cache);
+        const tags = cache ? getAllTags(cache) || [] : [];
 
         // Find all files with matching tags
         const tagConnections: Record<string, string[]> = {};
@@ -157,7 +129,7 @@ export class GraphTagTool {
             if (otherFile.path === params.startPath) continue;
 
             const otherCache = this.app.metadataCache.getFileCache(otherFile);
-            const otherTags = getAllTagsFromCache(otherCache);
+            const otherTags = otherCache ? getAllTags(otherCache) || [] : [];
             for (const tag of otherTags) {
                 if (tagSet.has(tag)) {
                     tagConnections[tag].push(otherFile.path);
