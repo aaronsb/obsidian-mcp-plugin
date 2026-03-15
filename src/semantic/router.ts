@@ -1705,13 +1705,43 @@ export class SemanticRouter {
         return Array.isArray(result) && result.some(f => typeof f === 'string' && f.endsWith('.md'));
       case 'is_daily_note': {
         const pathVal = paramStr(params, 'path');
-        return pathVal ? this.matchesPattern(pathVal, this.config.context_triggers?.daily_note_pattern) : false;
+        if (!pathVal) return false;
+
+        // Try to read the configured Daily Notes folder from Obsidian's internal plugin
+        const dailyNotesFolder = this.getDailyNotesFolder();
+        if (dailyNotesFolder) {
+          return pathVal.startsWith(dailyNotesFolder + '/') || pathVal === dailyNotesFolder;
+        }
+
+        // Fall back to regex pattern heuristic
+        return this.matchesPattern(pathVal, this.config.context_triggers?.daily_note_pattern);
       }
       default:
         return false;
     }
   }
   
+  /**
+   * Get the configured Daily Notes folder from Obsidian's internal plugin.
+   * Returns undefined if the plugin is not enabled or no folder is configured.
+   */
+  private getDailyNotesFolder(): string | undefined {
+    if (!this.app) return undefined;
+    try {
+      const internalPlugins = (this.app as unknown as Record<string, unknown>).internalPlugins as
+        { getPluginById(id: string): { enabled: boolean; instance?: { options?: { folder?: string } } } | null } | undefined;
+      if (!internalPlugins) return undefined;
+
+      const dailyNotes = internalPlugins.getPluginById('daily-notes');
+      if (dailyNotes?.enabled && dailyNotes.instance?.options?.folder) {
+        return dailyNotes.instance.options.folder;
+      }
+    } catch {
+      // Internal plugin API not available — fall back to pattern
+    }
+    return undefined;
+  }
+
   private matchesPattern(value: string, pattern?: string): boolean {
     if (!pattern) return false;
     try {

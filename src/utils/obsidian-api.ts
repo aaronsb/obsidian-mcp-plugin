@@ -110,6 +110,9 @@ export class ObsidianAPI {
       }
     };
 
+    // Read Daily Notes plugin config
+    const dailyNotesFolder = this.getDailyNotesFolder();
+
     // Add MCP server connection info if plugin is available
     if (this.plugin?.mcpServer) {
       const mcpServer = this.plugin.mcpServer;
@@ -121,11 +124,31 @@ export class ObsidianAPI {
           port: pluginSettings?.httpPort ?? 3001,
           connections: mcpServer.getConnectionCount() || 0,
           vault: this.app.vault.getName()
-        }
+        },
+        ...(dailyNotesFolder !== undefined && { dailyNotesFolder })
       };
     }
 
-    return baseInfo;
+    return { ...baseInfo, ...(dailyNotesFolder !== undefined && { dailyNotesFolder }) };
+  }
+
+  /**
+   * Get the configured Daily Notes folder from Obsidian's internal plugin.
+   */
+  private getDailyNotesFolder(): string | undefined {
+    try {
+      const internalPlugins = (this.app as unknown as Record<string, unknown>).internalPlugins as
+        { getPluginById(id: string): { enabled: boolean; instance?: { options?: { folder?: string } } } | null } | undefined;
+      if (!internalPlugins) return undefined;
+
+      const dailyNotes = internalPlugins.getPluginById('daily-notes');
+      if (dailyNotes?.enabled && dailyNotes.instance?.options?.folder) {
+        return dailyNotes.instance.options.folder;
+      }
+    } catch {
+      // Internal plugin API not available
+    }
+    return undefined;
   }
 
   // Active file operations
