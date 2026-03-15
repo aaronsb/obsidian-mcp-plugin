@@ -1,0 +1,39 @@
+# ADR Configuration for obsidian-mcp-plugin
+
+project_name: Obsidian MCP Plugin
+
+domains:
+  core:
+    range: [100, 199]
+    name: Core
+    description: Server architecture, transport, connection handling, plugin lifecycle
+    folder: core
+
+  tools:
+    range: [200, 299]
+    name: Tools & API
+    description: MCP tool design, semantic operations, graph operations, formatters
+    folder: tools
+
+  delivery:
+    range: [300, 399]
+    name: Delivery
+    description: Build, release, versioning, community plugin submission
+    folder: delivery
+
+statuses:
+  - Draft
+  - Proposed
+  - Accepted
+  - Superseded
+  - Deprecated
+
+defaults:
+  deciders: [aaronsb]
+  status: Draft
+
+legacy:
+  range: [1, 99]
+  label: "Legacy"
+
+viewer: cat {file}
