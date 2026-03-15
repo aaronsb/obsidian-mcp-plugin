@@ -53,7 +53,9 @@ export interface GraphSearchResult {
     type: 'link' | 'embed' | 'tag';
     count: number;
   }>;
-  paths?: string[][];
+  found?: boolean;
+  paths?: Array<Array<{ path: string; title: string }>> | string[][];
+  shortestLength?: number;
   statistics?: {
     inDegree: number;
     outDegree: number;
@@ -253,10 +255,10 @@ export class GraphSearchTool {
       { followBacklinks: params.followBacklinks !== false }
     );
 
-    let paths: string[][] = [];
+    let rawPaths: string[][] = [];
     if (shortestPath) {
-      paths.push(shortestPath);
-      
+      rawPaths.push(shortestPath);
+
       // Optionally find all paths if requested
       if (params.maxDepth && params.maxDepth > shortestPath.length) {
         const allPaths = this.graphTraversal.findAllPaths(
@@ -264,16 +266,26 @@ export class GraphSearchTool {
           params.targetPath,
           params.maxDepth
         );
-        paths = allPaths.slice(0, 10); // Limit to 10 paths
+        rawPaths = allPaths.slice(0, 10); // Limit to 10 paths
       }
     }
+
+    // Convert string paths to node objects for the formatter
+    const paths = rawPaths.map(pathList =>
+      pathList.map(filePath => ({
+        path: filePath,
+        title: filePath.replace(/\.md$/, '').split('/').pop() || filePath
+      }))
+    );
 
     return {
       operation: 'path',
       sourcePath: params.sourcePath,
       targetPath: params.targetPath,
+      found: paths.length > 0,
       paths,
-      message: paths.length > 0 
+      shortestLength: paths.length > 0 ? paths[0].length - 1 : undefined,
+      message: paths.length > 0
         ? `Found ${paths.length} path(s) between files. Shortest path has ${paths[0].length} nodes.`
         : 'No path found between the specified files',
       workflow: {
