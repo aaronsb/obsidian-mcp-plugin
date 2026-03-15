@@ -1,4 +1,4 @@
-import { App, TFile } from 'obsidian';
+import { App, TFile, getAllTags } from 'obsidian';
 import { ObsidianAPI } from '../utils/obsidian-api';
 import { SearchCore } from '../utils/search-core';
 import { GraphSearchTagTraversal } from './graph-search-tag-traversal';
@@ -115,7 +115,7 @@ export class GraphTagTool {
         }
 
         const cache = this.app.metadataCache.getFileCache(file);
-        const tags = cache?.tags?.map(t => t.tag) || [];
+        const tags = cache ? getAllTags(cache) || [] : [];
 
         // Find all files with matching tags
         const tagConnections: Record<string, string[]> = {};
@@ -123,16 +123,16 @@ export class GraphTagTool {
             tagConnections[tag] = [];
         }
 
+        const tagSet = new Set(tags);
         const allFiles = this.app.vault.getMarkdownFiles();
         for (const otherFile of allFiles) {
             if (otherFile.path === params.startPath) continue;
-            
+
             const otherCache = this.app.metadataCache.getFileCache(otherFile);
-            if (otherCache?.tags) {
-                for (const tag of tags) {
-                    if (otherCache.tags.some(t => t.tag === tag)) {
-                        tagConnections[tag].push(otherFile.path);
-                    }
+            const otherTags = otherCache ? getAllTags(otherCache) || [] : [];
+            for (const tag of otherTags) {
+                if (tagSet.has(tag)) {
+                    tagConnections[tag].push(otherFile.path);
                 }
             }
         }

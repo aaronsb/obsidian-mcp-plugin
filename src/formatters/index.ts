@@ -421,9 +421,10 @@ export function formatResponse(
       case 'graph.path':
         return formatGraphPath(normalized as GraphPathResponse);
       case 'graph.statistics':
+        return formatGraphStats(normalized as GraphStatsResponse);
       case 'graph.backlinks':
       case 'graph.forwardlinks':
-        return formatGraphStats(normalized as GraphStatsResponse);
+        return formatGraphNeighbors(normalized as GraphNeighborsResponse);
       case 'graph.tag-analysis':
         return formatTagAnalysis(normalized as TagAnalysisResponse);
       case 'graph.shared-tags':
