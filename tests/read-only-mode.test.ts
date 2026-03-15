@@ -80,8 +80,6 @@ describe('Read-Only Mode Integration', () => {
       debugLogging: false,
       showConnectionStatus: true,
       autoDetectPortConflicts: true,
-      enableConcurrentSessions: false,
-      maxConcurrentConnections: 32,
       apiKey: 'test-key',
       dangerouslyDisableAuth: false,
       readOnlyMode: true // This should be present

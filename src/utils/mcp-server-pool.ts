@@ -21,8 +21,6 @@ import type { ConnectionPool } from './connection-pool';
  * can be passed through the constructor chain. */
 interface PluginWithSettings {
   settings?: {
-    enableConcurrentSessions?: boolean;
-    maxConcurrentConnections?: number;
     readOnlyMode?: boolean;
     // From SecurePluginRef (for SecureObsidianAPI)
     security?: Partial<import('../security/vault-security-manager').SecuritySettings>;
@@ -195,8 +193,8 @@ export class MCPServerPool extends EventEmitter {
       }
     ];
 
-    // Add session-info resource if concurrent sessions enabled
-    if (this.plugin?.settings?.enableConcurrentSessions && this.sessionManager) {
+    // Add session-info resource
+    if (this.sessionManager) {
       resources.push({
         uri: 'obsidian://session-info',
         name: 'Session Information',
@@ -267,7 +265,7 @@ export class MCPServerPool extends EventEmitter {
         };
       }
 
-      if (uri === 'obsidian://session-info' && this.plugin?.settings?.enableConcurrentSessions && this.sessionManager) {
+      if (uri === 'obsidian://session-info' && this.sessionManager) {
         const sessions = this.sessionManager.getAllSessions();
         const sessionStats = this.sessionManager.getStats();
         const poolStats = this.connectionPool?.getStats();
@@ -329,7 +327,7 @@ export class MCPServerPool extends EventEmitter {
           sessions: sessionData,
           settings: {
             sessionTimeout: '1 hour',
-            maxConcurrentConnections: this.plugin?.settings?.maxConcurrentConnections ?? 32
+            maxConcurrentConnections: this.maxServers
           },
           timestamp: new Date().toISOString()
         };

@@ -8,19 +8,7 @@ import { PluginDetector } from './utils/plugin-detector';
 import { CertificateConfig } from './utils/certificate-manager';
 import { ValidationConfig } from './validation/input-validator';
 
-interface MCPServerEntry {
-	command?: string;
-	args?: string[];
-	env?: Record<string, string>;
-	transport?: {
-		type: string;
-		url: string;
-	};
-}
 
-interface MCPClientConfig {
-	mcpServers: Record<string, MCPServerEntry>;
-}
 
 interface MCPPluginSettings {
 	httpEnabled: boolean;
@@ -31,8 +19,6 @@ interface MCPPluginSettings {
 	debugLogging: boolean;
 	showConnectionStatus: boolean;
 	autoDetectPortConflicts: boolean;
-	enableConcurrentSessions: boolean;
-	maxConcurrentConnections: number;
 	apiKey: string;
 	dangerouslyDisableAuth: boolean;
 	readOnlyMode: boolean;
@@ -50,7 +36,6 @@ interface MCPServerInfo {
 	toolsCount: number;
 	resourcesCount: number;
 	connections: number;
-	concurrentSessions: boolean;
 	poolStats: {
 		enabled: boolean;
 		stats?: {
@@ -77,8 +62,6 @@ const DEFAULT_SETTINGS: MCPPluginSettings = {
 	debugLogging: false,
 	showConnectionStatus: true,
 	autoDetectPortConflicts: true,
-	enableConcurrentSessions: false, // Disabled by default for backward compatibility
-	maxConcurrentConnections: 32,
 	apiKey: '', // Will be generated on first load
 	dangerouslyDisableAuth: false, // Auth enabled by default
 	readOnlyMode: false, // Read-only mode disabled by default
@@ -348,18 +331,16 @@ export default class ObsidianMCPPlugin extends Plugin {
 
 	getMCPServerInfo(): MCPServerInfo {
 		const poolStats = this.mcpServer?.getConnectionPoolStats();
-		const resourceCount = this.settings.enableConcurrentSessions ? 2 : 1; // vault-info + session-info
-		
+
 		return {
 			version: getVersion(),
 			running: this.mcpServer?.isServerRunning() || false,
 			port: this.settings.httpPort,
 			vaultName: this.app.vault.getName(),
 			vaultPath: this.getVaultPath(),
-			toolsCount: 6, // Our 6 semantic tools (including graph)
-			resourcesCount: resourceCount,
+			toolsCount: 6,
+			resourcesCount: 2, // vault-info + session-info
 			connections: this.mcpServer?.getConnectionCount() || 0,
-			concurrentSessions: this.settings.enableConcurrentSessions,
 			poolStats: poolStats
 		};
 	}
@@ -614,8 +595,8 @@ class MCPSettingTab extends PluginSettingTab {
 			createStatusItem('Resources', info.resourcesCount.toString());
 			createStatusItem('Connections', info.connections.toString());
 			
-			// Show pool stats if concurrent sessions are enabled
-			if (info.concurrentSessions && info.poolStats?.enabled && info.poolStats.stats) {
+			// Show pool stats
+			if (info.poolStats?.enabled && info.poolStats.stats) {
 				const poolStats = info.poolStats.stats;
 				createStatusItem('Active Sessions', `${poolStats.activeConnections}/${poolStats.maxConnections}`);
 				createStatusItem('Pool Utilization', `${Math.round(poolStats.utilization * 100)}%`, 
@@ -1245,35 +1226,6 @@ class MCPSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		new Setting(containerEl).setName("Concurrent sessions").setHeading();
-
-		new Setting(containerEl)
-			.setName('Enable concurrent sessions for agent swarms')
-			.setDesc('Allow multiple mcp clients to connect simultaneously. Required for agent swarms and multi-client setups.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableConcurrentSessions)
-				.onChange(async (value) => {
-					this.plugin.settings.enableConcurrentSessions = value;
-					await this.plugin.saveSettings();
-					
-					// Show notice about restart requirement
-					new Notice('Server restart required for concurrent session changes to take effect');
-				}));
-
-		new Setting(containerEl)
-			.setName('Maximum concurrent connections')
-			.setDesc('Maximum number of simultaneous connections allowed (1-100, default: 32)')
-			.addText(text => text
-				.setPlaceholder('32')
-				.setValue(this.plugin.settings.maxConcurrentConnections.toString())
-				.onChange(async (value) => {
-					const num = parseInt(value);
-					if (!isNaN(num) && num >= 1 && num <= 100) {
-						this.plugin.settings.maxConcurrentConnections = num;
-						await this.plugin.saveSettings();
-					}
-				}))
-			.setDisabled(!this.plugin.settings.enableConcurrentSessions);
 	}
 
 	private createProtocolInfoSection(containerEl: HTMLElement): void {
@@ -1331,9 +1283,7 @@ class MCPSettingTab extends PluginSettingTab {
 		new Setting(info).setName("").setHeading();
 		const resourcesList = info.createEl('ul');
 		resourcesList.createEl('li', {text: '📊 Obsidian://vault-info - real-time vault metadata'});
-		if (this.plugin.settings.enableConcurrentSessions) {
-			resourcesList.createEl('li', {text: '🔄 Obsidian://session-info - active mcp sessions and statistics'});
-		}
+		resourcesList.createEl('li', {text: '🔄 Obsidian://session-info - active mcp sessions and statistics'});
 		
 		new Setting(info).setName("Claude code connection").setHeading();
 		const commandExample = info.createDiv('protocol-command-example');
@@ -1358,16 +1308,15 @@ class MCPSettingTab extends PluginSettingTab {
 		info.createEl('p', {
 			text: 'Add this to your mcp client configuration file:'
 		});
-		
-		// Option 1: Direct HTTP Transport
-		info.createEl('p', {text: 'Option 1: direct HTTP transport (if supported by your client):', cls: 'mcp-section-header'});
+
 		const configExample = info.createDiv('desktop-config-example');
 		const configEl = configExample.createEl('pre');
 		configEl.classList.add('mcp-config-example');
-		
+
+		const vaultName = this.app.vault.getName();
 		const configJson = this.plugin.settings.dangerouslyDisableAuth ? {
 			"mcpServers": {
-				[this.app.vault.getName()]: {
+				[vaultName]: {
 					"transport": {
 						"type": "http",
 						"url": `${baseUrl}/mcp`
@@ -1376,10 +1325,13 @@ class MCPSettingTab extends PluginSettingTab {
 			}
 		} : {
 			"mcpServers": {
-				[this.app.vault.getName()]: {
+				[vaultName]: {
 					"transport": {
 						"type": "http",
-						"url": `${protocol}://obsidian:${this.plugin.settings.apiKey}@localhost:${port}/mcp`
+						"url": `${baseUrl}/mcp`,
+						"headers": {
+							"Authorization": `Bearer ${this.plugin.settings.apiKey}`
+						}
 					}
 				}
 			}
@@ -1388,99 +1340,7 @@ class MCPSettingTab extends PluginSettingTab {
 		const configJsonText = JSON.stringify(configJson, null, 2);
 		configEl.textContent = configJsonText;
 
-		// Add copy button
 		this.addCopyButton(configExample, configJsonText);
-
-		// Option 2: Via mcp-remote
-		info.createEl('p', {text: 'Option 2: via mcp-remote (for claude desktop):', cls: 'mcp-section-header'});
-		info.createEl('p', {
-			text: 'Mcp-remote supports authentication headers via the --header flag:',
-			cls: 'setting-item-description mcp-security-note'
-		});
-		
-		const remoteExample = info.createDiv('desktop-config-example');
-		const remoteEl = remoteExample.createEl('pre');
-		remoteEl.classList.add('mcp-config-example');
-		
-		// Check if we're using self-signed certificates (HTTPS enabled and auto-generate is on)
-		const isUsingSelfSignedCert = this.plugin.settings.httpsEnabled && 
-			(this.plugin.settings.certificateConfig.autoGenerate !== false || 
-			!this.plugin.settings.certificateConfig.certPath);
-		
-		const vaultName = this.app.vault.getName();
-		const remoteEntry: MCPServerEntry = {
-			command: "npx",
-			args: this.plugin.settings.dangerouslyDisableAuth
-				? ["mcp-remote", `${baseUrl}/mcp`]
-				: ["mcp-remote", `${baseUrl}/mcp`, "--header", `Authorization: Bearer ${this.plugin.settings.apiKey}`]
-		};
-		if (isUsingSelfSignedCert) {
-			remoteEntry.env = { "NODE_TLS_REJECT_UNAUTHORIZED": "0" };
-		}
-		const remoteJson: MCPClientConfig = {
-			mcpServers: { [vaultName]: remoteEntry }
-		};
-
-		const remoteJsonText = JSON.stringify(remoteJson, null, 2);
-		remoteEl.textContent = remoteJsonText;
-
-		// Add copy button
-		this.addCopyButton(remoteExample, remoteJsonText);
-
-		// Add note about self-signed certificates if applicable
-		if (isUsingSelfSignedCert) {
-			info.createEl('p', {
-				text: '📝 self-signed certificate detected: node_TLS_reject_unauthorized=0 is included to allow the secure connection.',
-				cls: 'setting-item-description mcp-cert-note'
-			});
-		}
-		
-		// Option 2a: Windows Configuration
-		info.createEl('p', {text: 'Option 2a: Windows configuration (via mcp-remote):', cls: 'mcp-section-header'});
-		info.createEl('p', {
-			text: 'Windows has issues with spaces in npx arguments. Use environment variables to work around this:',
-			cls: 'setting-item-description mcp-security-note'
-		});
-		
-		const windowsExample = info.createDiv('desktop-config-example');
-		const windowsEl = windowsExample.createEl('pre');
-		windowsEl.classList.add('mcp-config-example');
-		
-		const windowsEntry: MCPServerEntry = {
-			command: "npx",
-			args: this.plugin.settings.dangerouslyDisableAuth
-				? ["mcp-remote", `${baseUrl}/mcp`]
-				: ["mcp-remote", `${baseUrl}/mcp`, "--header", "Authorization:${OBSIDIAN_API_KEY}"]
-		};
-		const windowsEnv: Record<string, string> = {};
-		if (!this.plugin.settings.dangerouslyDisableAuth) {
-			windowsEnv["OBSIDIAN_API_KEY"] = `Bearer ${this.plugin.settings.apiKey}`;
-		}
-		if (isUsingSelfSignedCert) {
-			windowsEnv["NODE_TLS_REJECT_UNAUTHORIZED"] = "0";
-		}
-		if (Object.keys(windowsEnv).length > 0) {
-			windowsEntry.env = windowsEnv;
-		}
-		const windowsJson: MCPClientConfig = {
-			mcpServers: { [vaultName]: windowsEntry }
-		};
-
-		const windowsJsonText = JSON.stringify(windowsJson, null, 2);
-		windowsEl.textContent = windowsJsonText;
-
-		// Add copy button
-		this.addCopyButton(windowsExample, windowsJsonText);
-
-		const configPath = info.createEl('p', {
-			text: 'Configuration file location:'
-		});
-		configPath.classList.add('mcp-config-path');
-		
-		const pathList = configPath.createEl('ul');
-		pathList.createEl('li', {text: 'macOS: ~/Library/Application Support/Claude/claude_desktop_config.json'});
-		pathList.createEl('li', {text: 'Windows: %APPDATA%\\Claude\\claude_desktop_config.json'});
-		pathList.createEl('li', {text: 'Linux: ~/.config/Claude/claude_desktop_config.json'});
 	}
 
 	private addCopyButton(container: HTMLElement, textToCopy: string): void {

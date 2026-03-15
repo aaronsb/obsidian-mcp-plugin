@@ -2,58 +2,6 @@
 
 Common issues and solutions for the Obsidian MCP Plugin.
 
-## Windows: "Program is not recognized" Error
-
-**Symptoms:**
-When connecting Claude Desktop to the MCP server on Windows, you may see:
-```
-'D:\Program' is not recognized as an internal or external command, operable program or batch file.
-```
-
-**Cause:**
-This occurs when Node.js is installed in a path containing spaces (e.g., `D:\Program Files\nodejs\`). Claude Desktop resolves `npx` to its full path but doesn't properly quote it when spawning the process, causing Windows to interpret `D:\Program` as the command.
-
-**Solution:**
-Use the full path to `npx.cmd` from your npm global directory instead of just `npx`:
-
-```json
-{
-  "mcpServers": {
-    "obsidian-vault": {
-      "command": "C:\\Users\\YOUR_USERNAME\\AppData\\Roaming\\npm\\npx.cmd",
-      "args": ["mcp-remote", "http://localhost:3001/mcp"]
-    }
-  }
-}
-```
-
-**With Authentication:**
-```json
-{
-  "mcpServers": {
-    "obsidian-vault": {
-      "command": "C:\\Users\\YOUR_USERNAME\\AppData\\Roaming\\npm\\npx.cmd",
-      "args": [
-        "mcp-remote",
-        "https://localhost:3443/mcp",
-        "--header",
-        "Authorization:${AUTH}"
-      ],
-      "env": {
-        "NODE_TLS_REJECT_UNAUTHORIZED": "0",
-        "AUTH": "Bearer YOUR_API_KEY"
-      }
-    }
-  }
-}
-```
-
-**Alternative Solutions:**
-1. **DOS 8.3 short names**: Use `D:\PROGRA~1\nodejs\npx.cmd` (varies by system)
-2. **Reinstall Node.js** to a path without spaces (e.g., `C:\nodejs\`)
-
-**Note:** This is a known issue with Claude Desktop's handling of Windows paths. The npm global directory solution is the most reliable workaround.
-
 ## Connection Refused
 
 **Symptoms:**
@@ -73,7 +21,7 @@ Connection works but requests are rejected with 401/403 errors.
 **Solutions:**
 1. **Check API key**: Ensure the key in your client config matches the one in plugin settings
 2. **Header format**: Use `Authorization: Bearer YOUR_KEY` (note the space after Bearer)
-3. **HTTPS required**: Authentication only works over HTTPS (port 3443 by default)
+3. **Regenerated key**: The API key regenerates on plugin updates — copy the new key from settings
 
 ## SSL Certificate Errors
 

@@ -1,25 +1,19 @@
 import express from 'express';
 import cors from 'cors';
-import { App, FileSystemAdapter, Notice } from 'obsidian';
+import { App, Notice } from 'obsidian';
 import { createServer as createHttpServer, Server, IncomingMessage, ServerResponse } from 'http';
 import { Server as HttpsServer } from 'https';
 import { Server as MCPServer } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
-  ListToolsRequestSchema,
-  CallToolRequestSchema,
-  ListResourcesRequestSchema,
-  ReadResourceRequestSchema,
-  isInitializeRequest,
-  type CallToolResult
+  isInitializeRequest
 } from '@modelcontextprotocol/sdk/types.js';
 import { randomUUID } from 'crypto';
 import * as path from 'path';
 import { getVersion } from './version';
 import { ObsidianAPI } from './utils/obsidian-api';
 import { SecureObsidianAPI, VaultSecurityManager } from './security';
-import { semanticTools, createSemanticTools } from './tools/semantic-tools';
-import { DataviewTool, isDataviewToolAvailable } from './tools/dataview-tool';
+import { semanticTools } from './tools/semantic-tools';
 import { Debug } from './utils/debug';
 import { ConnectionPool, PooledRequest } from './utils/connection-pool';
 import { SessionManager } from './utils/session-manager';
@@ -36,8 +30,6 @@ interface MCPPluginRef {
     httpPort?: number;
     certificateConfig?: CertificateConfig;
     readOnlyMode?: boolean;
-    enableConcurrentSessions?: boolean;
-    maxConcurrentConnections?: number;
     apiKey?: string;
     dangerouslyDisableAuth?: boolean;
     // From SecurePluginRef (for SecureObsidianAPI)
@@ -65,11 +57,6 @@ interface ServerWithTimeouts {
   headersTimeout: number;
   requestTimeout: number;
   setTimeout: (msecs: number) => unknown;
-}
-
-/** Vault adapter with basePath for file system access */
-interface VaultAdapterWithBasePath extends FileSystemAdapter {
-  basePath?: string;
 }
 
 /** Null response shim for internal initialize calls */
@@ -109,8 +96,7 @@ interface ConnectionPoolStatsResponse {
 export class MCPHttpServer {
   private app: express.Application;
   private server?: Server | HttpsServer;
-  private mcpServer?: MCPServer; // Single server for non-concurrent mode
-  private mcpServerPool?: MCPServerPool; // Server pool for concurrent mode
+  private mcpServerPool!: MCPServerPool;
   private transports: Map<string, StreamableHTTPServerTransport> = new Map();
   private obsidianApp: App;
   private obsidianAPI: ObsidianAPI;
@@ -169,246 +155,83 @@ export class MCPHttpServer {
     // Always use SecureObsidianAPI for consistent security layer
     this.obsidianAPI = new SecureObsidianAPI(obsidianApp, undefined, plugin, securitySettings);
     
-    // Initialize connection pool and session manager if concurrent sessions are enabled
-    if (plugin?.settings?.enableConcurrentSessions) {
-      const maxConnections: number = plugin.settings.maxConcurrentConnections ?? 32;
-      
-      // Initialize session manager
-      this.sessionManager = new SessionManager({
-        maxSessions: maxConnections,
-        sessionTimeout: 3600000, // 1 hour
-        checkInterval: 60000 // Check every minute
-      });
-      this.sessionManager.start();
-      
-      // Handle session events
-      this.sessionManager.on('session-evicted', (data: { session: { sessionId: string }; reason: string }) => {
-        // Clean up transport for evicted session
-        const transport = this.transports.get(data.session.sessionId);
-        if (transport) {
-          void transport.close();
-          this.transports.delete(data.session.sessionId);
-          this.connectionCount = Math.max(0, this.connectionCount - 1);
-          Debug.log(`🔚 Evicted session ${data.session.sessionId} (${data.reason}). Connections: ${this.connectionCount}`);
-        }
-      });
-      
-      // Initialize connection pool
-      this.connectionPool = new ConnectionPool({
-        maxConnections,
-        maxQueueSize: 100,
-        requestTimeout: 30000,
-        sessionTimeout: 3600000,
-        sessionCheckInterval: 60000,
-        workerScript: path.join(plugin.manifest.dir ?? '', 'dist', 'workers', 'semantic-worker.js')
-      });
-      void this.connectionPool.initialize();
+    // Initialize connection pool and session manager (always concurrent)
+    const maxConnections = 32;
 
-      // Set up connection pool request processing
-      this.connectionPool.on('process', (request: PooledRequest) => {
-        void (async () => {
-          try {
-            // Touch session to update activity
-            if (request.sessionId && this.sessionManager) {
-              this.sessionManager.touchSession(request.sessionId);
-            }
+    this.sessionManager = new SessionManager({
+      maxSessions: maxConnections,
+      sessionTimeout: 3600000, // 1 hour
+      checkInterval: 60000 // Check every minute
+    });
+    this.sessionManager.start();
 
-            // Extract tool name from method
-            const toolName = request.method.replace('tool.', '');
-            const tool = semanticTools.find(t => t.name === toolName);
+    // Handle session events
+    this.sessionManager.on('session-evicted', (data: { session: { sessionId: string }; reason: string }) => {
+      const transport = this.transports.get(data.session.sessionId);
+      if (transport) {
+        void transport.close();
+        this.transports.delete(data.session.sessionId);
+        this.connectionCount = Math.max(0, this.connectionCount - 1);
+        Debug.log(`🔚 Evicted session ${data.session.sessionId} (${data.reason}). Connections: ${this.connectionCount}`);
+      }
+    });
 
-            if (!tool) {
-              this.connectionPool!.completeRequest(request.id, {
-                id: request.id,
-                error: new Error(`Tool not found: ${toolName}`)
-              });
-              return;
-            }
+    // Initialize connection pool
+    this.connectionPool = new ConnectionPool({
+      maxConnections,
+      maxQueueSize: 100,
+      requestTimeout: 30000,
+      sessionTimeout: 3600000,
+      sessionCheckInterval: 60000,
+      workerScript: path.join(plugin?.manifest.dir ?? '', 'dist', 'workers', 'semantic-worker.js')
+    });
+    void this.connectionPool.initialize();
 
-            // Create session-specific API instance if needed
-            const sessionAPI = this.getSessionAPI(request.sessionId);
+    // Set up connection pool request processing
+    this.connectionPool.on('process', (request: PooledRequest) => {
+      void (async () => {
+        try {
+          if (request.sessionId && this.sessionManager) {
+            this.sessionManager.touchSession(request.sessionId);
+          }
 
-            // Check if this operation needs data preparation for worker threads
-            this.prepareWorkerContext(request);
+          const toolName = request.method.replace('tool.', '');
+          const tool = semanticTools.find(t => t.name === toolName);
 
-            // Execute tool with session context
-            const result = await tool.handler(sessionAPI, request.params);
-
+          if (!tool) {
             this.connectionPool!.completeRequest(request.id, {
               id: request.id,
-              result
+              error: new Error(`Tool not found: ${toolName}`)
             });
-          } catch (error) {
-            this.connectionPool!.completeRequest(request.id, {
-              id: request.id,
-              error
-            });
+            return;
           }
-        })();
-      });
-      
-      // Initialize MCP Server Pool for concurrent sessions
-      this.mcpServerPool = new MCPServerPool(this.obsidianAPI, maxConnections, plugin);
-      
-      // Set contexts for session-info resource
-      this.mcpServerPool.setContexts(this.sessionManager, this.connectionPool);
-      
-      Debug.log(`🏊 Connection pool initialized with max ${maxConnections} connections`);
-    } else {
-      // Initialize single MCP Server for non-concurrent mode
-          this.mcpServer = new MCPServer(
-        {
-          name: 'Semantic Notes Vault MCP',
-          version: getVersion()
-        },
-        {
-          capabilities: {
-            tools: {},
-            resources: {}
-          }
+
+          const sessionAPI = this.getSessionAPI(request.sessionId);
+          this.prepareWorkerContext(request);
+          const result = await tool.handler(sessionAPI, request.params);
+
+          this.connectionPool!.completeRequest(request.id, {
+            id: request.id,
+            result
+          });
+        } catch (error) {
+          this.connectionPool!.completeRequest(request.id, {
+            id: request.id,
+            error
+          });
         }
-      );
-      this.setupMCPHandlers();
-    }
+      })();
+    });
+
+    // Initialize MCP Server Pool
+    this.mcpServerPool = new MCPServerPool(this.obsidianAPI, maxConnections, plugin);
+    this.mcpServerPool.setContexts(this.sessionManager, this.connectionPool);
+
+    Debug.log(`🏊 Connection pool initialized with max ${maxConnections} connections`);
     
     this.app = express();
     this.setupMiddleware();
     this.setupRoutes();
-  }
-
-  private setupMCPHandlers(): void {
-    // Only set up handlers for non-concurrent mode
-    // In concurrent mode, each server in the pool has its own handlers
-    if (!this.mcpServer) return;
-
-    // Get available tools
-    const availableTools = createSemanticTools(this.obsidianAPI);
-
-    // List tools handler
-    this.mcpServer.setRequestHandler(ListToolsRequestSchema, () => {
-      Debug.log('📋 Listing available tools');
-      return {
-        tools: availableTools.map(tool => ({
-          name: tool.name,
-          description: tool.description,
-          inputSchema: tool.inputSchema
-        }))
-      };
-    });
-
-    // Call tool handler
-    this.mcpServer.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
-      const { name, arguments: args } = request.params;
-      Debug.log(`🔧 Executing tool: ${name}`, args);
-
-      const tool = availableTools.find(t => t.name === name);
-      if (!tool) {
-        return {
-          content: [{
-            type: 'text',
-            text: `Error: Unknown tool "${name}"`
-          }],
-          isError: true
-        };
-      }
-
-      try {
-        const result = await tool.handler(this.obsidianAPI, args || {});
-        return result as CallToolResult;
-      } catch (error) {
-        Debug.error(`Tool execution error (${name}):`, error);
-        return {
-          content: [{
-            type: 'text',
-            text: `Error executing tool "${name}": ${error instanceof Error ? error.message : String(error)}`
-          }],
-          isError: true
-        };
-      }
-    });
-
-    // Build resources list
-    const resources = [
-      {
-        uri: 'obsidian://vault-info',
-        name: 'Vault Information',
-        description: 'Current vault status, file counts, and metadata',
-        mimeType: 'application/json'
-      }
-    ];
-
-    // Add Dataview reference if available
-    if (isDataviewToolAvailable(this.obsidianAPI)) {
-      resources.push({
-        uri: 'obsidian://dataview-reference',
-        name: 'Dataview Query Language Reference',
-        description: 'Complete DQL syntax guide with examples, functions, and best practices',
-        mimeType: 'text/markdown'
-      });
-    }
-
-    // List resources handler
-    this.mcpServer.setRequestHandler(ListResourcesRequestSchema, () => {
-      Debug.log('📋 Listing available resources');
-      return { resources };
-    });
-
-    // Read resource handler
-    this.mcpServer.setRequestHandler(ReadResourceRequestSchema, (request) => {
-      const { uri } = request.params;
-      Debug.log(`📖 Reading resource: ${uri}`);
-
-      if (uri === 'obsidian://vault-info') {
-        const vaultName = this.obsidianApp.vault.getName();
-        const activeFile = this.obsidianApp.workspace.getActiveFile();
-        const allFiles = this.obsidianApp.vault.getAllLoadedFiles();
-        const markdownFiles = this.obsidianApp.vault.getMarkdownFiles();
-
-        const vaultInfo = {
-          vault: {
-            name: vaultName,
-            path: (this.obsidianApp.vault.adapter as unknown as VaultAdapterWithBasePath).basePath ?? 'Unknown'
-          },
-          activeFile: activeFile ? {
-            name: activeFile.name,
-            path: activeFile.path,
-            basename: activeFile.basename,
-            extension: activeFile.extension
-          } : null,
-          files: {
-            total: allFiles.length,
-            markdown: markdownFiles.length,
-            attachments: allFiles.length - markdownFiles.length
-          },
-          plugin: {
-            version: getVersion(),
-            status: 'Connected and operational',
-            transport: 'HTTP MCP via Express.js + MCP SDK'
-          },
-          timestamp: new Date().toISOString()
-        };
-
-        return {
-          contents: [{
-            uri: 'obsidian://vault-info',
-            mimeType: 'application/json',
-            text: JSON.stringify(vaultInfo, null, 2)
-          }]
-        };
-      }
-
-      if (uri === 'obsidian://dataview-reference' && isDataviewToolAvailable(this.obsidianAPI)) {
-        return {
-          contents: [{
-            uri: 'obsidian://dataview-reference',
-            mimeType: 'text/markdown',
-            text: DataviewTool.generateDataviewReference()
-          }]
-        };
-      }
-
-      throw new Error(`Unknown resource: ${uri}`);
-    });
   }
 
   private setupMiddleware(): void {
@@ -632,9 +455,8 @@ export class MCPHttpServer {
         }
       };
 
-      // Determine which server to use
-      if (this.mcpServerPool) {
-        // Concurrent mode - use server pool
+      // Determine which server to use from the pool
+      {
         if (sessionId && this.transports.has(sessionId)) {
           // Use existing transport for this session
           transport = this.transports.get(sessionId)!;
@@ -711,56 +533,6 @@ export class MCPHttpServer {
           this.transports.set(effectiveSessionId, transport);
           attachTransportHandlers(effectiveSessionId, transport);
           this.connectionCount++;
-          requireInitializeNotice = true;
-        }
-      } else {
-        // Non-concurrent mode - use single MCP server
-        mcpServer = this.mcpServer!;
-        if (sessionId && this.transports.has(sessionId)) {
-          // Use existing transport
-          transport = this.transports.get(sessionId)!;
-          effectiveSessionId = sessionId;
-          if (this.sessionManager) this.sessionManager.touchSession(sessionId);
-        } else if (sessionId) {
-          // No active transport for provided session
-          if (isInitializeRequest(request)) {
-            effectiveSessionId = sessionId;
-            transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId });
-            await mcpServer.connect(transport);
-            this.transports.set(effectiveSessionId, transport);
-            attachTransportHandlers(effectiveSessionId, transport);
-            this.connectionCount++;
-          } else {
-            effectiveSessionId = sessionId;
-            transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId });
-            await mcpServer.connect(transport);
-            this.transports.set(effectiveSessionId, transport);
-            attachTransportHandlers(effectiveSessionId, transport);
-            this.connectionCount++;
-            requireInitializeNotice = true;
-          }
-        } else if (!sessionId && isInitializeRequest(request)) {
-          // New initialization request - create new session and transport
-          effectiveSessionId = randomUUID();
-          transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId });
-          await mcpServer.connect(transport);
-          this.transports.set(effectiveSessionId, transport);
-          attachTransportHandlers(effectiveSessionId, transport);
-          this.connectionCount++;
-          if (this.sessionManager) {
-            this.sessionManager.getOrCreateSession(effectiveSessionId);
-          }
-        } else {
-          // No session header and not an initialize request: pre-provision session and require initialize
-          effectiveSessionId = randomUUID();
-          transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => effectiveSessionId });
-          await mcpServer.connect(transport);
-          this.transports.set(effectiveSessionId, transport);
-          attachTransportHandlers(effectiveSessionId, transport);
-          this.connectionCount++;
-          if (this.sessionManager) {
-            this.sessionManager.getOrCreateSession(effectiveSessionId);
-          }
           requireInitializeNotice = true;
         }
       }

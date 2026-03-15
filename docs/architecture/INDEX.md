@@ -20,4 +20,4 @@ _Server architecture, transport, connection handling, plugin lifecycle_
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| [ADR-100](./core/ADR-100-remove-concurrent-mode-toggle-and-simplify-connection-setup.md) | Remove concurrent mode toggle and simplify connection setup | Draft |
+| [ADR-100](./core/ADR-100-remove-concurrent-mode-toggle-and-simplify-connection-setup.md) | Remove concurrent mode toggle and simplify connection setup | Accepted |
