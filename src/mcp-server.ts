@@ -456,8 +456,7 @@ export class MCPHttpServer {
       };
 
       // Determine which server to use from the pool
-      {
-        if (sessionId && this.transports.has(sessionId)) {
+      if (sessionId && this.transports.has(sessionId)) {
           // Use existing transport for this session
           transport = this.transports.get(sessionId)!;
           
@@ -535,7 +534,6 @@ export class MCPHttpServer {
           this.connectionCount++;
           requireInitializeNotice = true;
         }
-      }
 
       // Compatibility: if we just created a transport for a non-initialize call,
       // attempt a safe, internal initialize to avoid client retry loops.

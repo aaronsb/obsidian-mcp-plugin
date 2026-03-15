@@ -8,8 +8,6 @@ import { PluginDetector } from './utils/plugin-detector';
 import { CertificateConfig } from './utils/certificate-manager';
 import { ValidationConfig } from './validation/input-validator';
 
-
-
 interface MCPPluginSettings {
 	httpEnabled: boolean;
 	httpPort: number;
