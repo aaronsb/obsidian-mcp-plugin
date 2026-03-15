@@ -41,38 +41,29 @@ Traditional file access gives AI a narrow view - one document at a time. This pl
 
 ### 2. Configure Your AI Client
 
-**For Claude Desktop / Claude Code**
-```json
-{
-  "mcpServers": {
-    "obsidian-vault": {
-      "command": "npx",
-      "args": ["mcp-remote", "http://localhost:3001/mcp"]
-    }
-  }
-}
+**Claude Code**
+```bash
+claude mcp add --transport http obsidian http://localhost:3001/mcp --header "Authorization: Bearer YOUR_API_KEY"
 ```
 
-**With Authentication** (if enabled in plugin settings)
+**Claude Desktop, Cline, and other MCP clients**
 ```json
 {
   "mcpServers": {
     "obsidian-vault": {
-      "command": "npx",
-      "args": [
-        "mcp-remote",
-        "https://localhost:3443/mcp",
-        "--header",
-        "Authorization:${AUTH}"
-      ],
-      "env": {
-        "NODE_TLS_REJECT_UNAUTHORIZED": "0",
-        "AUTH": "Bearer YOUR_API_KEY"
+      "transport": {
+        "type": "http",
+        "url": "http://localhost:3001/mcp",
+        "headers": {
+          "Authorization": "Bearer YOUR_API_KEY"
+        }
       }
     }
   }
 }
 ```
+
+Copy the ready-to-use config with your API key from the plugin settings page.
 
 ### 3. Start Using
 

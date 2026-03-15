@@ -1,0 +1,758 @@
+#!/usr/bin/env python3
+"""
+ADR - Architecture Decision Record CLI Tool
+
+A librarian for managing Architecture Decision Records.
+
+Usage:
+    adr list [--domain DOMAIN] [--status STATUS] [--group]
+    adr view <number>          # View an ADR (aliases: v, show)
+    adr new <domain> <title>
+    adr lint [--check] [paths...]
+    adr index [-y]
+    adr domains
+    adr config
+
+Configuration is loaded from docs/architecture/adr.yaml
+"""
+
+import argparse
+import re
+import subprocess
+import sys
+from datetime import date
+from pathlib import Path
+from dataclasses import dataclass, field
+from typing import Optional
+
+# Check for PyYAML
+try:
+    import yaml
+except ImportError:
+    print("Error: PyYAML is required. Install with: pip install pyyaml", file=sys.stderr)
+    print("       Or system-wide: sudo apt install python3-yaml", file=sys.stderr)
+    sys.exit(1)
+
+# ============================================================================
+# Configuration
+# ============================================================================
+
+def get_config_path() -> Path:
+    """Get path to adr.yaml config file."""
+    return Path(__file__).parent.parent / 'architecture' / 'adr.yaml'
+
+def load_config() -> dict:
+    """Load configuration from adr.yaml."""
+    config_path = get_config_path()
+
+    if not config_path.exists():
+        print(f"Error: Config not found: {config_path}", file=sys.stderr)
+        print("Run from project root or create docs/architecture/adr.yaml", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        print(f"Error: Invalid YAML in config: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Validate required fields
+    if 'domains' not in config:
+        print("Error: Config missing 'domains' section", file=sys.stderr)
+        sys.exit(1)
+
+    # Convert range lists to tuples for easier use
+    for domain, cfg in config.get('domains', {}).items():
+        if 'range' in cfg and isinstance(cfg['range'], list):
+            cfg['range'] = tuple(cfg['range'])
+
+    if 'legacy' in config and 'range' in config['legacy']:
+        if isinstance(config['legacy']['range'], list):
+            config['legacy']['range'] = tuple(config['legacy']['range'])
+
+    return config
+
+# Global config (loaded on first access)
+_config = None
+
+def get_config() -> dict:
+    """Get cached config."""
+    global _config
+    if _config is None:
+        _config = load_config()
+    return _config
+
+def get_domains() -> dict:
+    """Get domain configuration."""
+    return get_config().get('domains', {})
+
+def get_statuses() -> set:
+    """Get valid statuses."""
+    return set(get_config().get('statuses', ['Draft', 'Proposed', 'Accepted', 'Superseded', 'Deprecated']))
+
+def relative_path(path: Path, base: Path = None) -> Path:
+    """Get path relative to base, or return absolute if not possible."""
+    if base is None:
+        base = Path.cwd()
+    try:
+        return path.relative_to(base)
+    except ValueError:
+        return path
+
+def get_defaults() -> dict:
+    """Get default values for new ADRs."""
+    return get_config().get('defaults', {'deciders': [], 'status': 'Draft'})
+
+def get_legacy_range() -> tuple:
+    """Get legacy ADR number range."""
+    legacy = get_config().get('legacy', {})
+    return legacy.get('range', (1, 99))
+
+def _detect_git_user() -> Optional[str]:
+    """Detect current git user (GitHub username or git config name)."""
+    # Try GitHub username from gh CLI
+    try:
+        result = subprocess.run(
+            ['gh', 'api', 'user', '--jq', '.login'],
+            capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    # Fall back to git config user.name
+    try:
+        result = subprocess.run(
+            ['git', 'config', 'user.name'],
+            capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+# ============================================================================
+# Data Classes
+# ============================================================================
+
+@dataclass
+class ADRInfo:
+    path: Path
+    number: Optional[str] = None
+    title: Optional[str] = None
+    status: Optional[str] = None
+    date: Optional[str] = None
+    deciders: list = field(default_factory=list)
+    related: list = field(default_factory=list)
+    domain: Optional[str] = None
+    issues: list = field(default_factory=list)
+
+@dataclass
+class Issue:
+    message: str
+    severity: str = 'warning'
+
+# ============================================================================
+# Parsing
+# ============================================================================
+
+TITLE_PATTERN = re.compile(r'^# ADR-(\d+(?:\.\d+)?): (.+)$')
+
+def parse_adr(path: Path) -> ADRInfo:
+    """Parse an ADR file and extract metadata."""
+    info = ADRInfo(path=path)
+
+    try:
+        content = path.read_text()
+    except Exception as e:
+        info.issues.append(Issue(f"Cannot read: {e}", 'error'))
+        return info
+
+    lines = content.split('\n')
+
+    # Parse YAML frontmatter
+    has_frontmatter = lines and lines[0].strip() == '---'
+    if has_frontmatter:
+        end_idx = None
+        for i, line in enumerate(lines[1:], 1):
+            if line.strip() == '---':
+                end_idx = i
+                break
+
+        if end_idx:
+            yaml_content = '\n'.join(lines[1:end_idx])
+            try:
+                data = yaml.safe_load(yaml_content) or {}
+                info.status = data.get('status')
+                info.date = str(data.get('date', '')) if data.get('date') else None
+                deciders = data.get('deciders', [])
+                info.deciders = deciders if isinstance(deciders, list) else [deciders]
+                info.related = data.get('related', [])
+            except yaml.YAMLError as e:
+                info.issues.append(Issue(f"YAML error: {e}", 'error'))
+        else:
+            info.issues.append(Issue("Opening --- found but no closing --- for frontmatter", 'error'))
+    else:
+        # Check for inline metadata (pre-YAML pattern)
+        inline_meta = any(re.match(r'^(Status|Date|Deciders):\s', line) for line in lines[:15])
+        if inline_meta:
+            info.issues.append(Issue(
+                "No YAML frontmatter — found inline metadata (Status:/Date:/Deciders:). "
+                "Convert to YAML frontmatter: wrap in --- delimiters, use lowercase keys",
+                'error'))
+        else:
+            info.issues.append(Issue("No YAML frontmatter found", 'error'))
+
+    # Find title
+    for line in lines:
+        match = TITLE_PATTERN.match(line)
+        if match:
+            info.number = match.group(1)
+            info.title = match.group(2)
+            break
+
+    # Determine domain from number range (authoritative) or folder name (fallback)
+    # Range takes precedence: an ADR's number definitively places it in a domain,
+    # even if the file is physically in a different domain's folder.
+    if info.number:
+        try:
+            base_num = int(info.number.split('.')[0])
+            for domain, config in get_domains().items():
+                if config['range'][0] <= base_num <= config['range'][1]:
+                    info.domain = domain
+                    break
+        except ValueError:
+            pass
+
+    # Fallback: determine from folder name (for unnumbered or out-of-range ADRs)
+    if not info.domain:
+        folder_name = path.parent.name
+        for domain, config in get_domains().items():
+            folders = config['folder']
+            if isinstance(folders, str):
+                folders = [folders]
+            if folder_name in folders:
+                info.domain = domain
+                break
+
+    # Validation
+    if not info.number:
+        info.issues.append(Issue("Missing ADR number in title", 'error'))
+    # Skip field-level checks if no frontmatter — root cause already reported
+    if has_frontmatter:
+        valid_statuses = get_statuses()
+        if not info.status:
+            info.issues.append(Issue("Missing status in frontmatter", 'error'))
+        elif info.status not in valid_statuses:
+            info.issues.append(Issue(f"Invalid status: {info.status} (valid: {', '.join(sorted(valid_statuses))})", 'warning'))
+        if not info.date:
+            info.issues.append(Issue("Missing date in frontmatter", 'error'))
+        if not info.deciders:
+            info.issues.append(Issue("Missing deciders in frontmatter", 'warning'))
+
+    return info
+
+def find_adrs() -> list[Path]:
+    """Find all ADR files."""
+    docs_root = Path(__file__).parent.parent
+    arch_dir = docs_root / 'architecture'
+    return sorted(arch_dir.rglob("ADR-*.md"))
+
+def get_all_adrs() -> list[ADRInfo]:
+    """Parse all ADR files."""
+    return [parse_adr(p) for p in find_adrs()]
+
+# ============================================================================
+# Commands
+# ============================================================================
+
+def cmd_list(args):
+    """List all ADRs."""
+    adrs = get_all_adrs()
+    domains = get_domains()
+
+    # Filter by domain
+    if args.domain:
+        adrs = [a for a in adrs if a.domain == args.domain]
+
+    # Filter by status
+    if args.status:
+        adrs = [a for a in adrs if a.status and a.status.lower() == args.status.lower()]
+
+    # Sort by number
+    def sort_key(adr):
+        if not adr.number:
+            return (9999, 0)
+        parts = adr.number.split('.')
+        return (int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+
+    adrs.sort(key=sort_key)
+
+    project = get_config().get('project_name', 'Project')
+    print(f"\n{project} — Architecture Decision Records ({len(adrs)} total)")
+    print("=" * 55)
+
+    def status_icon(status):
+        return {
+            'Draft': '📝',
+            'Proposed': '💡',
+            'Accepted': '✅',
+            'Superseded': '📦',
+            'Deprecated': '🗑️'
+        }.get(status, '❓')
+
+    def print_adr(adr):
+        print(f"  {status_icon(adr.status)} ADR-{adr.number or '???':8} {adr.title or '(no title)'}")
+
+    if args.group:
+        # Group by domain - show domains in config order, then legacy
+        for domain_key, domain_info in domains.items():
+            domain_adrs = [a for a in adrs if a.domain == domain_key]
+            if not domain_adrs:
+                continue
+            print(f"\n## {domain_info.get('name', domain_key)} ({domain_key})")
+            print("-" * 50)
+            for adr in domain_adrs:
+                print_adr(adr)
+
+        # Legacy (no domain)
+        legacy_adrs = [a for a in adrs if not a.domain]
+        if legacy_adrs:
+            legacy_label = get_config().get('legacy', {}).get('label', 'Legacy')
+            print(f"\n## {legacy_label}")
+            print("-" * 50)
+            for adr in legacy_adrs:
+                print_adr(adr)
+    else:
+        # Flat list, sorted by number
+        for adr in adrs:
+            print_adr(adr)
+
+    print(f"\nTotal: {len(adrs)} ADRs")
+    return 0
+
+
+def cmd_view(args):
+    """View an ADR using the configured viewer."""
+    import shutil
+
+    # Normalize the ADR reference (accept "38", "038", "ADR-038", "ADR-38", "51.2")
+    ref = args.adr.upper().replace('ADR-', '').lstrip('0') or '0'
+
+    # Helper to extract number from filename (e.g., ADR-051.2-foo.md -> 51.2)
+    def filename_number(path):
+        match = re.match(r'ADR-(\d+(?:\.\d+)?)', path.name, re.IGNORECASE)
+        return match.group(1).lstrip('0') if match else None
+
+    # Find the ADR by title number or filename number
+    adrs = get_all_adrs()
+    matches = [a for a in adrs if
+               (a.number and a.number.lstrip('0') == ref) or
+               filename_number(a.path) == ref]
+
+    if not matches:
+        print(f"Error: ADR not found: {args.adr}", file=sys.stderr)
+        print(f"Use `adr list` to see available ADRs.", file=sys.stderr)
+        return 1
+
+    if len(matches) > 1:
+        print(f"Multiple ADRs match '{args.adr}':")
+        for adr in matches:
+            print(f"  ADR-{adr.number}: {adr.title}")
+        return 1
+
+    adr = matches[0]
+
+    # Get viewer command from config
+    viewer_cmd = get_config().get('viewer', 'cat {file}')
+
+    # Check if viewer command exists
+    viewer_bin = viewer_cmd.split()[0]
+    if not shutil.which(viewer_bin):
+        print(f"Warning: Viewer '{viewer_bin}' not found, using cat", file=sys.stderr)
+        viewer_cmd = 'cat {file}'
+
+    # Build and run command
+    cmd = viewer_cmd.replace('{file}', str(adr.path))
+    return subprocess.run(cmd, shell=True).returncode
+
+
+def cmd_new(args):
+    """Create a new ADR."""
+    domain = args.domain.lower()
+    domains = get_domains()
+    defaults = get_defaults()
+
+    if domain not in domains:
+        print(f"Error: Unknown domain '{domain}'", file=sys.stderr)
+        print(f"Valid domains: {', '.join(domains.keys())}", file=sys.stderr)
+        return 1
+
+    config = domains[domain]
+
+    # Find next available number in range
+    adrs = get_all_adrs()
+    used_numbers = set()
+    for adr in adrs:
+        if adr.number:
+            try:
+                used_numbers.add(int(adr.number.split('.')[0]))
+            except ValueError:
+                pass
+
+    next_num = None
+    for n in range(config['range'][0], config['range'][1] + 1):
+        if n not in used_numbers:
+            next_num = n
+            break
+
+    if next_num is None:
+        print(f"Error: No available numbers in {domain} range ({config['range'][0]}-{config['range'][1]})", file=sys.stderr)
+        return 1
+
+    # Generate slug from title
+    slug = re.sub(r'[^a-z0-9]+', '-', args.title.lower()).strip('-')
+
+    # Create file path (use first folder if multiple)
+    docs_root = Path(__file__).parent.parent
+    folders = config['folder']
+    primary_folder = folders[0] if isinstance(folders, list) else folders
+    folder = docs_root / 'architecture' / primary_folder
+    filename = f"ADR-{next_num:03d}-{slug}.md"
+    filepath = folder / filename
+
+    if filepath.exists():
+        print(f"Error: File already exists: {filepath}", file=sys.stderr)
+        return 1
+
+    # Generate content
+    today = date.today().isoformat()
+    default_status = defaults.get('status', 'Draft')
+    default_deciders = defaults.get('deciders', [])
+
+    # Auto-detect current user if no deciders configured
+    if not default_deciders:
+        git_user = _detect_git_user()
+        if git_user:
+            default_deciders = [git_user]
+
+    deciders_yaml = '\n'.join(f'  - {d}' for d in default_deciders) if default_deciders else '  - # add deciders'
+
+    content = f'''---
+status: {default_status}
+date: {today}
+deciders:
+{deciders_yaml}
+related: []
+---
+
+# ADR-{next_num:03d}: {args.title}
+
+## Context
+
+[What is the issue that we're seeing that is motivating this decision or change?]
+
+## Decision
+
+[What is the change that we're proposing and/or doing?]
+
+## Consequences
+
+### Positive
+
+- [What becomes easier?]
+
+### Negative
+
+- [What becomes harder?]
+
+### Neutral
+
+- [What other changes does this enable or require?]
+
+## Alternatives Considered
+
+- [What other options were evaluated?]
+- [Why were they rejected?]
+'''
+
+    # Write file
+    folder.mkdir(parents=True, exist_ok=True)
+    filepath.write_text(content)
+
+    print(f"Created: {relative_path(filepath)}")
+    print(f"  Domain: {config['name']} ({domain})")
+    print(f"  Number: ADR-{next_num:03d}")
+    return 0
+
+def cmd_lint(args):
+    """Lint ADR files for issues."""
+    if args.paths:
+        paths = [Path(p) for p in args.paths]
+        adrs = [parse_adr(p) for p in paths]
+    else:
+        adrs = get_all_adrs()
+
+    total_errors = 0
+    total_warnings = 0
+
+    # Status summary
+    status_counts = {}
+    for adr in adrs:
+        status = adr.status or 'Unknown'
+        status_counts[status] = status_counts.get(status, 0) + 1
+
+    print(f"\nScanned: {len(adrs)} ADRs")
+    print(f"\nStatus distribution:")
+    for status, count in sorted(status_counts.items()):
+        print(f"  {status}: {count}")
+
+    # Issues
+    files_with_issues = [adr for adr in adrs if adr.issues]
+
+    if files_with_issues:
+        print(f"\n{'─'*60}")
+        print(f"Issues found in {len(files_with_issues)} files:")
+        print(f"{'─'*60}")
+
+        for adr in files_with_issues:
+            print(f"\n{relative_path(adr.path)}")
+
+            for issue in adr.issues:
+                icon = '❌' if issue.severity == 'error' else '⚠️'
+                print(f"  {icon} {issue.message}")
+
+                if issue.severity == 'error':
+                    total_errors += 1
+                else:
+                    total_warnings += 1
+
+    print(f"\n{'═'*60}")
+    print(f"Summary: {total_errors} errors, {total_warnings} warnings")
+    print(f"{'═'*60}\n")
+
+    if args.check and total_errors > 0:
+        return 1
+    return 0
+
+def cmd_index(args):
+    """Generate/update the ADR index file."""
+    adrs = get_all_adrs()
+    domains = get_domains()
+    legacy_range = get_legacy_range()
+
+    # Sort by number
+    def sort_key(adr):
+        if not adr.number:
+            return (9999, 0)
+        parts = adr.number.split('.')
+        return (int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+
+    adrs.sort(key=sort_key)
+
+    lines = [
+        "# Architecture Decision Records",
+        "",
+        f"This directory contains Architecture Decision Records (ADRs) for {get_config().get('project_name', 'this project')}.",
+        "Each ADR documents a significant architectural decision, its context, and consequences.",
+        "",
+        "## ADR Format",
+        "",
+        "All ADRs follow a consistent format:",
+        "- **Status:** Draft / Proposed / Accepted / Deprecated / Superseded",
+        "- **Date:** When the decision was made",
+        "- **Deciders:** Who made the decision",
+        "- **Context:** The problem or situation requiring a decision",
+        "- **Decision:** The architectural choice made",
+        "- **Consequences:** Benefits, drawbacks, and other impacts",
+        "",
+        f"_This index is auto-generated by `adr index`. Configuration: [`adr.yaml`](./adr.yaml)_",
+        "",
+    ]
+
+    # By domain
+    for domain, config in domains.items():
+        domain_adrs = [a for a in adrs if a.domain == domain]
+        if not domain_adrs:
+            continue
+
+        lines.append(f"## {config['name']}")
+        lines.append(f"_{config['description']}_")
+        lines.append("")
+        lines.append("| ADR | Title | Status |")
+        lines.append("|-----|-------|--------|")
+
+        for adr in domain_adrs:
+            # Use actual folder from path, not config (supports multiple folders)
+            folder = adr.path.parent.name
+            filename = adr.path.name
+            link = f"[ADR-{adr.number}](./{folder}/{filename})"
+            lines.append(f"| {link} | {adr.title or '?'} | {adr.status or '?'} |")
+
+        lines.append("")
+
+    # Legacy (pre-domain numbering)
+    legacy_label = get_config().get('legacy', {}).get('label', 'Legacy')
+    uncategorized = [a for a in adrs if not a.domain]
+    if uncategorized:
+        lines.append(f"## {legacy_label}")
+        lines.append("")
+        lines.append("| ADR | Title | Status |")
+        lines.append("|-----|-------|--------|")
+
+        for adr in uncategorized:
+            rel_path = adr.path.relative_to(adr.path.parent.parent)
+            link = f"[ADR-{adr.number}](./{rel_path})"
+            lines.append(f"| {link} | {adr.title or '?'} | {adr.status or '?'} |")
+
+        lines.append("")
+
+    content = '\n'.join(lines)
+
+    # Check against existing index
+    docs_root = Path(__file__).parent.parent
+    index_path = docs_root / 'architecture' / 'INDEX.md'
+
+    if index_path.exists():
+        existing = index_path.read_text()
+        if existing == content:
+            print(f"Index is up to date: {relative_path(index_path)}")
+            print(f"  {len(adrs)} ADRs across {len(domains)} domains")
+            return 0
+
+        # Show what changed
+        existing_lines = existing.splitlines()
+        new_lines = content.splitlines()
+
+        added = len([l for l in new_lines if l not in existing_lines])
+        removed = len([l for l in existing_lines if l not in new_lines])
+
+        print(f"Index needs updating: {relative_path(index_path)}")
+        print(f"  {len(adrs)} ADRs across {len(domains)} domains")
+        print(f"  Changes: +{added} -{removed} lines")
+
+        if not args.yes:
+            try:
+                response = input("\nUpdate index? [y/N]: ")
+                if response.lower() != 'y':
+                    print("Skipped.")
+                    return 0
+            except (KeyboardInterrupt, EOFError):
+                print("\nSkipped.")
+                return 0
+
+    index_path.write_text(content)
+    print(f"Updated: {relative_path(index_path)}")
+    return 0
+
+def cmd_domains(args):
+    """List available domains."""
+    domains = get_domains()
+
+    project = get_config().get('project_name', 'Project')
+    print(f"\n{project} — ADR Domain Number Series")
+    print("=" * 60)
+    print(f"(from {relative_path(get_config_path())})")
+
+    for domain, config in domains.items():
+        r = config['range']
+        folders = config['folder']
+        if isinstance(folders, list):
+            folder_str = ', '.join(f"{f}/" for f in folders)
+        else:
+            folder_str = f"{folders}/"
+        print(f"\n  {domain:8} ({r[0]:3}-{r[1]:3})  {config['name']}")
+        print(f"           {config['description']}")
+        print(f"           Folder: {folder_str}")
+
+    # Show legacy range
+    legacy = get_config().get('legacy', {})
+    if legacy:
+        r = legacy.get('range', (1, 99))
+        print(f"\n  {'legacy':8} ({r[0]:3}-{r[1]:3})  {legacy.get('label', 'Legacy')}")
+
+    print()
+    return 0
+
+def cmd_config(args):
+    """Show current configuration."""
+    config_path = get_config_path()
+
+    print(f"\nConfig file: {config_path}")
+    print("-" * 60)
+
+    try:
+        print(config_path.read_text())
+    except Exception as e:
+        print(f"Error reading config: {e}", file=sys.stderr)
+        return 1
+
+    return 0
+
+# ============================================================================
+# Main
+# ============================================================================
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='ADR - Architecture Decision Record CLI Tool',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__
+    )
+    subparsers = parser.add_subparsers(dest='command', help='Command')
+
+    # list
+    p_list = subparsers.add_parser('list', aliases=['ls'], help='List ADRs')
+    p_list.add_argument('--domain', '-d', help='Filter by domain')
+    p_list.add_argument('--status', '-s', help='Filter by status')
+    p_list.add_argument('--group', '-g', action='store_true',
+                        help='Group by domain')
+
+    # view
+    p_view = subparsers.add_parser('view', aliases=['v', 'show'], help='View an ADR')
+    p_view.add_argument('adr', help='ADR number (e.g., 38, 038, ADR-038)')
+
+    # new
+    p_new = subparsers.add_parser('new', help='Create new ADR')
+    p_new.add_argument('domain', help='Domain (see `adr domains` for list)')
+    p_new.add_argument('title', help='ADR title')
+
+    # lint
+    p_lint = subparsers.add_parser('lint', help='Lint ADR files')
+    p_lint.add_argument('paths', nargs='*', help='Specific files to lint')
+    p_lint.add_argument('--check', action='store_true', help='Exit 1 if errors (CI mode)')
+
+    # index
+    index_parser = subparsers.add_parser('index', help='Generate ADR index')
+    index_parser.add_argument('-y', '--yes', action='store_true',
+                              help='Update without prompting')
+
+    # domains
+    subparsers.add_parser('domains', help='List domain number series')
+
+    # config
+    subparsers.add_parser('config', help='Show configuration')
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return 0
+
+    commands = {
+        'list': cmd_list,
+        'ls': cmd_list,
+        'view': cmd_view,
+        'v': cmd_view,
+        'show': cmd_view,
+        'new': cmd_new,
+        'lint': cmd_lint,
+        'index': cmd_index,
+        'domains': cmd_domains,
+        'config': cmd_config,
+    }
+
+    return commands[args.command](args)
+
+if __name__ == '__main__':
+    sys.exit(main())
