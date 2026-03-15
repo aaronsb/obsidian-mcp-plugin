@@ -69,7 +69,7 @@ _commit-and-publish:
 	@VERSION=$$(jq -r .version package.json); \
 	git add package.json package-lock.json manifest.json src/version.ts versions.json; \
 	git commit -m "chore: Bump version to $$VERSION"; \
-	git push; \
+	git push origin HEAD; \
 	echo "Triggering release for $$VERSION..."; \
 	gh workflow run release.yml --field release_notes="$${RELEASE_NOTES:-}"
 

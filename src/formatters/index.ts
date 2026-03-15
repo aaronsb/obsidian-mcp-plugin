@@ -357,28 +357,60 @@ function normalizeResponse(key: string, response: unknown): NormalizedResponse {
     case 'graph.traverse': {
       const traverseNodes = resp.nodes as Array<Record<string, unknown>> | undefined;
       const graphStats = resp.graphStats as Record<string, unknown> | undefined;
+      const edges = (resp.edges as Array<Record<string, unknown>>) || [];
       if (traverseNodes && Array.isArray(traverseNodes)) {
         return {
           sourcePath: resp.sourcePath ?? resp.message ?? '',
           maxDepth: graphStats?.maxDepthReached ?? 3,
           totalNodes: graphStats?.totalNodes ?? traverseNodes.length,
-          nodes: traverseNodes.map(n => ({
-            path: n.path,
-            title: n.title,
-            depth: 0, // flat — actual depth not tracked per node in this response
-            links: n.links ? Object.values(
-              ((resp.edges as Array<Record<string, unknown>>) || [])
-                .filter(e => e.source === n.path)
-                .reduce((acc: Record<string, boolean>, e) => { acc[e.target as string] = true; return acc; }, {})
-            ).length > 0
-              ? ((resp.edges as Array<Record<string, unknown>>) || [])
-                  .filter(e => e.source === n.path)
-                  .map(e => (e.target as string).split('/').pop() || e.target)
-              : undefined : undefined,
-            tags: n.tags
-          })),
+          nodes: traverseNodes.map(n => {
+            const outgoing = edges
+              .filter(e => e.source === n.path)
+              .map(e => (e.target as string).split('/').pop() || e.target);
+            return {
+              path: n.path,
+              title: n.title,
+              depth: 0, // depth per node not tracked in this response shape
+              links: outgoing.length > 0 ? outgoing : undefined,
+              tags: n.tags
+            };
+          }),
           edges: resp.edges,
           graphStats
+        };
+      }
+      return resp;
+    }
+
+    // graph.advanced-traverse: same shape as search-traverse but snippetChain is
+    // embedded inside details.traversalChain instead of top-level snippetChain
+    case 'graph.advanced-traverse':
+    case 'graph.tag-traverse': {
+      // If snippetChain already exists, pass through (tag-traverse has it)
+      if (resp.snippetChain) return resp;
+
+      // For advanced-traverse, build snippetChain from details.traversalChain
+      const details = resp.details as Record<string, unknown> | undefined;
+      const chain = details?.traversalChain as Array<Record<string, unknown>> | undefined;
+      if (details && chain) {
+        return {
+          summary: resp.summary,
+          traversalPath: resp.traversalPath,
+          details: {
+            startNode: details.startNode,
+            searchQuery: details.searchQuery ?? (details.searchQueries as string[] | undefined)?.join(', ') ?? '',
+            maxDepth: details.maxDepth,
+            totalNodesVisited: details.totalNodesVisited,
+            nodesWithMatches: chain.length,
+            executionTime: details.executionTime
+          },
+          snippetChain: chain.map(node => ({
+            file: node.path,
+            depth: node.depth ?? 0,
+            parent: node.parentPath,
+            snippet: node.snippet ?? { text: '', score: '0', lineNumber: 0, preview: '' }
+          })),
+          workflowSuggestions: resp.workflowSuggestions ?? []
         };
       }
       return resp;
@@ -419,7 +451,7 @@ function normalizeResponse(key: string, response: unknown): NormalizedResponse {
             file1: resp.source as string,
             file2: resp.target as string,
             sharedTags,
-            similarity: (resp.connectionStrength as number) || 0
+            similarity: sharedTags.length > 0 ? 1.0 : 0
           }] : [],
           summary: resp.summary
         };
