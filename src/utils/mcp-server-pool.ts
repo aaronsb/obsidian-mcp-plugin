@@ -173,6 +173,63 @@ export class MCPServerPool extends EventEmitter {
       }
 
       try {
+        // Use connection pool if available for better request management
+        if (this.connectionPool) {
+          const context = await this.prepareContext(name, args ?? {});
+          const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+          
+          const response = await this.connectionPool.submitRequest({
+            id: requestId,
+            sessionId,
+            method: `tool.${name}`,
+            params: args ?? {},
+            timestamp: Date.now()
+          }, context);
+
+          if (response.error) {
+            throw response.error;
+          }
+
+          const result = response.result;
+
+          // Special handling for worker-offloaded edits: the main thread must apply the changes
+          if (name.includes('edit') && result && typeof result === 'object' && 'newContent' in result) {
+            const editResult = result as { success: boolean; newContent: string; method: string; error?: string; message?: string };
+            
+            if (editResult.success) {
+                const path = (args as any).path;
+                await this.obsidianAPI.updateFile(path, editResult.newContent);
+                Debug.log(`✅ [Session ${sessionId}] Applied worker-calculated edit to ${path}`);
+                return {
+                    content: [{
+                        type: 'text',
+                        text: `Successfully updated ${path} (${editResult.method} match)`
+                    }]
+                };
+            } else if (editResult.error === 'NO_MATCH') {
+                return {
+                    content: [{
+                        type: 'text',
+                        text: editResult.message || 'No match found'
+                    }],
+                    isError: true
+                };
+            } else if (editResult.error === 'MULTIPLE_MATCHES') {
+                 return {
+                    content: [{
+                        type: 'text',
+                        text: `Error: Multiple matches found. Please be more specific.\n${JSON.stringify((editResult as any).matches, null, 2)}`
+                    }],
+                    isError: true
+                 };
+            }
+          }
+
+          return result as CallToolResult;
+        }
+
+
+        // Fallback to direct execution
         const result = await tool.handler(sessionAPI, args ?? {});
         return result as CallToolResult;
       } catch (error: unknown) {
@@ -186,6 +243,7 @@ export class MCPServerPool extends EventEmitter {
         };
       }
     });
+
 
     // Build resources list
     const resources = [
@@ -401,6 +459,29 @@ export class MCPServerPool extends EventEmitter {
         ? Math.min(...servers.map(s => now - s.createdAt))
         : 0
     };
+  }
+
+  /**
+   * Prepare context for tool execution (e.g. pre-fetching file content for workers)
+   */
+  private async prepareContext(toolName: string, args: any): Promise<any> {
+    // Only prepare context for tools that we know use workers and need data
+    if (toolName.includes('edit')) {
+      const path = args.path;
+      if (path && typeof path === 'string') {
+        try {
+          const content = await this.obsidianAPI.getFile(path);
+          return {
+            fileContents: {
+              [path]: content
+            }
+          };
+        } catch (error) {
+          Debug.warn(`Failed to pre-fetch context for ${path}:`, error);
+        }
+      }
+    }
+    return undefined;
   }
 
   /**

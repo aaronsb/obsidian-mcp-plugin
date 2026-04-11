@@ -183,7 +183,7 @@ export class MCPHttpServer {
       requestTimeout: 30000,
       sessionTimeout: 3600000,
       sessionCheckInterval: 60000,
-      workerScript: path.join(plugin?.manifest.dir ?? '', 'dist', 'workers', 'semantic-worker.js')
+      workerScript: path.join(plugin?.manifest.dir ?? '', 'dist', 'workers', 'workers', 'semantic-worker.js')
     });
     void this.connectionPool.initialize();
 
@@ -343,7 +343,7 @@ export class MCPHttpServer {
     });
 
     // GET endpoint for MCP info (for debugging)
-    this.app.get('/mcp', (req, res) => {
+    this.app.get('/mcp-info', (req, res) => {
       res.json({
         message: 'MCP endpoint active',
         usage: 'POST /mcp with MCP protocol messages',
@@ -354,7 +354,8 @@ export class MCPHttpServer {
     });
 
     // MCP protocol endpoint - using StreamableHTTPServerTransport
-    this.app.post('/mcp', (req, res) => {
+    // Use .all to handle both POST (messages) and GET (SSE streams)
+    this.app.all('/mcp', (req, res) => {
       void this.handleMCPRequest(req, res);
     });
 

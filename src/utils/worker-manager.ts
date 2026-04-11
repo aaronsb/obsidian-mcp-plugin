@@ -7,7 +7,9 @@ export interface WorkerTask {
   id: string;
   sessionId: string;
   operation: string;
+  action: string;
   data: unknown;
+  context?: unknown;
 }
 
 export interface WorkerResult {
@@ -22,6 +24,7 @@ interface WorkerMessage {
   id?: string;
   result?: unknown;
   error?: string;
+  context?: unknown;
 }
 
 /**
@@ -93,9 +96,10 @@ export class WorkerManager extends EventEmitter {
         type: 'process',
         request: {
           operation: task.operation,
-          action: taskData?.action,
+          action: task.action,
           params: task.data
-        }
+        },
+        context: task.context
       });
       
       // Set timeout
@@ -107,6 +111,7 @@ export class WorkerManager extends EventEmitter {
       }, 30000); // 30 second timeout
     });
   }
+
   
   /**
    * Handle message from worker

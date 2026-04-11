@@ -8,6 +8,7 @@ export interface PooledRequest {
   method: string;
   params: unknown;
   timestamp: number;
+  context?: unknown;
 }
 
 export interface PooledResponse {
@@ -70,7 +71,7 @@ export class ConnectionPool extends EventEmitter {
   /**
    * Submit a request to the pool
    */
-  async submitRequest(request: PooledRequest): Promise<PooledResponse> {
+  async submitRequest(request: PooledRequest, context?: unknown): Promise<PooledResponse> {
     if (this.isShuttingDown) {
       throw new Error('Connection pool is shutting down');
     }
@@ -79,6 +80,9 @@ export class ConnectionPool extends EventEmitter {
     if (this.requestQueue.length >= this.options.maxQueueSize) {
       throw new Error('Request queue is full');
     }
+
+    // Add context to request
+    request.context = context;
 
     // Add to queue
     this.requestQueue.push(request);
@@ -150,7 +154,9 @@ export class ConnectionPool extends EventEmitter {
       'tool.vault.search',
       'tool.vault.fragments', 
       'tool.graph.search-traverse',
-      'tool.graph.advanced-traverse'
+      'tool.graph.advanced-traverse',
+      'tool.edit.window',
+      'tool.edit.from_buffer'
     ];
     
     return workerOps.some(op => request.method.includes(op));
@@ -169,15 +175,20 @@ export class ConnectionPool extends EventEmitter {
     try {
       Debug.log(`🚀 Processing ${request.method} with worker for session ${request.sessionId}`);
       
-      // Extract operation details from method
-      const [, , operation] = request.method.split('.');
+      // Extract operation and action from method (e.g. tool.vault.search -> operation: vault, action: search)
+      const parts = request.method.split('.');
+      const operation = parts[1] || parts[0];
+      const action = parts[2] || (request.params as any)?.action || '';
       
       const result = await this.workerManager.submitTask({
         id: request.id,
         sessionId: request.sessionId,
         operation,
-        data: request.params
+        action,
+        data: request.params,
+        context: request.context
       });
+
       
       // Complete the request
       this.completeRequest(request.id, {
@@ -211,6 +222,7 @@ export class ConnectionPool extends EventEmitter {
     // Process next request in queue
     this.processQueue();
   }
+
 
   /**
    * Remove a request from tracking

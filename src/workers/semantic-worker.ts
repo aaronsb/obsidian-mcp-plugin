@@ -113,10 +113,158 @@ function processRequest(request: SemanticRequest, context?: WorkerContext): unkn
       return processVaultOperation(action, params, context);
     case 'graph':
       return processGraphOperation(action, params, context);
+    case 'edit':
+      return processEditOperation(action, params, context);
     default:
       throw new Error(`Worker: Unsupported operation ${operation}`);
   }
 }
+
+/**
+ * Process edit operations that can be parallelized
+ */
+function processEditOperation(action: string, params: Record<string, unknown>, context?: WorkerContext): unknown {
+  const { path, oldText, newText, fuzzyThreshold = 0.7 } = params;
+  
+  if (!context?.fileContents || !context.fileContents[path as string]) {
+    throw new Error(`File contents for ${path} required for edit operation`);
+  }
+  
+  const content = context.fileContents[path as string];
+
+  switch (action) {
+    case 'window':
+    case 'from_buffer': {
+      const searchText = (oldText as string) || '';
+      const replacementText = (newText as string) || '';
+      
+      // Local implementation of performWindowEdit for worker
+      
+      // 1. Try exact match first
+      if (content.includes(searchText)) {
+        const newContent = content.replace(searchText, replacementText);
+        return {
+          success: true,
+          newContent,
+          method: 'exact'
+        };
+      }
+      
+      // 2. Try fuzzy matching
+      // We implement a simplified version of findFuzzyMatches here to avoid extra imports in compiled worker
+      const threshold = Number(fuzzyThreshold);
+      const matches = workerFindFuzzyMatches(content, searchText, threshold);
+      
+      if (matches.length === 0) {
+        return {
+          success: false,
+          error: 'NO_MATCH',
+          message: `No matches found for "${searchText}" in ${path}`
+        };
+      }
+      
+      if (matches.length > 1) {
+        return {
+          success: false,
+          error: 'MULTIPLE_MATCHES',
+          matches: matches.map(m => ({
+            lineNumber: m.lineNumber,
+            line: m.line,
+            similarity: m.similarity
+          }))
+        };
+      }
+      
+      // Single match found
+      const match = matches[0];
+      const lines = content.split('\n');
+      lines[match.lineNumber - 1] = replacementText;
+      const newContent = lines.join('\n');
+      
+      return {
+        success: true,
+        newContent,
+        lineNumber: match.lineNumber,
+        similarity: match.similarity,
+        method: 'fuzzy'
+      };
+    }
+    default:
+      throw new Error(`Worker: Unsupported edit action ${action}`);
+  }
+}
+
+/**
+ * Lightweight fuzzy matching for worker thread
+ */
+function workerFindFuzzyMatches(content: string, searchText: string, threshold: number): any[] {
+  const lines = content.split('\n');
+  const matches: any[] = [];
+  const normalizedSearch = searchText.toLowerCase().trim();
+  const searchWords = normalizedSearch.split(/\s+/).filter(w => w.length > 0);
+  
+  if (searchWords.length === 0) return [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const normalizedLine = line.toLowerCase();
+    
+    if (normalizedLine.includes(normalizedSearch)) {
+      matches.push({ line, lineNumber: i + 1, similarity: 1.0 });
+      continue;
+    }
+    
+    if (normalizedLine.length < normalizedSearch.length * threshold * 0.8) continue;
+
+    let bestSimilarity = 0;
+    const words = line.split(/\s+/).filter(w => w.length > 0);
+    
+    for (let start = 0; start < words.length; start++) {
+      const maxEnd = Math.min(words.length, start + searchWords.length + 3);
+      for (let end = start + 1; end <= maxEnd; end++) {
+        const phrase = words.slice(start, end).join(' ');
+        
+        if (Math.abs(phrase.length - normalizedSearch.length) > normalizedSearch.length * (1 - threshold) + 2) {
+          continue;
+        }
+
+        const similarity = workerCalculateSimilarity(phrase, normalizedSearch);
+        if (similarity > bestSimilarity) {
+          bestSimilarity = similarity;
+          if (bestSimilarity >= 0.95) break;
+        }
+      }
+      if (bestSimilarity >= 0.95) break;
+    }
+    
+    if (bestSimilarity >= threshold) {
+      matches.push({ line, lineNumber: i + 1, similarity: bestSimilarity });
+    }
+  }
+  
+  return matches.sort((a, b) => b.similarity - a.similarity).slice(0, 5);
+}
+
+function workerCalculateSimilarity(str1: string, str2: string): number {
+  if (str1 === str2) return 1;
+  const maxLength = Math.max(str1.length, str2.length);
+  if (maxLength === 0) return 1;
+  
+  let prevRow = new Int32Array(str2.length + 1);
+  let currRow = new Int32Array(str2.length + 1);
+  for (let i = 0; i <= str2.length; i++) prevRow[i] = i;
+
+  for (let i = 1; i <= str1.length; i++) {
+    currRow[0] = i;
+    for (let j = 1; j <= str2.length; j++) {
+      if (str1[i - 1] === str2[j - 1]) currRow[j] = prevRow[j - 1];
+      else currRow[j] = Math.min(prevRow[j - 1] + 1, currRow[j - 1] + 1, prevRow[j] + 1);
+    }
+    [prevRow, currRow] = [currRow, prevRow];
+  }
+  return 1 - (prevRow[str2.length] / maxLength);
+}
+
 
 /**
  * Process vault operations that can be parallelized
