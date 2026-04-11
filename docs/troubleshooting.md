@@ -26,12 +26,18 @@ Connection works but requests are rejected with 401/403 errors.
 ## SSL Certificate Errors
 
 **Symptoms:**
-Certificate warnings or connection failures when using HTTPS.
+Certificate warnings, TLS handshake failures, or silent connection failures when using HTTPS. The failure mode is often silent on the server side — the TLS handshake aborts before the HTTP request is sent, so the plugin's debug log shows nothing at all. Bun-based clients (for example, any CLI running on the Bun runtime) can fail this way even when the certificate has been trusted in Keychain Access, because **Bun does not consult the macOS system keychain for TLS trust**.
 
-**Solutions:**
-1. **For development**: Set `NODE_TLS_REJECT_UNAUTHORIZED=0` in your client config
-2. **Self-signed certs**: The plugin generates self-signed certificates on first run
-3. **Certificate location**: Certificates are stored in the plugin's data folder
+**Solution:**
+Trust the plugin's self-signed certificate properly. See [Trusting the self-signed certificate](../README.md#trusting-the-self-signed-certificate) in the main README for the full instructions, which cover:
+
+- **macOS Keychain** (`security add-trusted-cert`) — for clients that use the system trust store.
+- **`NODE_EXTRA_CA_CERTS`** — required for Bun-based runtimes; set via `launchctl setenv` to propagate to dock-launched GUI apps.
+
+The plugin auto-generates a self-signed certificate on first start and stores it under `.obsidian/plugins/semantic-vault-mcp/certificates/default.crt` inside your vault. You will need to re-trust it whenever the plugin regenerates it (for example, after the 1-year validity expires).
+
+**Avoid `NODE_TLS_REJECT_UNAUTHORIZED=0`:**
+This environment variable disables TLS certificate verification process-wide — not just for the plugin, but for every HTTPS connection the client makes. That is a significant downgrade to your security posture, and it masks legitimate certificate problems (expired, revoked, or tampered certs) instead of fixing them. Trust the plugin certificate explicitly as described above.
 
 ## Server Not Starting
 
