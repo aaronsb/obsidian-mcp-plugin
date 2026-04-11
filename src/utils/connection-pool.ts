@@ -178,7 +178,13 @@ export class ConnectionPool extends EventEmitter {
       // Extract operation and action from method (e.g. tool.vault.search -> operation: vault, action: search)
       const parts = request.method.split('.');
       const operation = parts[1] || parts[0];
-      const action = parts[2] || (request.params as any)?.action || '';
+      let action = parts[2] || '';
+      if (!action && request.params && typeof request.params === 'object') {
+        const params = request.params as Record<string, unknown>;
+        if (typeof params.action === 'string') {
+          action = params.action;
+        }
+      }
       
       const result = await this.workerManager.submitTask({
         id: request.id,

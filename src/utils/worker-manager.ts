@@ -90,7 +90,6 @@ export class WorkerManager extends EventEmitter {
       });
       
       // Send task to worker
-      const taskData = task.data as Record<string, unknown> | undefined;
       worker.postMessage({
         id: task.id,
         type: 'process',

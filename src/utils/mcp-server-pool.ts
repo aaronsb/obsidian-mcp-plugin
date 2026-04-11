@@ -197,7 +197,8 @@ export class MCPServerPool extends EventEmitter {
             const editResult = result as { success: boolean; newContent: string; method: string; error?: string; message?: string };
             
             if (editResult.success) {
-                const path = (args as any).path;
+                const path = (args as { path?: string })?.path;
+                if (!path) throw new Error('Path required for edit operation');
                 await this.obsidianAPI.updateFile(path, editResult.newContent);
                 Debug.log(`✅ [Session ${sessionId}] Applied worker-calculated edit to ${path}`);
                 return {
@@ -218,7 +219,7 @@ export class MCPServerPool extends EventEmitter {
                  return {
                     content: [{
                         type: 'text',
-                        text: `Error: Multiple matches found. Please be more specific.\n${JSON.stringify((editResult as any).matches, null, 2)}`
+                        text: `Error: Multiple matches found. Please be more specific.\n${JSON.stringify((editResult as { matches?: unknown[] }).matches, null, 2)}`
                     }],
                     isError: true
                  };
@@ -464,7 +465,7 @@ export class MCPServerPool extends EventEmitter {
   /**
    * Prepare context for tool execution (e.g. pre-fetching file content for workers)
    */
-  private async prepareContext(toolName: string, args: any): Promise<any> {
+  private async prepareContext(toolName: string, args: Record<string, unknown>): Promise<Record<string, unknown> | undefined> {
     // Only prepare context for tools that we know use workers and need data
     if (toolName.includes('edit')) {
       const path = args.path;

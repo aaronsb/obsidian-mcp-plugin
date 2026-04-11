@@ -99,6 +99,12 @@ interface GraphTraversalResponse {
   nodesVisited: number;
 }
 
+interface WorkerFuzzyMatch {
+  line: string;
+  lineNumber: number;
+  similarity: number;
+}
+
 /**
  * Process a semantic request in the worker thread
  */
@@ -197,9 +203,9 @@ function processEditOperation(action: string, params: Record<string, unknown>, c
 /**
  * Lightweight fuzzy matching for worker thread
  */
-function workerFindFuzzyMatches(content: string, searchText: string, threshold: number): any[] {
+function workerFindFuzzyMatches(content: string, searchText: string, threshold: number): WorkerFuzzyMatch[] {
   const lines = content.split('\n');
-  const matches: any[] = [];
+  const matches: WorkerFuzzyMatch[] = [];
   const normalizedSearch = searchText.toLowerCase().trim();
   const searchWords = normalizedSearch.split(/\s+/).filter(w => w.length > 0);
   
