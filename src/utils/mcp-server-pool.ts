@@ -187,7 +187,22 @@ export class MCPServerPool extends EventEmitter {
           }, context);
 
           if (response.error) {
-            throw response.error;
+            if (response.error instanceof Error) {
+              throw response.error;
+            }
+            let message = 'Unknown error';
+            if (typeof response.error === 'string') {
+              message = response.error;
+            } else if (response.error && typeof response.error === 'object' && 'message' in response.error) {
+              message = String((response.error as { message: unknown }).message);
+            } else {
+              try {
+                message = JSON.stringify(response.error);
+              } catch {
+                message = `Unserializable error (${typeof response.error})`;
+              }
+            }
+            throw new Error(message);
           }
 
           const result = response.result;

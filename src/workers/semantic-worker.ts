@@ -133,7 +133,7 @@ function processEditOperation(action: string, params: Record<string, unknown>, c
   const { path, oldText, newText, fuzzyThreshold = 0.7 } = params;
   
   if (!context?.fileContents || !context.fileContents[path as string]) {
-    throw new Error(`File contents for ${path} required for edit operation`);
+    throw new Error(`File contents for ${String(path)} required for edit operation`);
   }
   
   const content = context.fileContents[path as string];
@@ -165,7 +165,7 @@ function processEditOperation(action: string, params: Record<string, unknown>, c
         return {
           success: false,
           error: 'NO_MATCH',
-          message: `No matches found for "${searchText}" in ${path}`
+          message: `No matches found for "${searchText}" in ${String(path)}`
         };
       }
       
