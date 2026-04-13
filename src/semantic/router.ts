@@ -628,8 +628,8 @@ export class SemanticRouter {
         const sortBy = paramStr(params, 'sortBy');
         const sortOrder = paramStr(params, 'sortOrder') ?? 'asc';
 
-        // Validate batch operation
-        const validationResult = this.validator.validate('batch.combine', { paths, path: destination });
+        // Validate batch operation (skip path validation when returning inline)
+        const validationResult = this.validator.validate('batch.combine', { paths, path: destination || '_inline_' });
         if (!validationResult.valid) {
           throw new ValidationException(
             validationResult.errors || [],
@@ -641,20 +641,18 @@ export class SemanticRouter {
           throw new Error('paths array is required for combine operation');
         }
 
-        if (!destination) {
-          throw new Error('destination is required for combine operation');
-        }
-        
-        // Check if destination exists
-        try {
-          const destFile = await this.api.getFile(destination);
-          if (destFile && !overwrite) {
-            throw new Error(`Destination already exists: ${destination}. Set overwrite=true to replace.`);
+        // When destination is provided, check if it already exists
+        if (destination) {
+          try {
+            const destFile = await this.api.getFile(destination);
+            if (destFile && !overwrite) {
+              throw new Error(`Destination already exists: ${destination}. Set overwrite=true to replace.`);
+            }
+          } catch {
+            // File doesn't exist, which is what we want
           }
-        } catch {
-          // File doesn't exist, which is what we want
         }
-        
+
         // Validate and get all source files
         const sourceFiles = [];
         for (const path of paths) {
@@ -667,12 +665,12 @@ export class SemanticRouter {
           }
           sourceFiles.push({ path, content: file.content });
         }
-        
+
         // Sort files if requested
         if (sortBy) {
           this.sortFiles(sourceFiles, sortBy, sortOrder);
         }
-        
+
         // Combine content
         const combinedContent = [];
         for (const file of sourceFiles) {
@@ -683,16 +681,37 @@ export class SemanticRouter {
           }
           combinedContent.push(file.content);
         }
-        
+
         const finalContent = combinedContent.join(separator);
-        
+
+        // If no destination, return content inline without writing to disk
+        if (!destination) {
+          return {
+            success: true,
+            inline: true,
+            content: finalContent,
+            filesCombined: paths.length,
+            totalSize: finalContent.length,
+            sourceFiles: paths,
+            workflow: {
+              message: `Combined ${paths.length} files inline (no file written)`,
+              suggested_next: [
+                {
+                  description: 'Save to a file',
+                  command: `vault(action='combine', paths=${JSON.stringify(paths)}, destination='combined.md')`
+                }
+              ]
+            }
+          };
+        }
+
         // Create or update destination file
         if (overwrite) {
           await this.api.updateFile(destination, finalContent);
         } else {
           await this.api.createFile(destination, finalContent);
         }
-        
+
         return {
           success: true,
           destination,
