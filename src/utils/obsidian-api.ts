@@ -21,7 +21,10 @@ interface ObsidianAPIMCPServerInfo {
 export interface ObsidianAPIPluginRef {
   settings?: {
     validation?: Partial<ValidationConfig>;
+    httpEnabled?: boolean;
+    httpsEnabled?: boolean;
     httpPort?: number;
+    httpsPort?: number;
   };
   ignoreManager?: MCPIgnoreManager;
   mcpServer?: ObsidianAPIMCPServerInfo;
@@ -121,7 +124,10 @@ export class ObsidianAPI {
         ...baseInfo,
         mcp: {
           running: mcpServer.isServerRunning(),
-          port: pluginSettings?.httpPort ?? 3001,
+          httpEnabled: pluginSettings?.httpEnabled,
+          httpsEnabled: pluginSettings?.httpsEnabled,
+          httpPort: pluginSettings?.httpPort,
+          httpsPort: pluginSettings?.httpsPort,
           connections: mcpServer.getConnectionCount() || 0,
           vault: this.app.vault.getName()
         },
