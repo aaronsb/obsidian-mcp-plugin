@@ -286,6 +286,13 @@ export interface WebFetchResponse {
 export function formatWebFetch(response: WebFetchResponse): string {
   const lines: string[] = [];
 
+  // Extract content string — handle MCP content array format [{type:'text', text:'...'}]
+  const content: string = typeof response.content === 'string'
+    ? response.content
+    : Array.isArray(response.content)
+      ? (response.content as Array<{type: string; text: string}>)[0]?.text ?? JSON.stringify(response.content)
+      : String(response.content);
+
   const title = response.title || 'Web Content';
   lines.push(header(1, `Fetched: ${title}`));
   lines.push('');
@@ -306,12 +313,12 @@ export function formatWebFetch(response: WebFetchResponse): string {
 
   // Truncate very long content
   const maxLength = 5000;
-  if (response.content.length > maxLength) {
-    lines.push(response.content.substring(0, maxLength));
+  if (content.length > maxLength) {
+    lines.push(content.substring(0, maxLength));
     lines.push('');
-    lines.push(`... (${response.content.length - maxLength} more characters)`);
+    lines.push(`... (${content.length - maxLength} more characters)`);
   } else {
-    lines.push(response.content);
+    lines.push(content);
   }
 
   lines.push(summaryFooter());
