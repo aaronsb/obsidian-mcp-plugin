@@ -18,9 +18,16 @@ export interface SessionManagerOptions {
 /**
  * Manages MCP session lifecycle with automatic timeout and recycling
  */
+/** Short-lived mapping from a stale session ID to its replacement */
+interface SessionAlias {
+  targetSessionId: string;
+  expiresAt: number;
+}
+
 export class SessionManager extends EventEmitter {
   private sessions: Map<string, SessionInfo> = new Map();
   private sessionOrder: string[] = []; // Track session order for LRU eviction
+  private aliases: Map<string, SessionAlias> = new Map();
   private options: SessionManagerOptions;
   private cleanupInterval?: ReturnType<typeof setInterval>;
 
@@ -55,6 +62,7 @@ export class SessionManager extends EventEmitter {
     }
     this.sessions.clear();
     this.sessionOrder = [];
+    this.aliases.clear();
     Debug.log('🔐 Session manager stopped');
   }
 
@@ -164,6 +172,44 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
+   * Create a short-lived alias mapping an old (stale) session ID to a new one.
+   * Allows clients that cache old session IDs to converge on the new session.
+   */
+  createAlias(oldSessionId: string, newSessionId: string, ttlMs: number = 300_000): void {
+    this.aliases.set(oldSessionId, {
+      targetSessionId: newSessionId,
+      expiresAt: Date.now() + ttlMs
+    });
+    Debug.log(`🔗 Session alias created: ${oldSessionId} → ${newSessionId} (TTL: ${Math.round(ttlMs / 1000)}s)`);
+  }
+
+  /**
+   * Resolve a session alias. Returns the target session ID if the alias exists
+   * and has not expired, otherwise undefined. Expired aliases are removed on access.
+   */
+  resolveAlias(sessionId: string): string | undefined {
+    const alias = this.aliases.get(sessionId);
+    if (!alias) return undefined;
+    if (Date.now() > alias.expiresAt) {
+      this.aliases.delete(sessionId);
+      return undefined;
+    }
+    return alias.targetSessionId;
+  }
+
+  /**
+   * Get the number of active (non-expired) aliases.
+   */
+  getAliasCount(): number {
+    const now = Date.now();
+    let count = 0;
+    for (const alias of this.aliases.values()) {
+      if (now <= alias.expiresAt) count++;
+    }
+    return count;
+  }
+
+  /**
    * Get session statistics
    */
   getStats(): {
@@ -244,7 +290,7 @@ export class SessionManager extends EventEmitter {
 
     for (const [sessionId, session] of this.sessions) {
       const idleTime = now - session.lastActivityAt;
-      
+
       if (idleTime > this.options.sessionTimeout) {
         expiredSessions.push(sessionId);
       }
@@ -252,10 +298,24 @@ export class SessionManager extends EventEmitter {
 
     if (expiredSessions.length > 0) {
       Debug.log(`🧹 Cleaning up ${expiredSessions.length} expired sessions`);
-      
+
       for (const sessionId of expiredSessions) {
         this.evictSession(sessionId, 'timeout');
       }
+    }
+
+    // Sweep expired aliases
+    const expiredAliases: string[] = [];
+    for (const [aliasId, alias] of this.aliases) {
+      if (now > alias.expiresAt) {
+        expiredAliases.push(aliasId);
+      }
+    }
+    for (const aliasId of expiredAliases) {
+      this.aliases.delete(aliasId);
+    }
+    if (expiredAliases.length > 0) {
+      Debug.log(`🧹 Cleaned up ${expiredAliases.length} expired session aliases`);
     }
   }
 

@@ -3,6 +3,7 @@ import cors from 'cors';
 import { App, Notice } from 'obsidian';
 import { createServer as createHttpServer, Server, IncomingMessage, ServerResponse } from 'http';
 import { Server as HttpsServer } from 'https';
+import { PassThrough } from 'stream';
 import { Server as MCPServer } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
@@ -59,22 +60,6 @@ interface ServerWithTimeouts {
   setTimeout: (msecs: number) => unknown;
 }
 
-/** Null response shim for internal initialize calls */
-interface NullResponse {
-  writeHead: (status: number, headers?: Record<string, string>) => void;
-  setHeader: (k: string, v: string) => void;
-  getHeader: (k: string) => string | undefined;
-  statusCode: number;
-  headersSent: boolean;
-  write: (chunk: unknown) => void;
-  end: (data?: unknown) => void;
-  on: (event: string, handler: (...args: unknown[]) => void) => void;
-  once: (event: string, handler: (...args: unknown[]) => void) => void;
-  status: (v: number) => NullResponse;
-  json: (body: unknown) => void;
-  send: (body?: unknown) => void;
-}
-
 /** Connection pool stats response */
 interface ConnectionPoolStatsResponse {
   enabled: boolean;
@@ -108,6 +93,7 @@ export class MCPHttpServer {
   private sessionManager?: SessionManager;
   private certificateManager: CertificateManager | null;
   private isHttps: boolean = false;
+  private startTime: number = Date.now();
 
   constructor(obsidianApp: App, port: number = 3001, plugin?: MCPPluginRef) {
     this.obsidianApp = obsidianApp;
@@ -360,7 +346,13 @@ export class MCPHttpServer {
 
     // Handle session deletion
     this.app.delete('/mcp', (req, res) => {
-      const sessionId = req.headers['mcp-session-id'] as string;
+      let sessionId = req.headers['mcp-session-id'] as string;
+
+      // Resolve alias if the session ID is stale
+      if (sessionId && !this.transports.has(sessionId) && this.sessionManager) {
+        const aliasTarget = this.sessionManager.resolveAlias(sessionId);
+        if (aliasTarget) sessionId = aliasTarget;
+      }
 
       if (sessionId && this.transports.has(sessionId)) {
         const transport = this.transports.get(sessionId)!;
@@ -379,12 +371,17 @@ export class MCPHttpServer {
     try {
       const request = req.body as JsonRpcRequest | undefined;
 
-      // Get or create session ID
-      const sessionId = req.headers['mcp-session-id'] as string | undefined;
+      // Get session ID from header; may be resolved via alias below
+      let sessionId = req.headers['mcp-session-id'] as string | undefined;
+      const originalSessionId = sessionId; // preserve for alias tracking
       Debug.log(`📨 MCP Request: ${request?.method ?? 'unknown'}${sessionId ? ` [Session: ${sessionId}]` : ''}`, request?.params);
+
       // Quick path: lightweight ping to keep session alive
       if (request?.method === 'session/ping' || request?.method === 'status/ping') {
         if (sessionId && this.sessionManager) {
+          // Try alias resolution for pings too
+          const aliasTarget = this.sessionManager.resolveAlias(sessionId);
+          if (aliasTarget) sessionId = aliasTarget;
           this.sessionManager.touchSession(sessionId);
         }
         if (sessionId) {
@@ -393,40 +390,30 @@ export class MCPHttpServer {
         res.status(200).json({ jsonrpc: '2.0', id: request?.id ?? null, result: { ok: true, sessionId: sessionId || null } });
         return;
       }
+
+      // Resolve session aliases before the main branching logic.
+      // If the client sends a stale session ID that was previously healed,
+      // the alias resolves it to the active session without re-running compat init.
+      let resolvedFromAlias = false;
+      if (sessionId && this.sessionManager && !this.transports.has(sessionId)) {
+        const aliasTarget = this.sessionManager.resolveAlias(sessionId);
+        if (aliasTarget && this.transports.has(aliasTarget)) {
+          Debug.log(`🔗 Resolved session alias: ${sessionId} → ${aliasTarget}`);
+          sessionId = aliasTarget;
+          resolvedFromAlias = true;
+        }
+      }
+
       let transport: StreamableHTTPServerTransport | undefined;
       let effectiveSessionId!: string; // will be set in the branches below
       if (sessionId) {
         effectiveSessionId = sessionId;
       }
-          let mcpServer: MCPServer;
+      let mcpServer: MCPServer;
 
-      // Helper: create a null response shim so we can send an internal initialize
-      const createNullRes = (): NullResponse => {
-        const headers: Record<string, string> = {};
-        let sent = false;
-        let code = 200;
-        const resp: NullResponse = {
-          // Node-style response interface (minimal no-op implementation)
-          writeHead: (_status: number, _headers?: Record<string, string>) => { code = _status; sent = true; },
-          setHeader: (k: string, v: string) => { headers[k] = v; },
-          getHeader: (k: string) => headers[k],
-          get statusCode() { return code; },
-          set statusCode(v: number) { code = v; },
-          get headersSent() { return sent; },
-          write: (_chunk: unknown) => { /* no-op */ },
-          end: (_data?: unknown) => { sent = true; },
-          on: (_event: string, _handler: (...args: unknown[]) => void) => { /* no-op */ },
-          once: (_event: string, _handler: (...args: unknown[]) => void) => { /* no-op */ },
-          // Express-like helpers (used by some wrappers)
-          status: (v: number) => { code = v; return resp; },
-          json: (_body: unknown) => { sent = true; },
-          send: (_body?: unknown) => { sent = true; },
-        };
-        return resp;
-      };
       // When a non-initialize request arrives without an active transport,
-      // we return a JSON-RPC error instructing the client to initialize using
-      // the provided session ID. This avoids fragile internal auto-initialize.
+      // we attempt an internal compat-initialize. If that fails, we return
+      // a structured JSON-RPC error instead of a vague HTTP 400.
       let requireInitializeNotice = false;
 
       // Helper: register transport with lifecycle hooks
@@ -459,18 +446,20 @@ export class MCPHttpServer {
       if (sessionId && this.transports.has(sessionId)) {
           // Use existing transport for this session
           transport = this.transports.get(sessionId)!;
-          
+
           // Get the server for this session (it should already exist)
           mcpServer = this.mcpServerPool.getOrCreateServer(sessionId);
-          
+
           // Update session activity
           if (this.sessionManager) {
             this.sessionManager.touchSession(sessionId);
           }
         } else if (sessionId && this.sessionManager) {
-          // Session ID provided but no active transport
-          // Only allow re-create on initialize; otherwise signal explicit session expiration
+          // Session ID provided but no active transport.
+          // For initialize requests: recreate transport directly.
+          // For non-initialize: create transport and attempt compat init.
           if (isInitializeRequest(request)) {
+            // Initialize always recovers — ignore stale session state
             const session = this.sessionManager.getOrCreateSession(sessionId);
             mcpServer = this.mcpServerPool.getOrCreateServer(sessionId);
             effectiveSessionId = sessionId;
@@ -483,8 +472,8 @@ export class MCPHttpServer {
             this.connectionCount++;
             Debug.log(`♻️ Recreated transport for session ${sessionId} (requests: ${session.requestCount})`);
           } else {
-            // Create transport and require client initialize on next call
-            const newSessionId = sessionId; // reuse provided id (guaranteed by branch)
+            // Create transport and attempt compat init below
+            const newSessionId = sessionId;
             mcpServer = this.mcpServerPool.getOrCreateServer(newSessionId);
             effectiveSessionId = newSessionId;
             transport = new StreamableHTTPServerTransport({
@@ -499,29 +488,29 @@ export class MCPHttpServer {
         } else if (!sessionId && isInitializeRequest(request)) {
           // New initialization request - create new transport with session
           effectiveSessionId = randomUUID();
-          
+
           // Get or create server for this session
           mcpServer = this.mcpServerPool.getOrCreateServer(effectiveSessionId);
-          
+
           transport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => effectiveSessionId
           });
-          
+
           // Connect the MCP server to this transport
           await mcpServer.connect(transport);
-          
+
           // Store the transport for future requests
           this.transports.set(effectiveSessionId, transport);
           attachTransportHandlers(effectiveSessionId, transport);
           this.connectionCount++;
-          
+
           // Register session with manager if enabled
           if (this.sessionManager) {
             this.sessionManager.getOrCreateSession(effectiveSessionId);
           }
         } else {
           // No or unknown session on non-initialize request.
-          // Generate a session (or reuse provided) and require client initialize next.
+          // Generate a session (or reuse provided) and attempt compat init.
           const newSessionId = sessionId ?? randomUUID();
           mcpServer = this.mcpServerPool.getOrCreateServer(newSessionId);
           effectiveSessionId = newSessionId;
@@ -536,21 +525,14 @@ export class MCPHttpServer {
         }
 
       // Compatibility: if we just created a transport for a non-initialize call,
-      // attempt a safe, internal initialize to avoid client retry loops.
+      // attempt a proper internal initialize using real Node.js HTTP objects
+      // so the SDK's transport transitions to _initialized=true.
       if (requireInitializeNotice && transport && !isInitializeRequest(request)) {
-        // Clone req to ensure session header is present for compat initialize
-        const compatReq = {
-          ...req,
-          headers: {
-            ...req.headers,
-            'mcp-session-id': effectiveSessionId
-          }
-        } as unknown as IncomingMessage;
         const versionsToTry = ['2025-06-18', '2024-11-05', '1.0'];
         let initOk = false;
         for (const ver of versionsToTry) {
           try {
-            const initReq = {
+            const initBody = {
               jsonrpc: '2.0',
               id: '__compat_init__',
               method: 'initialize',
@@ -559,35 +541,57 @@ export class MCPHttpServer {
                 capabilities: {},
                 clientInfo: { name: 'obsidian-mcp-compat', version: getVersion() }
               }
-            } as unknown;
-            await transport.handleRequest(compatReq, createNullRes() as unknown as ServerResponse, initReq);
-            initOk = true;
-            Debug.log(`Compat initialize succeeded with protocolVersion=${ver}`);
-            break;
+            };
+            const { req: initReq, res: initRes } = this.createCompatInitPair(effectiveSessionId, initBody);
+            await transport.handleRequest(initReq, initRes, initBody);
+            // Verify the init actually succeeded by checking response status
+            if (initRes.statusCode >= 200 && initRes.statusCode < 300) {
+              initOk = true;
+              Debug.log(`♻️ Session healed: compat initialize succeeded (protocolVersion=${ver}, session=${effectiveSessionId})`);
+              break;
+            } else {
+              Debug.log(`⚠️ Compat initialize returned status ${initRes.statusCode} (protocolVersion=${ver})`);
+            }
           } catch (e) {
-            Debug.error(`Compat initialize attempt failed (protocolVersion=${ver}):`, e);
+            Debug.error(`⚠️ Compat initialize attempt failed (protocolVersion=${ver}):`, e);
           }
         }
-        // Fail-open: even if initialize failed, proceed with the original request
-        // to avoid client retry loops. The transport/server may still reject it,
-        // but this gives us a concrete server error to act on.
-        requireInitializeNotice = false;
-        if (!initOk) {
-          Debug.log('Compat initialize failed; proceeding without explicit initialize (fail-open).');
+        if (initOk) {
+          requireInitializeNotice = false;
+          // Create alias so subsequent requests with the original stale ID
+          // resolve directly without re-running compat init
+          if (originalSessionId && originalSessionId !== effectiveSessionId && this.sessionManager) {
+            this.sessionManager.createAlias(originalSessionId, effectiveSessionId);
+          }
+          // Register the healed session with the session manager
+          if (this.sessionManager) {
+            this.sessionManager.getOrCreateSession(effectiveSessionId);
+          }
+        } else {
+          Debug.log(`⚠️ Session recovery failed for ${request?.method ?? 'unknown'} (session=${effectiveSessionId})`);
         }
       }
 
+      // Always set canonical session ID header so clients can converge
+      if (effectiveSessionId) {
+        res.setHeader('Mcp-Session-Id', effectiveSessionId);
+      }
+
       // If initialization is still required and this isn't an initialize request,
-      // instruct the client to initialize for this session.
+      // return a structured JSON-RPC error with recovery instructions.
       if (requireInitializeNotice && !isInitializeRequest(request)) {
         const id = request?.id ?? null;
-        res.setHeader('Mcp-Session-Id', effectiveSessionId);
-        res.status(400).json({
+        res.status(200).json({
           jsonrpc: '2.0',
           error: {
-            code: -32000,
-            message: 'Bad Request: Server not initialized',
-            data: { sessionId: effectiveSessionId }
+            code: -32001,
+            message: 'MCP session expired or unknown',
+            data: {
+              reason: 'unknown_session',
+              recoverable: true,
+              retry: 'initialize',
+              sessionId: effectiveSessionId
+            }
           },
           id
         });
@@ -597,12 +601,18 @@ export class MCPHttpServer {
       // Safety: ensure we have a transport before forwarding
       if (!transport) {
         const id = request?.id ?? null;
-        if (effectiveSessionId) {
-          res.setHeader('Mcp-Session-Id', effectiveSessionId);
-        }
         res.status(200).json({
           jsonrpc: '2.0',
-          error: { code: -32001, message: 'No active transport/session. Please initialize and retry.', data: effectiveSessionId ? { sessionId: effectiveSessionId } : undefined },
+          error: {
+            code: -32001,
+            message: 'MCP session expired or unknown',
+            data: {
+              reason: 'no_transport',
+              recoverable: true,
+              retry: 'initialize',
+              sessionId: effectiveSessionId || undefined
+            }
+          },
           id
         });
         return;
@@ -614,8 +624,13 @@ export class MCPHttpServer {
         res as unknown as ServerResponse,
         request as unknown
       );
-      
-      Debug.log('📤 MCP Response sent via transport');
+
+      // If the response was handled by an alias-resolved session, log it
+      if (resolvedFromAlias) {
+        Debug.log(`📤 MCP Response sent via alias-resolved session (original=${originalSessionId})`);
+      } else {
+        Debug.log('📤 MCP Response sent via transport');
+      }
 
     } catch (error) {
       Debug.error('❌ MCP request error:', error);
@@ -630,6 +645,33 @@ export class MCPHttpServer {
         });
       }
     }
+  }
+
+  /**
+   * Create a proper Node.js IncomingMessage/ServerResponse pair for internal
+   * compat-initialize calls. The SDK's StreamableHTTPServerTransport uses
+   * Hono's getRequestListener which requires real Node.js HTTP objects —
+   * a minimal shim is insufficient.
+   */
+  private createCompatInitPair(sessionId: string, body: unknown): { req: IncomingMessage; res: ServerResponse } {
+    const socket = new PassThrough() as unknown as import('net').Socket;
+    const initReq = new IncomingMessage(socket);
+    initReq.method = 'POST';
+    initReq.url = '/mcp';
+    initReq.headers = {
+      'content-type': 'application/json',
+      'mcp-session-id': sessionId
+    };
+    // Push the body as stream data so the request is readable
+    const bodyStr = JSON.stringify(body);
+    initReq.push(bodyStr);
+    initReq.push(null);
+
+    const initRes = new ServerResponse(initReq);
+    // Pipe response output to a PassThrough to prevent writing to a real socket
+    initRes.assignSocket(new PassThrough() as unknown as import('net').Socket);
+
+    return { req: initReq, res: initRes };
   }
 
 
@@ -748,6 +790,14 @@ export class MCPHttpServer {
 
   getPort(): number {
     return this.port;
+  }
+
+  getStartTime(): number {
+    return this.startTime;
+  }
+
+  getSessionManager(): SessionManager | undefined {
+    return this.sessionManager;
   }
 
   isServerRunning(): boolean {

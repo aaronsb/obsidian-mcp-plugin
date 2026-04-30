@@ -9,7 +9,7 @@ Thanks for your interest in contributing! Since this is a small project, we keep
    - What actually happened
    - Steps to reproduce
 
-2. **Want to fix something?** 
+2. **Want to fix something?**
    - Fork the repo
    - Make your changes
    - Test locally with BRAT
@@ -49,6 +49,7 @@ npm test
 ## Commit Messages
 
 Keep them clear and descriptive:
+
 - `fix: Prevent path traversal in file operations`
 - `feat: Add rate limiting to API endpoints`
 - `docs: Update security guidelines`
@@ -57,6 +58,7 @@ Keep them clear and descriptive:
 ## Current Focus Areas
 
 Check our [GitHub Issues](https://github.com/aaronsb/obsidian-mcp-plugin/issues) for:
+
 - 🔴 Security vulnerabilities (highest priority)
 - 🟠 Input validation improvements
 - 🟡 Code quality refactoring

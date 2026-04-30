@@ -15,6 +15,8 @@ import { InputValidator, ValidationException, ValidationConfig } from '../valida
 interface ObsidianAPIMCPServerInfo {
   isServerRunning(): boolean;
   getConnectionCount(): number;
+  getStartTime?(): number;
+  getSessionManager?(): { getStats(): { activeSessions: number; totalRequests: number }; getAliasCount(): number } | undefined;
 }
 
 /** Minimal plugin interface for ObsidianAPI dependency */
@@ -117,13 +119,23 @@ export class ObsidianAPI {
     if (this.plugin?.mcpServer) {
       const mcpServer = this.plugin.mcpServer;
       const pluginSettings = this.plugin.settings;
+      const sessionManager = mcpServer.getSessionManager?.();
+      const sessionStats = sessionManager?.getStats();
       return {
         ...baseInfo,
         mcp: {
           running: mcpServer.isServerRunning(),
           port: pluginSettings?.httpPort ?? 3001,
           connections: mcpServer.getConnectionCount() || 0,
-          vault: this.app.vault.getName()
+          vault: this.app.vault.getName(),
+          ...(mcpServer.getStartTime && { serverUptime: Math.round((Date.now() - mcpServer.getStartTime()) / 1000) }),
+          ...(sessionStats && {
+            sessionHealth: {
+              activeSessions: sessionStats.activeSessions,
+              totalRequests: sessionStats.totalRequests,
+              activeAliases: sessionManager?.getAliasCount() ?? 0
+            }
+          })
         },
         ...(dailyNotesFolder !== undefined && { dailyNotesFolder })
       };

@@ -127,3 +127,6 @@ test-concurrent-sessions.js
 
 # Claude configuration directory
 .claude/
+
+# Serena AI directory
+.serena/
