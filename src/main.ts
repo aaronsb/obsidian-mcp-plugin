@@ -1412,32 +1412,14 @@ class MCPSettingTab extends PluginSettingTab {
 		resourcesList.createEl('li', {text: '🔄 Obsidian://session-info - active mcp sessions and statistics'});
 		
 		new Setting(info).setName("Claude code connection").setHeading();
-		const commandExample = info.createDiv('protocol-command-example');
-		const codeEl = commandExample.createEl('code');
-		codeEl.classList.add('mcp-code-block');
-		
+		info.createEl('p', {
+			text: 'Add to ~/.claude/settings.json (user scope) or .mcp.json (project scope):'
+		});
+
 		// Get correct protocol and port based on HTTPS setting
 		const protocol = this.plugin.settings.httpsEnabled ? 'https' : 'http';
 		const port = this.plugin.settings.httpsEnabled ? this.plugin.settings.httpsPort : this.plugin.settings.httpPort;
 		const baseUrl = `${protocol}://localhost:${port}`;
-		
-		const claudeCommand = this.plugin.settings.dangerouslyDisableAuth ?
-			`claude mcp add --transport http obsidian ${baseUrl}/mcp` :
-			`claude mcp add --transport http obsidian ${baseUrl}/mcp --header "Authorization: Bearer ${this.plugin.settings.apiKey}"`;
-
-		codeEl.textContent = claudeCommand;
-
-		// Add copy button
-		this.addCopyButton(commandExample, claudeCommand);
-		
-		new Setting(info).setName("Client configuration (claude desktop, cline, etc.)").setHeading();
-		info.createEl('p', {
-			text: 'Add this to your mcp client configuration file:'
-		});
-
-		const configExample = info.createDiv('desktop-config-example');
-		const configEl = configExample.createEl('pre');
-		configEl.classList.add('mcp-config-example');
 
 		const vaultName = this.app.vault.getName();
 		const configJson = this.plugin.settings.dangerouslyDisableAuth ? {
@@ -1462,6 +1444,27 @@ class MCPSettingTab extends PluginSettingTab {
 				}
 			}
 		};
+
+		const claudeCodeConfig = info.createDiv('claude-code-config-example');
+		const claudeCodeConfigEl = claudeCodeConfig.createEl('pre');
+		claudeCodeConfigEl.classList.add('mcp-config-example');
+		const claudeCodeConfigText = JSON.stringify(configJson, null, 2);
+		claudeCodeConfigEl.textContent = claudeCodeConfigText;
+		this.addCopyButton(claudeCodeConfig, claudeCodeConfigText);
+
+		info.createEl('p', {
+			text: 'Do not use "claude mcp add --header" \u2014 it echoes your API key to stdout and system logs. Edit the config file directly.',
+			cls: 'mcp-security-warning'
+		});
+
+		new Setting(info).setName("Client configuration (claude desktop, cline, etc.)").setHeading();
+		info.createEl('p', {
+			text: 'Add this to your mcp client configuration file:'
+		});
+
+		const configExample = info.createDiv('desktop-config-example');
+		const configEl = configExample.createEl('pre');
+		configEl.classList.add('mcp-config-example');
 
 		const configJsonText = JSON.stringify(configJson, null, 2);
 		configEl.textContent = configJsonText;
@@ -1597,21 +1600,24 @@ class MCPSettingTab extends PluginSettingTab {
 			}
 		}
 		
-		// Update protocol information section with proper auth handling
-		const protocolSection = document.querySelector('.protocol-command-example');
-		if (protocolSection) {
-			const codeBlock = protocolSection.querySelector('code');
-			if (codeBlock && info) {
+		// Update Claude Code config section with proper auth handling
+		const claudeCodeSection = document.querySelector('.claude-code-config-example');
+		if (claudeCodeSection) {
+			const preBlock = claudeCodeSection.querySelector('pre');
+			if (preBlock && info) {
 				// Get correct protocol and port based on HTTPS setting
 				const protocol = this.plugin.settings.httpsEnabled ? 'https' : 'http';
 				const port = this.plugin.settings.httpsEnabled ? this.plugin.settings.httpsPort : info.port;
 				const baseUrl = `${protocol}://localhost:${port}`;
-				
-				const claudeCommand = this.plugin.settings.dangerouslyDisableAuth ? 
-					`claude mcp add --transport http obsidian ${baseUrl}/mcp` :
-					`claude mcp add --transport http obsidian ${baseUrl}/mcp --header "Authorization: Bearer ${this.plugin.settings.apiKey}"`;
-				
-				codeBlock.textContent = claudeCommand;
+				const vaultName = this.app.vault.getName();
+
+				const configJson = this.plugin.settings.dangerouslyDisableAuth ? {
+					mcpServers: { [vaultName]: { transport: { type: "http", url: `${baseUrl}/mcp` } } }
+				} : {
+					mcpServers: { [vaultName]: { transport: { type: "http", url: `${baseUrl}/mcp`, headers: { Authorization: `Bearer ${this.plugin.settings.apiKey}` } } } }
+				};
+
+				preBlock.textContent = JSON.stringify(configJson, null, 2);
 			}
 		}
 		

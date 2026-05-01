@@ -41,12 +41,7 @@ Traditional file access gives AI a narrow view - one document at a time. This pl
 
 ### 2. Configure Your AI Client
 
-**Claude Code**
-```bash
-claude mcp add --transport http obsidian http://localhost:3001/mcp --header "Authorization: Bearer YOUR_API_KEY"
-```
-
-**Claude Desktop, Cline, and other MCP clients**
+**Claude Code** — add to `~/.claude/settings.json` (user scope) or `.mcp.json` (project scope):
 ```json
 {
   "mcpServers": {
@@ -63,7 +58,66 @@ claude mcp add --transport http obsidian http://localhost:3001/mcp --header "Aut
 }
 ```
 
-Copy the ready-to-use config with your API key from the plugin settings page.
+For HTTPS, use `https://localhost:3443/mcp` as the URL instead. Both `--transport http` and `--transport sse` work once the plugin's self-signed certificate is trusted — see [Trusting the self-signed certificate](#trusting-the-self-signed-certificate) below. **Claude Code runs on Bun and does not read the macOS system keychain**, so you will need to set `NODE_EXTRA_CA_CERTS`.
+
+> [!WARNING]
+> **Do not use `claude mcp add --header` to register this server.** The CLI echoes resolved header values to stdout, which exposes your API key to any parent process — including AI agents that capture tool output as context. On macOS, spawned MCP child process arguments are also logged to the unified log. Edit the config file directly instead.
+
+**Claude Desktop, Cline, and other MCP clients** — add to your client's MCP config file:
+```json
+{
+  "mcpServers": {
+    "obsidian-vault": {
+      "transport": {
+        "type": "http",
+        "url": "http://localhost:3001/mcp",
+        "headers": {
+          "Authorization": "Bearer YOUR_API_KEY"
+        }
+      }
+    }
+  }
+}
+```
+
+Copy the ready-to-use config with your API key from the plugin settings page. The same JSON format works for all MCP clients — only the config file location differs.
+
+### Trusting the self-signed certificate
+
+The plugin's HTTPS server uses a self-signed certificate auto-generated on first start and stored under `.obsidian/plugins/semantic-vault-mcp/certificates/default.crt` inside your vault. MCP clients reject self-signed certificates by default, so you need to explicitly trust it before connecting over HTTPS. Pick the method that matches your client runtime:
+
+**macOS Keychain (for clients that use the system trust store):**
+```bash
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain \
+  /path/to/vault/.obsidian/plugins/semantic-vault-mcp/certificates/default.crt
+```
+
+This works for most clients on macOS (Claude Desktop, browser-based tools, anything built on Node with `--use-system-ca` enabled).
+
+**`NODE_EXTRA_CA_CERTS` (required for Claude Code and other Bun-based runtimes):**
+
+Claude Code runs on [Bun](https://bun.sh), which does **not** consult the macOS system keychain for TLS trust. Trusting the certificate via Keychain Access alone has no effect — Bun only honors certificates listed in the `NODE_EXTRA_CA_CERTS` environment variable. This is almost always the real reason an HTTPS connection from Claude Code to the plugin fails.
+
+Add the plugin certificate to `NODE_EXTRA_CA_CERTS`:
+
+```bash
+# If you already maintain a combined CA bundle, append the plugin cert to it:
+cat /path/to/existing-ca.pem \
+  /path/to/vault/.obsidian/plugins/semantic-vault-mcp/certificates/default.crt \
+  > /etc/ssl/certs/extra-ca-certs.pem
+export NODE_EXTRA_CA_CERTS=/etc/ssl/certs/extra-ca-certs.pem
+
+# If you don't have an existing bundle, point directly at the plugin cert:
+export NODE_EXTRA_CA_CERTS=/path/to/vault/.obsidian/plugins/semantic-vault-mcp/certificates/default.crt
+```
+
+Set it globally so every tool — including Claude Code launched from the macOS dock — picks it up:
+
+```bash
+launchctl setenv NODE_EXTRA_CA_CERTS /etc/ssl/certs/extra-ca-certs.pem
+```
+
+You will need to re-run these commands whenever the plugin regenerates its certificate (for example, after the 1-year validity expires).
 
 ### 3. Start Using
 

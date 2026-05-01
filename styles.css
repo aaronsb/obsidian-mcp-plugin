@@ -165,6 +165,13 @@
     margin-bottom: 10px;
 }
 
+.mcp-security-warning {
+    color: var(--text-warning);
+    font-size: 0.85em;
+    margin-top: 4px;
+    margin-bottom: 10px;
+}
+
 .mcp-auth-note {
     margin-bottom: 20px;
 }

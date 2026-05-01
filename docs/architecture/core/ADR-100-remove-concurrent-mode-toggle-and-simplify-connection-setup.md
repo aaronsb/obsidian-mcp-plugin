@@ -33,10 +33,24 @@ Remove the `enableConcurrentSessions` setting and the single-server code path. T
 
 ### 2. Simplify connection templates to two options
 
-**Claude Code** — a ready-to-copy `claude mcp add` command:
+**Claude Code** — add to `~/.claude/settings.json` (user scope) or `.mcp.json` (project scope):
+```json
+{
+  "mcpServers": {
+    "obsidian-vault": {
+      "transport": {
+        "type": "http",
+        "url": "http://localhost:3001/mcp",
+        "headers": {
+          "Authorization": "Bearer <key>"
+        }
+      }
+    }
+  }
+}
 ```
-claude mcp add --transport http obsidian http://localhost:3001/mcp --header "Authorization: Bearer <key>"
-```
+
+> Note: The previous recommendation of `claude mcp add --header` is deprecated because the CLI echoes resolved header values to stdout, exposing the bearer token to any process capturing output (including AI agents). On macOS, process arguments also appear in the unified log.
 
 **Other MCP clients** — a single JSON template using standard header-based auth:
 ```json
