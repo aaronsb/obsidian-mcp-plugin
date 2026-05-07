@@ -20,6 +20,31 @@ import { SessionManager } from './utils/session-manager';
 import { MCPServerPool } from './utils/mcp-server-pool';
 import { CertificateManager, CertificateConfig } from './utils/certificate-manager';
 
+/** Maximum number of compat-initialize recovery attempts before returning error */
+export const MAX_RECOVERY_ATTEMPTS = 3;
+/** Base delay between recovery attempts in milliseconds (multiplied by attempt number) */
+export const RECOVERY_BACKOFF_MS = 500;
+
+/**
+ * Retry an async operation with linear backoff.
+ * Returns `{ result, attempts }` on success, or `null` if all attempts fail.
+ */
+export async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  opts: { maxAttempts: number; backoffMs: number; shouldRetry: (result: T) => boolean }
+): Promise<{ result: T; attempts: number } | null> {
+  for (let attempt = 0; attempt < opts.maxAttempts; attempt++) {
+    if (attempt > 0) {
+      await new Promise(resolve => setTimeout(resolve, attempt * opts.backoffMs));
+    }
+    const result = await fn();
+    if (!opts.shouldRetry(result)) {
+      return { result, attempts: attempt + 1 };
+    }
+  }
+  return null;
+}
+
 /** Minimal plugin interface for MCPHttpServer.
  * Includes fields from SecurePluginRef and ObsidianAPIPluginRef so the same object
  * can be passed through the constructor chain. */
@@ -547,33 +572,44 @@ export class MCPHttpServer {
           }
         } as unknown as IncomingMessage;
         const versionsToTry = ['2025-06-18', '2024-11-05', '1.0'];
-        let initOk = false;
-        for (const ver of versionsToTry) {
-          try {
-            const initReq = {
-              jsonrpc: '2.0',
-              id: '__compat_init__',
-              method: 'initialize',
-              params: {
-                protocolVersion: ver,
-                capabilities: {},
-                clientInfo: { name: 'obsidian-mcp-compat', version: getVersion() }
+
+        // Worst case: MAX_RECOVERY_ATTEMPTS × versionsToTry.length init requests (~1500ms)
+        const retryResult = await retryWithBackoff(
+          async () => {
+            for (const ver of versionsToTry) {
+              try {
+                const initReq = {
+                  jsonrpc: '2.0',
+                  id: '__compat_init__',
+                  method: 'initialize',
+                  params: {
+                    protocolVersion: ver,
+                    capabilities: {},
+                    clientInfo: { name: 'obsidian-mcp-compat', version: getVersion() }
+                  }
+                } as unknown;
+                await transport.handleRequest(compatReq, createNullRes() as unknown as ServerResponse, initReq);
+                Debug.log(`Compat initialize succeeded with protocolVersion=${ver}`);
+                return { ok: true };
+              } catch (e) {
+                Debug.error(`Compat initialize attempt failed (protocolVersion=${ver}):`, e);
               }
-            } as unknown;
-            await transport.handleRequest(compatReq, createNullRes() as unknown as ServerResponse, initReq);
-            initOk = true;
-            Debug.log(`Compat initialize succeeded with protocolVersion=${ver}`);
-            break;
-          } catch (e) {
-            Debug.error(`Compat initialize attempt failed (protocolVersion=${ver}):`, e);
+            }
+            return { ok: false };
+          },
+          {
+            maxAttempts: MAX_RECOVERY_ATTEMPTS,
+            backoffMs: RECOVERY_BACKOFF_MS,
+            shouldRetry: (result) => !result.ok
           }
-        }
+        );
+
         // Fail-open: even if initialize failed, proceed with the original request
         // to avoid client retry loops. The transport/server may still reject it,
         // but this gives us a concrete server error to act on.
         requireInitializeNotice = false;
-        if (!initOk) {
-          Debug.log('Compat initialize failed; proceeding without explicit initialize (fail-open).');
+        if (!retryResult) {
+          Debug.log(`Compat initialize failed after ${MAX_RECOVERY_ATTEMPTS} attempts; proceeding without explicit initialize (fail-open).`);
         }
       }
 
