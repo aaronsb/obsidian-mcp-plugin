@@ -40,6 +40,9 @@ jobs:
       - name: Build plugin
         run: npm run build
 
+      - name: Build MCPB bundle
+        run: node scripts/build-mcpb.mjs
+
       - name: Get version from manifest
         id: version
         run: |
@@ -77,4 +80,5 @@ jobs:
             --prerelease \
             main.js \
             manifest.json \
-            styles.css
+            styles.css \
+            "obsidian-mcp-${{ steps.version.outputs.version }}.mcpb"

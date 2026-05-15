@@ -1,5 +1,5 @@
 .PHONY: help build dev test lint lint-fix check clean install \
-       release-patch release-minor release-major release publish sync-version
+       release-patch release-minor release-major release publish sync-version mcpb
 
 MIN_OBSIDIAN := 0.15.0
 
@@ -76,7 +76,10 @@ _commit-and-publish:
 # --- Utility ---
 
 clean: ## Remove build artifacts
-	rm -rf main.js main.js.map dist/
+	rm -rf main.js main.js.map dist/ obsidian-mcp-*.mcpb
 
 sync-version: ## Sync version from package.json to manifest.json and version.ts
 	node sync-version.mjs
+
+mcpb: ## Build MCPB bundle (obsidian-mcp-<version>.mcpb) for Claude Desktop
+	node scripts/build-mcpb.mjs
