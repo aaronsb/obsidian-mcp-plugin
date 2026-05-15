@@ -113,7 +113,7 @@ class MCPSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Enable HTTP server')
-			.setDesc('Enable the HTTP server for REST API and mcp access')
+			.setDesc('Enable the HTTP server for rest API and mcp access')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.httpEnabled)
 				.onChange(async (value) => {

@@ -273,6 +273,90 @@ describe('Dataview Integration', () => {
       expect(result.metadata.custom.priority).toBe('high');
     });
 
+    test('should serialize Luxon DateTime values from listPages without crashing', async () => {
+      // Regression for #123 bug 2: Dataview emits Luxon DateTime objects
+      // (toISO() returns string|null) and not native Date.toISOString().
+      const luxonDate = (iso: string) => ({ toISO: () => iso });
+      const app = new MockApp(true, true);
+      const api = new MockObsidianAPI(app);
+      const tool = new DataviewTool(api as any);
+
+      const dvApi = (app.plugins.plugins['dataview'] as any).api as MockDataviewAPI;
+      dvApi.pages = (() => ({
+        length: 1,
+        array: () => [{
+          file: {
+            path: 'Luxon.md',
+            name: 'Luxon.md',
+            size: 42,
+            ctime: luxonDate('2026-01-02T03:04:05.000Z'),
+            mtime: luxonDate('2026-01-02T03:04:06.000Z'),
+            tags: { array: () => [] },
+            outlinks: { array: () => [] }
+          },
+          aliases: { array: () => [] }
+        }]
+      })) as any;
+
+      const result = tool.listPages() as any;
+      expect(result.success).toBe(true);
+      expect(result.pages[0].created).toBe('2026-01-02T03:04:05.000Z');
+      expect(result.pages[0].modified).toBe('2026-01-02T03:04:06.000Z');
+    });
+
+    test('should serialize Luxon DateTime values from getPageMetadata without crashing', async () => {
+      // Regression for #123 bug 3
+      const luxonDate = (iso: string) => ({ toISO: () => iso });
+      const app = new MockApp(true, true);
+      const api = new MockObsidianAPI(app);
+      const tool = new DataviewTool(api as any);
+
+      const dvApi = (app.plugins.plugins['dataview'] as any).api as MockDataviewAPI;
+      dvApi.page = (path: string) => path === 'Luxon.md' ? {
+        file: {
+          path: 'Luxon.md',
+          name: 'Luxon.md',
+          basename: 'Luxon',
+          extension: 'md',
+          size: 42,
+          ctime: luxonDate('2026-01-02T03:04:05.000Z'),
+          mtime: luxonDate('2026-01-02T03:04:06.000Z'),
+          tags: { array: () => [] },
+          outlinks: { array: () => [] },
+          inlinks: { array: () => [] },
+          tasks: { array: () => [] },
+          lists: { array: () => [] }
+        },
+        aliases: { array: () => [] }
+      } as any : null;
+
+      const result = tool.getPageMetadata('Luxon.md') as any;
+      expect(result.success).toBe(true);
+      expect(result.metadata.file.created).toBe('2026-01-02T03:04:05.000Z');
+      expect(result.metadata.file.modified).toBe('2026-01-02T03:04:06.000Z');
+    });
+
+    test('should propagate Dataview-internal query failures to outer envelope', async () => {
+      // Regression for #115 / #123 bug 1: Dataview returns
+      //   {successful: false, error: "..."}
+      // when a query is malformed instead of throwing. The tool used to
+      // hard-code success:true regardless, hiding the real error.
+      const app = new MockApp(true, true);
+      const api = new MockObsidianAPI(app);
+      const tool = new DataviewTool(api as any);
+
+      const dvApi = (app.plugins.plugins['dataview'] as any).api as MockDataviewAPI;
+      dvApi.query = (() => ({
+        successful: false,
+        type: 'table',
+        error: 'No field "nonexistent" on this page'
+      })) as any;
+
+      const result = await tool.executeQuery('TABLE nonexistent FROM ""') as any;
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('No field "nonexistent" on this page');
+    });
+
     test('should validate queries', async () => {
       const app = new MockApp(true, true);
       const api = new MockObsidianAPI(app);

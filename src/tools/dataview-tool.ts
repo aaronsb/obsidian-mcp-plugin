@@ -14,9 +14,33 @@ interface DataviewArray<T = unknown> {
   map<U>(fn: (item: T) => U): DataviewArray<U>;
 }
 
-/** Dataview date/time value with ISO serialization */
+/**
+ * Dataview date/time value. Dataview emits Luxon DateTime objects, which
+ * expose `toISO()` (returns `string | null`). Some test fixtures pass native
+ * `Date` objects that only expose `toISOString()`. We accept either shape.
+ */
 interface DataviewDateTime {
-  toISOString(): string;
+  toISO?(): string | null;
+  toISOString?(): string;
+}
+
+/**
+ * Serialize a Dataview date value to ISO 8601, preferring Luxon's `toISO()`
+ * and falling back to native `Date.toISOString()`. Returns `undefined` for
+ * nullish input, invalid Luxon dates, or values that expose neither method —
+ * which lets `?.` propagate cleanly and keeps the response shape stable.
+ */
+function toIsoOptional(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  const dt = value as DataviewDateTime;
+  if (typeof dt.toISO === 'function') {
+    const iso = dt.toISO();
+    if (iso) return iso;
+  }
+  if (typeof dt.toISOString === 'function') {
+    return dt.toISOString();
+  }
+  return undefined;
 }
 
 /** Dataview link value */
@@ -62,6 +86,7 @@ interface DataviewQueryResult {
   type: string;
   values?: DataviewArray;
   headers?: string[];
+  error?: string;
 }
 
 /** Row within a table result */
@@ -150,14 +175,18 @@ export class DataviewTool {
 
     try {
       if (format === 'dql') {
-        // Execute DQL query
+        // Execute DQL query. Dataview returns {successful: false, error}
+        // for syntax/runtime errors rather than throwing — propagate that
+        // status to the outer envelope so the formatter can render it.
         const result: DataviewQueryResult = await dataviewAPI.query(query);
+        const innerSuccess = result.successful !== false;
         return {
-          success: true,
+          success: innerSuccess,
           query,
           format,
           result: this.formatQueryResult(result),
           type: result.type || 'unknown',
+          error: innerSuccess ? undefined : result.error,
           workflow: this.generateQueryWorkflow(query, result),
           hints: this.generateQueryHints(query)
         };
@@ -199,8 +228,8 @@ export class DataviewTool {
           path: page.file.path,
           name: page.file.name,
           size: page.file.size,
-          created: page.file.ctime?.toISOString(),
-          modified: page.file.mtime?.toISOString(),
+          created: toIsoOptional(page.file.ctime),
+          modified: toIsoOptional(page.file.mtime),
           tags: page.file.tags?.array() ?? [],
           links: page.file.outlinks?.array()?.length ?? 0,
           aliases: page.aliases?.array() ?? [],
@@ -244,8 +273,8 @@ export class DataviewTool {
             basename: page.file.basename,
             extension: page.file.extension,
             size: page.file.size,
-            created: page.file.ctime?.toISOString(),
-            modified: page.file.mtime?.toISOString()
+            created: toIsoOptional(page.file.ctime),
+            modified: toIsoOptional(page.file.mtime)
           },
           tags: page.file.tags?.array() ?? [],
           aliases: page.aliases?.array() ?? [],
@@ -387,10 +416,11 @@ export class DataviewTool {
       return dvArray.array().map((item: unknown) => this.convertDataviewValue(item));
     }
 
-    // Handle Dataview dates
-    const dvDate = value as { toISOString?: () => string };
-    if (typeof dvDate.toISOString === 'function') {
-      return dvDate.toISOString();
+    // Handle Dataview dates (Luxon DateTime exposes toISO(), native Date toISOString())
+    const dvDate = value as DataviewDateTime;
+    if (typeof dvDate.toISO === 'function' || typeof dvDate.toISOString === 'function') {
+      const iso = toIsoOptional(value);
+      if (iso !== undefined) return iso;
     }
 
     // Handle Dataview links

@@ -339,6 +339,30 @@ function normalizeResponse(key: string, response: unknown): NormalizedResponse {
       return resp;
     }
 
+    // dataview.query: tool returns
+    //   {success, query, format, result: {type, values, headers?} | {type:'unknown', data}, type, error?, ...}
+    // Formatter expects {query, type, values?, headers?, successful, error?} at top level.
+    // Flatten result.{type,values,headers} and rename success → successful so the
+    // formatter renders typed results and surfaces Dataview's own error messages.
+    case 'dataview.query': {
+      const dvResp = resp as {
+        success?: boolean;
+        query?: string;
+        error?: string;
+        type?: string;
+        result?: { type?: string; values?: unknown; headers?: unknown };
+      };
+      const inner = dvResp.result;
+      return {
+        ...resp,
+        successful: dvResp.success ?? true,
+        type: inner?.type ?? dvResp.type ?? 'list',
+        values: inner?.values,
+        headers: inner?.headers,
+        error: dvResp.error
+      };
+    }
+
     // edit.window: router returns {isError, content}, formatter expects {success, path}
     case 'edit.window':
     case 'edit.from_buffer': {

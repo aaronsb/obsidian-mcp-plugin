@@ -89,13 +89,13 @@ export class ConnectionPool extends EventEmitter {
 
     // Return a promise that resolves when the request is complete
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      const timeout = window.setTimeout(() => {
         this.removeRequest(request.id);
         reject(new Error(`Request ${request.id} timed out`));
       }, this.options.requestTimeout);
 
       this.once(`response:${request.id}`, (response: PooledResponse) => {
-        clearTimeout(timeout);
+        window.clearTimeout(timeout);
         if (response.error) {
           if (response.error instanceof Error) {
             reject(response.error);
@@ -256,7 +256,7 @@ export class ConnectionPool extends EventEmitter {
     const startTime = Date.now();
 
     while (this.activeConnections.size > 0 && Date.now() - startTime < shutdownTimeout) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => window.setTimeout(resolve, 100));
     }
 
     if (this.activeConnections.size > 0) {

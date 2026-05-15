@@ -48,10 +48,21 @@ export default tseslint.config(
 	},
 	// builtin-modules is build-tooling only (esbuild.config.mjs), not plugin code.
 	// js-yaml is used for YAML parsing in Bases API — no built-in alternative exists.
+	//
+	// obsidianmd >= 0.3.0 wires its typed plugin rules into the hybrid recommended
+	// config without a `**/*.ts` files scope, so ESLint also tries to run them on
+	// package.json (which uses the JSON language and has no parser services). The
+	// rules call getParserServices() and abort the whole run. Disable the typed
+	// rules here for the JSON files the recommended config inspects.
 	{
-		files: ["package.json"],
+		files: ["package.json", "**/*.json"],
 		rules: {
 			"depend/ban-dependencies": "off",
+			"obsidianmd/no-plugin-as-component": "off",
+			"obsidianmd/no-view-references-in-plugin": "off",
+			"obsidianmd/no-unsupported-api": "off",
+			"obsidianmd/prefer-file-manager-trash-file": "off",
+			"obsidianmd/prefer-instanceof": "off",
 		},
 	},
 	globalIgnores([
@@ -72,5 +83,15 @@ export default tseslint.config(
 		"worker.js",
 		"mcpb",
 		"scripts",
+		// Data files — obsidianmd's recommended config only wires the JSON
+		// language to package.json; other .json files fall through to the JS
+		// parser and fail with "Unexpected token :". They aren't code anyway.
+		// (The validate-manifest rule reads manifest.json directly via fs.)
+		"tsconfig.json",
+		"package-lock.json",
+		"manifest.json",
+		"versions.json",
+		".claude/**",
+		"src/config/**/*.json",
 	]),
 );

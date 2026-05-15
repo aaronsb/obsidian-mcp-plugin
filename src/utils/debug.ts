@@ -11,8 +11,10 @@ export interface DebugLogger {
 }
 
 // Indirect console reference — this is a debug utility that legitimately needs
-// console access. Using globalThis avoids triggering the no-console lint rule.
-const _console: Console = globalThis.console;
+// console access. Picking the host at runtime keeps this safe in both the
+// Obsidian renderer (window) and the Jest/Node test environment (globalThis).
+// eslint-disable-next-line obsidianmd/no-global-this
+const _console: Console = (typeof window !== 'undefined' ? window : globalThis).console;
 
 export class Debug {
     private static debugEnabled = false;
