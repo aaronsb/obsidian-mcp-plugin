@@ -14,14 +14,21 @@
     "type": "git",
     "url": "https://github.com/aaronsb/obsidian-mcp-plugin"
   },
-  "keywords": ["obsidian", "mcp", "notes", "vault"],
+  "keywords": [
+    "obsidian",
+    "mcp",
+    "notes",
+    "vault"
+  ],
   "license": "MIT",
   "server": {
     "type": "node",
     "entry_point": "server.js",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/server.js"],
+      "args": [
+        "${__dirname}/server.js"
+      ],
       "env": {
         "MCP_URL": "${user_config.url}",
         "MCP_API_KEY": "${user_config.api_key}"
