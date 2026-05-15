@@ -52,7 +52,7 @@ The manifest declares:
 - `server.type: "node"` so Claude Desktop's bundled Node.js runs it (no end-user system Node required).
 - `user_config` fields: `url` (string, default `http://localhost:3001/mcp`) and `api_key` (sensitive string). Interpolated into `server.env` so `server.js` reads them at startup without needing argv parsing.
 
-`server.js` is a self-contained JSON-RPC↔HTTP relay: read JSON-RPC messages from stdin, POST to the configured `/mcp` endpoint with the `Authorization: Bearer …` header, stream the response (SSE or chunked) back to stdout as JSON-RPC. Reconnect on session-id rotation by re-issuing `initialize` and replaying the failed request.
+`server.js` is a self-contained JSON-RPC↔HTTP relay: read JSON-RPC messages from stdin, POST to the configured `/mcp` endpoint with the `Authorization: Bearer …` header, stream the response (SSE or chunked) back to stdout as JSON-RPC. On session expiry (HTTP 404 with a session id we previously held), the relay surfaces a `-32000` JSON-RPC error so the client (Claude Desktop) re-issues `initialize` — we do not attempt to replay arbitrary user requests across session boundaries because we'd need to also replay state-establishing notifications and that path is fragile. Letting the client own re-init is simpler and matches how Claude Desktop already handles transient sessions.
 
 The bundle is **static**. No per-user values bake into it. The same `.mcpb` works for every user; per-user values flow through Claude Desktop's `user_config` install prompt.
 
@@ -67,10 +67,7 @@ The shim is ~80 lines of plain Node with zero npm dependencies, not a thin wrapp
 
 ### 4. CI publishes the `.mcpb` artifact on change
 
-A GitHub Action under `.github/workflows/` builds the bundle (zip the `mcpb/` directory, produce `obsidian-mcp-<version>.mcpb`) and attaches it as a release asset whenever:
-
-- A release is cut (existing `release.yml` flow — add the `.mcpb` to the artifact set alongside `main.js`, `manifest.json`, `styles.css`).
-- The contents of `mcpb/` change on `main` (separate workflow that publishes a `latest` `.mcpb` so users testing via BRAT-equivalent paths get the current bundle without waiting for a tagged release).
+The existing `release.yml` workflow gains a step that builds the bundle and attaches it to the GitHub release alongside `main.js`, `manifest.json`, and `styles.css`. The build emits both `obsidian-mcp-<version>.mcpb` (versioned, for archival) and `obsidian-mcp.mcpb` (unversioned alias) so the Settings UI and README can link to `releases/latest/download/obsidian-mcp.mcpb` — a stable URL that always resolves to the most recent release without baking the plugin's running version into the link.
 
 Version sync via the existing `sync-version.mjs` script — `manifest.json` inside the bundle stays in lockstep with the plugin's `package.json` version.
 
@@ -124,6 +121,7 @@ All three paths are visible in plugin Settings so users can choose the one that 
 - The `mcp-remote` package is not added as a dependency, vendored or otherwise.
 - Localhost-bound HTTP endpoint means MCPB only works when Obsidian and Claude Desktop run on the same machine. Worth noting in the manifest description but not a regression — every existing onboarding path has the same constraint.
 - HTTPS mode (self-signed certs on `httpsPort`) works through the shim if `url` is set to the `https://` form; the relay does not need to know.
+- The maker script (`scripts/make-mcpb.mjs`) exposes the existence of the bridge to advanced users — they read `mcpb/server.js` when running the script from a clone. This slightly weakens the "bridge is invisible" framing relative to non-advanced users, but the advanced audience is exactly the cohort that would have been writing custom `mcpServers` JSON before MCPB existed, so the abstraction stays intact for the audience that benefits from it.
 
 ## Alternatives Considered
 
