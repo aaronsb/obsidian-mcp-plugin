@@ -265,7 +265,8 @@ export class ObsidianAPI {
   listFilesPaginated(
     directory?: string,
     page: number = 1,
-    pageSize: number = 20
+    pageSize: number = 20,
+    recursive: boolean = false
   ): Promise<{
     files: Array<{
       path: string;
@@ -283,13 +284,29 @@ export class ObsidianAPI {
   }> {
     const vault = this.app.vault;
     let files: TAbstractFile[];
-    
+
     if (directory && directory !== '/') {
       const folder = vault.getAbstractFileByPath(directory);
       if (!folder || !(folder instanceof TFolder)) {
         throw new Error(`Directory not found: ${directory}`);
       }
-      files = folder.children;
+      if (recursive) {
+        // Walk the tree and keep only files — pagination is over the same
+        // flat universe listFiles() returns, so an agent paging through a
+        // directory sees a coherent, consistent set of items.
+        files = [];
+        const stack: TAbstractFile[] = [...folder.children];
+        while (stack.length > 0) {
+          const f = stack.pop()!;
+          if (f instanceof TFile) {
+            files.push(f);
+          } else if (f instanceof TFolder) {
+            stack.push(...f.children);
+          }
+        }
+      } else {
+        files = folder.children;
+      }
     } else {
       files = vault.getAllLoadedFiles();
     }

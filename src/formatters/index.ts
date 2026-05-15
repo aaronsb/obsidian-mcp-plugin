@@ -283,6 +283,28 @@ function normalizeResponse(key: string, response: unknown): NormalizedResponse {
       return resp;
     }
 
+    // vault.list (paginated): router returns
+    //   {files: [{path, name, type: 'file'|'folder', ...}], page, pageSize,
+    //    totalFiles, totalPages, directory}
+    // Formatter expects FileListResponse with isFolder boolean. Translate
+    // shape so the structured branch renders correctly (previously it
+    // looked for f.isFolder which was always undefined, lumping every
+    // entry into "files" regardless of actual type).
+    case 'vault.list': {
+      const listResp = resp as { files?: unknown };
+      if (Array.isArray(listResp.files)) {
+        const items = listResp.files as Array<Record<string, unknown>>;
+        return {
+          ...resp,
+          files: items.map(item => ({
+            ...item,
+            isFolder: item.type === 'folder',
+          })),
+        };
+      }
+      return resp;
+    }
+
     // vault.fragments: router returns {result: [...fragments across files]}
     // Transform to grouped format for formatter
     case 'vault.fragments': {

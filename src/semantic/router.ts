@@ -162,11 +162,16 @@ export class SemanticRouter {
         const dirParam = paramStr(params, 'directory');
         const directory = dirParam === '/' ? undefined : dirParam;
 
-        // Use paginated list if page parameters are provided
+        // Use paginated list if page parameters are provided.
+        // When paginating inside a specific directory, recurse so the
+        // agent sees the same universe of files as the non-paginated
+        // call — page N actually gives the Nth slice of the recursive
+        // listing, not a level-only folder enumeration.
         if (params.page || params.pageSize) {
           const page = parseInt(paramStr(params, 'page') ?? '1') || 1;
           const pageSize = parseInt(paramStr(params, 'pageSize') ?? '20') || 20;
-          return await this.api.listFilesPaginated(directory, page, pageSize);
+          const recursive = directory !== undefined;
+          return await this.api.listFilesPaginated(directory, page, pageSize, recursive);
         }
 
         // Fallback to simple list for backwards compatibility

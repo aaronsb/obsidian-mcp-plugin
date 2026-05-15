@@ -90,3 +90,57 @@ describe('ObsidianAPI.listFiles — folder-of-folders (#154)', () => {
     ]);
   });
 });
+
+describe('ObsidianAPI.listFilesPaginated — recursive mode', () => {
+  let api: ObsidianAPI;
+  let mockApp: App;
+  let lookup: Map<string, TFile | TFolder>;
+
+  beforeEach(() => {
+    // 5 files spread across nested subfolders so a page boundary lands mid-tree.
+    const files = [
+      makeFile('docs/a/one.md'),
+      makeFile('docs/a/two.md'),
+      makeFile('docs/b/three.md'),
+      makeFile('docs/c/sub/four.md'),
+      makeFile('docs/c/sub/five.md'),
+    ];
+    const a = makeFolder('docs/a', [files[0], files[1]]);
+    const b = makeFolder('docs/b', [files[2]]);
+    const sub = makeFolder('docs/c/sub', [files[3], files[4]]);
+    const c = makeFolder('docs/c', [sub]);
+    const docs = makeFolder('docs', [a, b, c]);
+
+    const all = [docs, a, b, c, sub, ...files];
+    lookup = new Map(all.map(f => [f.path, f]));
+
+    mockApp = new App();
+    mockApp.vault.getAbstractFileByPath = (path: string) => lookup.get(path) ?? null;
+    mockApp.vault.getAllLoadedFiles = () => all;
+    mockApp.vault.adapter = { basePath: '/mock' } as any;
+
+    api = new ObsidianAPI(mockApp);
+  });
+
+  it('paginates over the recursive file set when recursive=true', async () => {
+    const page1 = await api.listFilesPaginated('docs', 1, 2, true);
+    expect(page1.totalFiles).toBe(5);
+    expect(page1.totalPages).toBe(3);
+    expect(page1.files).toHaveLength(2);
+    // Every entry should be a TFile — folders are filtered out in recursive mode.
+    expect(page1.files.every(f => f.type === 'file')).toBe(true);
+
+    const page2 = await api.listFilesPaginated('docs', 2, 2, true);
+    expect(page2.files).toHaveLength(2);
+    // No overlap between consecutive pages.
+    const seen = new Set(page1.files.map(f => f.path));
+    expect(page2.files.every(f => !seen.has(f.path))).toBe(true);
+  });
+
+  it('preserves level-only behavior when recursive=false (default)', async () => {
+    const result = await api.listFilesPaginated('docs', 1, 20, false);
+    // docs/ has three subfolders directly; should see those, not the leaf files.
+    expect(result.totalFiles).toBe(3);
+    expect(result.files.every(f => f.type === 'folder')).toBe(true);
+  });
+});
