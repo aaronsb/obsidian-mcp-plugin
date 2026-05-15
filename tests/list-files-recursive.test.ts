@@ -137,6 +137,22 @@ describe('ObsidianAPI.listFilesPaginated — recursive mode', () => {
     expect(page2.files.every(f => !seen.has(f.path))).toBe(true);
   });
 
+  it('paged universe matches the flat listFiles universe (agent contract)', async () => {
+    // The Settings UI / formatter tells the agent "use page=2 pageSize=N to
+    // continue". That hint only works if concatenating pages reproduces the
+    // same total order that the non-paginated listFiles call returned.
+    const flat = await api.listFiles('docs');
+
+    const pageSize = 2;
+    const collected: string[] = [];
+    const total = (await api.listFilesPaginated('docs', 1, pageSize, true)).totalPages;
+    for (let page = 1; page <= total; page++) {
+      const slice = await api.listFilesPaginated('docs', page, pageSize, true);
+      collected.push(...slice.files.map(f => f.path));
+    }
+    expect(collected).toEqual(flat);
+  });
+
   it('preserves level-only behavior when recursive=false (default)', async () => {
     const result = await api.listFilesPaginated('docs', 1, 20, false);
     // docs/ has three subfolders directly; should see those, not the leaf files.

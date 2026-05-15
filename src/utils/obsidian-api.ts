@@ -328,7 +328,16 @@ export class ObsidianAPI {
 
       return result;
     }).sort((a: FileDetailObject, b: FileDetailObject) => {
-      // Sort folders first, then files, alphabetically
+      if (recursive) {
+        // Match listFiles() — full-path lexicographic. The agent's
+        // "use page=N" hint anchors to the same total order, so page
+        // boundaries are stable across calls and basename collisions
+        // (e.g. two index.md in different subfolders) sort deterministically.
+        return a.path.localeCompare(b.path);
+      }
+      // Level-only mode: folders first, then files by basename — what
+      // existing internal callers (cp recursion, isDirectory probe)
+      // depend on for tree navigation.
       if (a.type !== b.type) {
         return a.type === 'folder' ? -1 : 1;
       }
