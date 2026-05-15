@@ -122,6 +122,9 @@ main.js
 *.js.map
 data.json
 
+# MCPB build output (source in mcpb/, .mcpb file is generated)
+*.mcpb
+
 # Test scripts
 test-concurrent-sessions.js
 

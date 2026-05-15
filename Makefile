@@ -1,5 +1,5 @@
 .PHONY: help build dev test lint lint-fix check clean install \
-       release-patch release-minor release-major release publish sync-version
+       release-patch release-minor release-major release publish sync-version mcpb
 
 MIN_OBSIDIAN := 0.15.0
 
@@ -67,7 +67,7 @@ _update-versions-json:
 
 _commit-and-publish:
 	@VERSION=$$(jq -r .version package.json); \
-	git add package.json package-lock.json manifest.json src/version.ts versions.json; \
+	git add package.json package-lock.json manifest.json mcpb/manifest.json src/version.ts versions.json; \
 	git commit -m "chore: Bump version to $$VERSION"; \
 	git push origin HEAD; \
 	echo "Triggering release for $$VERSION..."; \
@@ -76,7 +76,10 @@ _commit-and-publish:
 # --- Utility ---
 
 clean: ## Remove build artifacts
-	rm -rf main.js main.js.map dist/
+	rm -rf main.js main.js.map dist/ obsidian-mcp-*.mcpb obsidian-mcp.mcpb
 
 sync-version: ## Sync version from package.json to manifest.json and version.ts
 	node sync-version.mjs
+
+mcpb: ## Build MCPB bundle (obsidian-mcp-<version>.mcpb) for Claude Desktop
+	node scripts/build-mcpb.mjs

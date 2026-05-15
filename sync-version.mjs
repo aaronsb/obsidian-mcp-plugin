@@ -14,6 +14,11 @@ try {
   // Write updated manifest.json
   writeFileSync('manifest.json', JSON.stringify(manifest, null, 2) + '\n');
 
+  // Read and update mcpb/manifest.json (MCPB bundle for Claude Desktop)
+  const mcpbManifest = JSON.parse(readFileSync('mcpb/manifest.json', 'utf-8'));
+  mcpbManifest.version = version;
+  writeFileSync('mcpb/manifest.json', JSON.stringify(mcpbManifest, null, 2) + '\n');
+
   // Update version.ts
   const versionTs = `// Version is injected at build time by sync-version.mjs
 export function getVersion(): string {
@@ -22,7 +27,7 @@ export function getVersion(): string {
 `;
   writeFileSync('src/version.ts', versionTs);
 
-  console.log(`✅ Synced version ${version} from package.json to manifest.json and version.ts`);
+  console.log(`✅ Synced version ${version} to manifest.json, mcpb/manifest.json, and version.ts`);
 } catch (error) {
   console.error('❌ Failed to sync version:', error.message);
   process.exit(1);

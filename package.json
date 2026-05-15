@@ -21,7 +21,7 @@
     "ai",
     "semantic"
   ],
-  "author": "Aaron Blumenfeld",
+  "author": "Aaron Bockelie",
   "license": "MIT",
   "devDependencies": {
     "@eslint/js": "^9.39.2",
