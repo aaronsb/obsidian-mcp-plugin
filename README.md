@@ -41,12 +41,24 @@ Traditional file access gives AI a narrow view - one document at a time. This pl
 
 ### 2. Configure Your AI Client
 
-**Claude Code**
+Three onboarding paths, ordered by audience. All three are also shown in the plugin's Settings tab with copy-ready values.
+
+**Claude Desktop — one-click `.mcpb` install (recommended)**
+
+Download `obsidian-mcp-<version>.mcpb` from the [latest release](https://github.com/aaronsb/obsidian-mcp-plugin/releases/latest), then either drag it onto the Claude Desktop window or double-click it. Claude Desktop opens an install dialog with two fields — paste the URL and API key shown in the plugin's Settings tab, hit Save, and you're done.
+
+> *Cross-platform note:* `.mcpb` files install via Claude Desktop's bundled handler. If double-click doesn't trigger Claude on your system, drag the file onto Claude Desktop's window instead, or right-click → "Open with…" and pick Claude Desktop (then "always open with" if your OS asks). Behavior varies by platform: macOS usually auto-associates, Windows may need a one-time association, Linux varies by desktop environment.
+
+**Claude Code (CLI)**
+
 ```bash
 claude mcp add --transport http obsidian http://localhost:3001/mcp --header "Authorization: Bearer YOUR_API_KEY"
 ```
 
-**Claude Desktop, Cline, and other MCP clients**
+**Other MCP clients (Cline, Continue, custom integrations, multi-vault setups)**
+
+Add an entry to the client's MCP config file — one entry per vault if you run multiple Obsidian instances on different ports:
+
 ```json
 {
   "mcpServers": {
@@ -63,7 +75,17 @@ claude mcp add --transport http obsidian http://localhost:3001/mcp --header "Aut
 }
 ```
 
-Copy the ready-to-use config with your API key from the plugin settings page.
+**Advanced: custom `.mcpb` per vault**
+
+For multi-vault setups that want one-click install per vault, clone this repo and run the maker:
+
+```bash
+node scripts/make-mcpb.mjs
+# Prompts for display name, URL, and API key
+# Outputs obsidian-mcp-<slug>.mcpb with everything pre-filled
+```
+
+Drop the resulting bundle into Claude Desktop and click Install — no fields to type.
 
 ### 3. Start Using
 
