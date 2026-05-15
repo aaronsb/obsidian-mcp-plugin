@@ -1448,11 +1448,6 @@ class MCPSettingTab extends PluginSettingTab {
 			this.addCopyButton(keyRow, this.plugin.settings.apiKey);
 		}
 
-		info.createEl('p', {
-			cls: 'mcp-mcpb-note',
-			text: 'Multiple vaults? Run `node scripts/make-mcpb.mjs` from a clone of the repo to generate a custom-named bundle per vault.',
-		});
-
 		// === Claude Code (CLI) ===
 		new Setting(info).setName("Claude code (CLI)").setHeading();
 		const commandExample = info.createDiv('protocol-command-example');
@@ -1466,13 +1461,21 @@ class MCPSettingTab extends PluginSettingTab {
 		codeEl.textContent = claudeCommand;
 		this.addCopyButton(commandExample, claudeCommand);
 
-		// === Other MCP clients (JSON) ===
-		new Setting(info).setName("Other mcp clients (JSON config)").setHeading();
-		info.createEl('p', {
-			text: 'For cline, continue, custom integrations, or multi-vault setups — add this to the client\'s mcp config file:'
+		// === Advanced: collapsed by default to keep the default view tidy ===
+		// Contains the JSON path (for Cline/Continue/custom clients and multi-vault
+		// setups) and the maker-script pointer for custom-named bundles.
+		const advanced = info.createEl('details', { cls: 'mcp-advanced-details' });
+		advanced.createEl('summary', {
+			text: 'Advanced — other mcp clients, multi-vault, custom bundles',
+			cls: 'mcp-advanced-summary',
 		});
 
-		const configExample = info.createDiv('desktop-config-example');
+		new Setting(advanced).setName("Other mcp clients (JSON config)").setHeading();
+		advanced.createEl('p', {
+			text: 'For cline, continue, custom integrations, or multi-vault setups — add this to the client\'s mcp config file. One entry per vault if you run several Obsidian instances on different ports:'
+		});
+
+		const configExample = advanced.createDiv('desktop-config-example');
 		const configEl = configExample.createEl('pre');
 		configEl.classList.add('mcp-config-example');
 
@@ -1502,8 +1505,12 @@ class MCPSettingTab extends PluginSettingTab {
 
 		const configJsonText = JSON.stringify(configJson, null, 2);
 		configEl.textContent = configJsonText;
-
 		this.addCopyButton(configExample, configJsonText);
+
+		new Setting(advanced).setName("Custom bundle per vault").setHeading();
+		advanced.createEl('p', {
+			text: 'Clone the plugin repo and run `node scripts/make-mcpb.mjs`. It prompts for a display name, url, and api key, then writes a custom-named .mcpb you drop into claude desktop — one-click install per vault, no fields to type at install time.'
+		});
 	}
 
 	private addCopyButton(container: HTMLElement, textToCopy: string): void {
