@@ -66,16 +66,16 @@ export class SecureObsidianAPI extends ObsidianAPI {
 		return super.listFiles(listPath);
 	}
 
-	async listFilesPaginated(directory?: string, page: number = 1, pageSize: number = 20): ReturnType<ObsidianAPI['listFilesPaginated']> {
+	async listFilesPaginated(directory?: string, page: number = 1, pageSize: number = 20, recursive: boolean = false): ReturnType<ObsidianAPI['listFilesPaginated']> {
 		const validated = await this.security.validateOperation({
 			type: OperationType.READ,
 			path: directory || '.',
-			context: { method: 'listFilesPaginated', page, pageSize }
+			context: { method: 'listFilesPaginated', page, pageSize, recursive }
 		});
 
 		// Use validated path if directory was provided, undefined for vault root
 		const listPath = !validated.path || validated.path === '.' ? undefined : validated.path;
-		return super.listFilesPaginated(listPath, page, pageSize);
+		return super.listFilesPaginated(listPath, page, pageSize, recursive);
 	}
 
 	async getActiveFile(): Promise<ObsidianFile> {

@@ -30,6 +30,10 @@ export interface FileListResponse {
   files: FileListItem[];
   totalFiles?: number;
   totalFolders?: number;
+  // Pagination metadata when listFilesPaginated is the underlying call.
+  page?: number;
+  pageSize?: number;
+  totalPages?: number;
 }
 
 export function formatFileList(response: FileListResponse | string[]): string {
@@ -38,19 +42,24 @@ export function formatFileList(response: FileListResponse | string[]): string {
   // Handle simple string array response
   if (Array.isArray(response)) {
     const paths = response;
+    const truncateAt = 50;
     lines.push(header(1, 'Files'));
     lines.push('');
     lines.push(`Found ${paths.length} item${paths.length !== 1 ? 's' : ''}`);
     lines.push('');
 
-    paths.slice(0, 50).forEach(path => {
+    paths.slice(0, truncateAt).forEach(path => {
       const name = path.split('/').pop() || path;
       const isFolder = !path.includes('.');
       lines.push(`- ${isFolder ? name + '/' : name}`);
     });
 
-    if (paths.length > 50) {
-      lines.push(`- ... and ${paths.length - 50} more`);
+    if (paths.length > truncateAt) {
+      lines.push(`- ... and ${paths.length - truncateAt} more`);
+      lines.push('');
+      // Surface a concrete next call so an agent that needs items past
+      // the truncation point doesn't have to guess.
+      lines.push(tip(`Showing first ${truncateAt} of ${paths.length}. Call again with \`page=2 pageSize=${truncateAt}\` to continue, or \`raw: true\` to receive the full list in one response.`));
     }
 
     lines.push('');
@@ -61,7 +70,7 @@ export function formatFileList(response: FileListResponse | string[]): string {
   }
 
   // Handle structured response
-  const { directory, files, totalFiles, totalFolders } = response;
+  const { directory, files, totalFiles, totalFolders, page, pageSize, totalPages } = response;
 
   lines.push(header(1, `Directory: ${directory || '/'}`));
   lines.push('');
@@ -69,7 +78,8 @@ export function formatFileList(response: FileListResponse | string[]): string {
   const folders = files.filter(f => f.isFolder);
   const regularFiles = files.filter(f => !f.isFolder);
 
-  // Summary
+  // Summary — show pagination state when present so the agent sees what
+  // slice of the universe it's looking at.
   const summaryParts: string[] = [];
   if (totalFolders !== undefined || folders.length > 0) {
     summaryParts.push(`${totalFolders ?? folders.length} folders`);
@@ -79,6 +89,10 @@ export function formatFileList(response: FileListResponse | string[]): string {
   }
   if (summaryParts.length > 0) {
     lines.push(summaryParts.join(', '));
+    lines.push('');
+  }
+  if (page !== undefined && totalPages !== undefined && totalPages > 0) {
+    lines.push(`Page ${page} of ${totalPages}${pageSize ? ` (${pageSize} per page)` : ''}`);
     lines.push('');
   }
 
@@ -104,6 +118,15 @@ export function formatFileList(response: FileListResponse | string[]): string {
     if (regularFiles.length > 30) {
       lines.push(`- ... and ${regularFiles.length - 30} more files`);
     }
+    lines.push('');
+  }
+
+  // Concrete next-call hint when there are more pages — agent doesn't
+  // have to guess at the next move.
+  if (page !== undefined && totalPages !== undefined && page < totalPages) {
+    const dirArg = directory ? `directory='${directory}', ` : '';
+    const sizeArg = pageSize ? `, pageSize=${pageSize}` : '';
+    lines.push(tip(`More results available. Call \`vault.list(${dirArg}page=${page + 1}${sizeArg})\` for the next page.`));
     lines.push('');
   }
 

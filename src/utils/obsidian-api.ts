@@ -265,7 +265,8 @@ export class ObsidianAPI {
   listFilesPaginated(
     directory?: string,
     page: number = 1,
-    pageSize: number = 20
+    pageSize: number = 20,
+    recursive: boolean = false
   ): Promise<{
     files: Array<{
       path: string;
@@ -283,13 +284,29 @@ export class ObsidianAPI {
   }> {
     const vault = this.app.vault;
     let files: TAbstractFile[];
-    
+
     if (directory && directory !== '/') {
       const folder = vault.getAbstractFileByPath(directory);
       if (!folder || !(folder instanceof TFolder)) {
         throw new Error(`Directory not found: ${directory}`);
       }
-      files = folder.children;
+      if (recursive) {
+        // Walk the tree and keep only files — pagination is over the same
+        // flat universe listFiles() returns, so an agent paging through a
+        // directory sees a coherent, consistent set of items.
+        files = [];
+        const stack: TAbstractFile[] = [...folder.children];
+        while (stack.length > 0) {
+          const f = stack.pop()!;
+          if (f instanceof TFile) {
+            files.push(f);
+          } else if (f instanceof TFolder) {
+            stack.push(...f.children);
+          }
+        }
+      } else {
+        files = folder.children;
+      }
     } else {
       files = vault.getAllLoadedFiles();
     }
@@ -311,7 +328,16 @@ export class ObsidianAPI {
 
       return result;
     }).sort((a: FileDetailObject, b: FileDetailObject) => {
-      // Sort folders first, then files, alphabetically
+      if (recursive) {
+        // Match listFiles() — full-path lexicographic. The agent's
+        // "use page=N" hint anchors to the same total order, so page
+        // boundaries are stable across calls and basename collisions
+        // (e.g. two index.md in different subfolders) sort deterministically.
+        return a.path.localeCompare(b.path);
+      }
+      // Level-only mode: folders first, then files by basename — what
+      // existing internal callers (cp recursion, isDirectory probe)
+      // depend on for tree navigation.
       if (a.type !== b.type) {
         return a.type === 'folder' ? -1 : 1;
       }
