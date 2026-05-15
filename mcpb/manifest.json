@@ -1,0 +1,48 @@
+{
+  "manifest_version": "0.3",
+  "name": "obsidian-mcp",
+  "display_name": "Obsidian MCP",
+  "version": "0.11.16",
+  "description": "Connect Claude Desktop to your Obsidian vault via the Obsidian MCP plugin.",
+  "long_description": "Bridges Claude Desktop to the HTTP MCP server exposed by the Obsidian MCP plugin running inside Obsidian. Open Obsidian first, enable the MCP plugin in Settings, copy the URL and API key from the plugin's Settings tab, then paste them into the install prompt below.",
+  "author": {
+    "name": "Aaron Blumenfeld",
+    "url": "https://github.com/aaronsb"
+  },
+  "homepage": "https://github.com/aaronsb/obsidian-mcp-plugin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aaronsb/obsidian-mcp-plugin"
+  },
+  "keywords": ["obsidian", "mcp", "notes", "vault"],
+  "license": "MIT",
+  "server": {
+    "type": "node",
+    "entry_point": "server.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server.js"],
+      "env": {
+        "MCP_URL": "${user_config.url}",
+        "MCP_API_KEY": "${user_config.api_key}"
+      }
+    }
+  },
+  "user_config": {
+    "url": {
+      "type": "string",
+      "title": "Obsidian MCP URL",
+      "description": "URL of the MCP endpoint exposed by the Obsidian MCP plugin. Find this in Obsidian → Settings → MCP. Default is http://localhost:3001/mcp; use the https:// form if you enabled HTTPS in the plugin.",
+      "required": true,
+      "default": "http://localhost:3001/mcp"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "description": "API key shown in Obsidian → Settings → MCP. Leave blank only if you disabled authentication in the plugin (not recommended).",
+      "sensitive": true,
+      "required": false,
+      "default": ""
+    }
+  }
+}
