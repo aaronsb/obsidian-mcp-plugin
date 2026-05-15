@@ -1423,11 +1423,12 @@ class MCPSettingTab extends PluginSettingTab {
 			text: 'Download the bundle, drop it onto claude desktop, and paste these values in the install prompt.'
 		});
 
-		const version = this.plugin.manifest.version;
-		const mcpbUrl = `https://github.com/aaronsb/obsidian-mcp-plugin/releases/download/${version}/obsidian-mcp-${version}.mcpb`;
+		// Stable "latest" endpoint — always resolves to the most recent release
+		// asset regardless of whether this plugin build has a release yet.
+		const mcpbUrl = 'https://github.com/aaronsb/obsidian-mcp-plugin/releases/latest/download/obsidian-mcp.mcpb';
 		const downloadEl = info.createDiv('mcpb-download');
 		const downloadLink = downloadEl.createEl('a', {
-			text: `⬇ obsidian-mcp-${version}.mcpb`,
+			text: '⬇ Obsidian-mcp.mcpb',
 			href: mcpbUrl,
 			cls: 'mcp-mcpb-download',
 		});

@@ -76,7 +76,7 @@ _commit-and-publish:
 # --- Utility ---
 
 clean: ## Remove build artifacts
-	rm -rf main.js main.js.map dist/ obsidian-mcp-*.mcpb
+	rm -rf main.js main.js.map dist/ obsidian-mcp-*.mcpb obsidian-mcp.mcpb
 
 sync-version: ## Sync version from package.json to manifest.json and version.ts
 	node sync-version.mjs

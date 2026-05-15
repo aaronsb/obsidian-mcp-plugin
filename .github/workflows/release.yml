@@ -81,4 +81,5 @@ jobs:
             main.js \
             manifest.json \
             styles.css \
-            "obsidian-mcp-${{ steps.version.outputs.version }}.mcpb"
+            "obsidian-mcp-${{ steps.version.outputs.version }}.mcpb" \
+            obsidian-mcp.mcpb
