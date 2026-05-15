@@ -145,7 +145,8 @@ gh workflow run release.yml -f release_notes="Fixed VS Code compatibility, impro
 #### Version Naming Convention
 - **Major releases**: `X.Y.Z` (e.g., 0.4.4) - NO 'v' prefix
 - **Patch releases**: `X.Y.Za`, `X.Y.Zb` (e.g., 0.4.4a, 0.4.4b) - NO 'v' prefix
-- **Pre-releases**: All marked as prerelease until stable
+- **Pre-releases**: All releases ship as prereleases by default (`make release-patch` etc.)
+- **Promoting to stable**: When a release is bounded and proven, run `make promote` (or `make promote TAG=X.Y.Z`) to flip it from prerelease → stable and mark it as GitHub's "Latest" release. This is also what makes the `/releases/latest/download/<asset>` URL resolve — the MCPB download link in plugin Settings relies on it.
 - **IMPORTANT**: Obsidian requires release tags WITHOUT 'v' prefix
 - **Exploratory releases**: Use letter suffix (a, b, c) for testing new features
 

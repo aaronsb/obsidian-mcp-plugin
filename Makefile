@@ -1,5 +1,5 @@
 .PHONY: help build dev test lint lint-fix check clean install \
-       release-patch release-minor release-major release publish sync-version mcpb
+       release-patch release-minor release-major release publish promote sync-version mcpb
 
 MIN_OBSIDIAN := 0.15.0
 
@@ -56,6 +56,12 @@ publish: ## Trigger GitHub Actions release for current version
 	@VERSION=$$(jq -r .version package.json); \
 	echo "Publishing version $$VERSION..."; \
 	gh workflow run release.yml --field release_notes="$${RELEASE_NOTES:-}"
+
+promote: ## Promote a release from prerelease to stable+Latest (defaults to current package.json version; override with TAG=X.Y.Z)
+	@TAG=$${TAG:-$$(jq -r .version package.json)}; \
+	echo "Promoting release $$TAG to stable + Latest..."; \
+	gh release edit "$$TAG" --prerelease=false --latest; \
+	echo "✅ $$TAG is now the Latest release"
 
 # Internal targets (not in help)
 
