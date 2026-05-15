@@ -70,5 +70,7 @@ export default tseslint.config(
 		"versions.json",
 		"main.js",
 		"worker.js",
+		"mcpb",
+		"scripts",
 	]),
 );

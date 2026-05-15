@@ -1411,28 +1411,64 @@ class MCPSettingTab extends PluginSettingTab {
 		resourcesList.createEl('li', {text: '📊 Obsidian://vault-info - real-time vault metadata'});
 		resourcesList.createEl('li', {text: '🔄 Obsidian://session-info - active mcp sessions and statistics'});
 		
-		new Setting(info).setName("Claude code connection").setHeading();
-		const commandExample = info.createDiv('protocol-command-example');
-		const codeEl = commandExample.createEl('code');
-		codeEl.classList.add('mcp-code-block');
-		
 		// Get correct protocol and port based on HTTPS setting
 		const protocol = this.plugin.settings.httpsEnabled ? 'https' : 'http';
 		const port = this.plugin.settings.httpsEnabled ? this.plugin.settings.httpsPort : this.plugin.settings.httpPort;
 		const baseUrl = `${protocol}://localhost:${port}`;
-		
+		const mcpUrl = `${baseUrl}/mcp`;
+
+		// === Claude Desktop (MCPB) — primary onboarding path ===
+		new Setting(info).setName("Claude desktop (.mcpb — one-click install)").setHeading();
+		info.createEl('p', {
+			text: 'Download the bundle, drop it onto claude desktop, and paste these values in the install prompt.'
+		});
+
+		const version = this.plugin.manifest.version;
+		const mcpbUrl = `https://github.com/aaronsb/obsidian-mcp-plugin/releases/download/${version}/obsidian-mcp-${version}.mcpb`;
+		const downloadEl = info.createDiv('mcpb-download');
+		const downloadLink = downloadEl.createEl('a', {
+			text: `⬇ obsidian-mcp-${version}.mcpb`,
+			href: mcpbUrl,
+			cls: 'mcp-mcpb-download',
+		});
+		downloadLink.setAttribute('target', '_blank');
+		downloadLink.setAttribute('rel', 'noopener');
+
+		const mcpbValuesEl = info.createDiv('mcpb-values');
+		const urlRow = mcpbValuesEl.createDiv('mcp-config-container');
+		urlRow.createEl('strong', { text: 'URL: ' });
+		urlRow.createEl('code', { text: mcpUrl, cls: 'mcp-code-inline' });
+		this.addCopyButton(urlRow, mcpUrl);
+
+		if (!this.plugin.settings.dangerouslyDisableAuth) {
+			const keyRow = mcpbValuesEl.createDiv('mcp-config-container');
+			keyRow.createEl('strong', { text: 'API key: ' });
+			keyRow.createEl('code', { text: this.plugin.settings.apiKey, cls: 'mcp-code-inline' });
+			this.addCopyButton(keyRow, this.plugin.settings.apiKey);
+		}
+
+		info.createEl('p', {
+			cls: 'mcp-mcpb-note',
+			text: 'Multiple vaults? Run `node scripts/make-mcpb.mjs` from a clone of the repo to generate a custom-named bundle per vault.',
+		});
+
+		// === Claude Code (CLI) ===
+		new Setting(info).setName("Claude code (CLI)").setHeading();
+		const commandExample = info.createDiv('protocol-command-example');
+		const codeEl = commandExample.createEl('code');
+		codeEl.classList.add('mcp-code-block');
+
 		const claudeCommand = this.plugin.settings.dangerouslyDisableAuth ?
-			`claude mcp add --transport http obsidian ${baseUrl}/mcp` :
-			`claude mcp add --transport http obsidian ${baseUrl}/mcp --header "Authorization: Bearer ${this.plugin.settings.apiKey}"`;
+			`claude mcp add --transport http obsidian ${mcpUrl}` :
+			`claude mcp add --transport http obsidian ${mcpUrl} --header "Authorization: Bearer ${this.plugin.settings.apiKey}"`;
 
 		codeEl.textContent = claudeCommand;
-
-		// Add copy button
 		this.addCopyButton(commandExample, claudeCommand);
-		
-		new Setting(info).setName("Client configuration (claude desktop, cline, etc.)").setHeading();
+
+		// === Other MCP clients (JSON) ===
+		new Setting(info).setName("Other mcp clients (JSON config)").setHeading();
 		info.createEl('p', {
-			text: 'Add this to your mcp client configuration file:'
+			text: 'For cline, continue, custom integrations, or multi-vault setups — add this to the client\'s mcp config file:'
 		});
 
 		const configExample = info.createDiv('desktop-config-example');
