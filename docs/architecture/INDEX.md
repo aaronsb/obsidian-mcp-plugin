@@ -22,6 +22,7 @@ _Server architecture, transport, connection handling, plugin lifecycle_
 |-----|-------|--------|
 | [ADR-100](./core/ADR-100-remove-concurrent-mode-toggle-and-simplify-connection-setup.md) | Remove concurrent mode toggle and simplify connection setup | Accepted |
 | [ADR-101](./core/ADR-101-tree-based-mcp-tool-visibility-gating.md) | Tree-based MCP tool visibility gating | Draft |
+| [ADR-102](./core/ADR-102-ship-mcpb-bundle-as-primary-claude-desktop-onboarding.md) | Ship MCPB bundle as primary Claude Desktop onboarding | Draft |
 
 ## Tools & API
 _MCP tool design, semantic operations, graph operations, formatters_
