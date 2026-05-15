@@ -99,7 +99,7 @@ export class WorkerManager extends EventEmitter {
       });
       
       // Set timeout
-      setTimeout(() => {
+      window.setTimeout(() => {
         if (this.pendingTasks.has(task.id)) {
           this.pendingTasks.delete(task.id);
           reject(new Error('Worker task timeout'));

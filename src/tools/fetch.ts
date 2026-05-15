@@ -37,7 +37,7 @@ export const fetchTool = {
   },
   handler: async (_: unknown, args: FetchToolArgs) => {
     try {
-      const response = await globalThis.fetch(args.url, {
+      const response = await window.fetch(args.url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }

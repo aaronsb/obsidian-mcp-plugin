@@ -37,7 +37,9 @@ export class SessionManager extends EventEmitter {
    * Start the session manager
    */
   start(): void {
-    // Start cleanup interval
+    // Background cleanup; not tied to any popout window, and must also work
+    // in the Jest Node test env where `window` is undefined.
+    // eslint-disable-next-line obsidianmd/prefer-window-timers
     this.cleanupInterval = setInterval(() => {
       this.cleanupExpiredSessions();
     }, this.options.checkInterval);
@@ -50,6 +52,7 @@ export class SessionManager extends EventEmitter {
    */
   stop(): void {
     if (this.cleanupInterval) {
+      // eslint-disable-next-line obsidianmd/prefer-window-timers
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = undefined;
     }

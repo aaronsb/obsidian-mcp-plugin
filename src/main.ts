@@ -695,7 +695,7 @@ class MCPSettingTab extends PluginSettingTab {
 								new Notice(`Restarting MCP server on port ${newPort}...`);
 								await this.plugin.stopMCPServer();
 								await this.plugin.startMCPServer();
-								setTimeout(() => this.refreshConnectionStatus(), 500);
+								window.setTimeout(() => this.refreshConnectionStatus(), 500);
 							}
 							
 							// Hide apply button
@@ -854,7 +854,7 @@ class MCPSettingTab extends PluginSettingTab {
 				}
 			} else {
 				statusEl.createEl('p', {
-					text: '📝 no certificate found - will auto-generate on server start',
+					text: '📝 No certificate found - will auto-generate on server start',
 					cls: 'setting-item-description mcp-security-note'
 				});
 			}
@@ -929,7 +929,7 @@ class MCPSettingTab extends PluginSettingTab {
 					if (value) {
 						new Notice('⚠️ authentication disabled! Your vault is accessible without credentials.');
 					} else {
-						new Notice('✅ authentication enabled. API key required for access.');
+						new Notice('✅ Authentication enabled. API key required for access.');
 					}
 					
 					// Refresh display to update examples
@@ -952,10 +952,10 @@ class MCPSettingTab extends PluginSettingTab {
 					// Debug logging for read-only mode changes
 					if (value) {
 						Debug.log('🔒 READ-ONLY MODE ENABLED via settings - Server restart required for activation');
-						new Notice('🔒 read-only mode enabled. All write operations are blocked.');
+						new Notice('🔒 Read-only mode enabled. All write operations are blocked.');
 					} else {
 						Debug.log('✅ READ-ONLY MODE DISABLED via settings - Server restart required for deactivation');
-						new Notice('✅ read-only mode disabled. All operations are allowed.');
+						new Notice('✅ Read-only mode disabled. All operations are allowed.');
 					}
 					
 					// Refresh display to update examples
@@ -977,10 +977,10 @@ class MCPSettingTab extends PluginSettingTab {
 						if (value) {
 							await this.plugin.ignoreManager.loadIgnoreFile();
 							Debug.log('✅ Path exclusions enabled');
-							new Notice('✅ path exclusions enabled');
+							new Notice('✅ Path exclusions enabled');
 						} else {
 							Debug.log('🔓 Path exclusions disabled');
-							new Notice('🔓 path exclusions disabled');
+							new Notice('🔓 Path exclusions disabled');
 						}
 					}
 					
@@ -1001,9 +1001,9 @@ class MCPSettingTab extends PluginSettingTab {
 						
 						if (value) {
 							this.plugin.registerContextMenu();
-							new Notice('✅ context menu enabled - restart required for full effect');
+							new Notice('✅ Context menu enabled - restart required for full effect');
 						} else {
-							new Notice('🔓 context menu disabled - restart required for full effect');
+							new Notice('🔓 Context menu disabled - restart required for full effect');
 						}
 					}));
 		}
@@ -1082,7 +1082,7 @@ class MCPSettingTab extends PluginSettingTab {
 							new Notice('📝 .mcpignore file opened in default app');
 						} else {
 							Debug.log('Electron shell not available');
-							new Notice('❌ unable to open in external app');
+							new Notice('❌ Unable to open in external app');
 						}
 					} catch (err: unknown) {
 						const errMsg = err instanceof Error ? err.message : String(err);
@@ -1092,7 +1092,7 @@ class MCPSettingTab extends PluginSettingTab {
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
 					Debug.log(`Failed to open .mcpignore file: ${message}`);
-					new Notice('❌ failed to open .mcpignore file');
+					new Notice('❌ Failed to open .mcpignore file');
 				}
 				})();
 			});
@@ -1126,7 +1126,7 @@ class MCPSettingTab extends PluginSettingTab {
 							new Notice('📁 .mcpignore file location shown in explorer');
 						} else {
 							Debug.log('Electron shell not available for show in folder');
-							new Notice('❌ system explorer not available');
+							new Notice('❌ System explorer not available');
 						}
 					} catch (err: unknown) {
 						const errMsg = err instanceof Error ? err.message : String(err);
@@ -1136,7 +1136,7 @@ class MCPSettingTab extends PluginSettingTab {
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
 					Debug.log(`Failed to show .mcpignore file: ${message}`);
-					new Notice('❌ failed to show file location');
+					new Notice('❌ Failed to show file location');
 				}
 				})();
 			});
@@ -1158,11 +1158,11 @@ class MCPSettingTab extends PluginSettingTab {
 						await this.plugin.ignoreManager!.createDefaultIgnoreFile();
 						// Force reload to ensure fresh state
 						await this.plugin.ignoreManager!.forceReload();
-						new Notice('📄 default .mcpignore template created');
+						new Notice('📄 Default .mcpignore template created');
 						this.display(); // Refresh to update status
 					} catch (error) {
 						Debug.log('Failed to create .mcpignore template:', error);
-						new Notice('❌ failed to create template');
+						new Notice('❌ Failed to create template');
 					}
 				})();
 			});
@@ -1175,11 +1175,11 @@ class MCPSettingTab extends PluginSettingTab {
 				void (async () => {
 					try {
 						await this.plugin.ignoreManager!.forceReload();
-						new Notice('🔄 exclusion patterns reloaded');
+						new Notice('🔄 Exclusion patterns reloaded');
 						this.display(); // Refresh to update status
 					} catch (error) {
 						Debug.log('Failed to reload patterns:', error);
-						new Notice('❌ failed to reload patterns');
+						new Notice('❌ Failed to reload patterns');
 					}
 				})();
 			});
@@ -1205,7 +1205,7 @@ class MCPSettingTab extends PluginSettingTab {
 			});
 
 			helpEl.createEl('p', {
-				text: 'Full syntax documentation: https://git-scm.com/docs/gitignore',
+				text: 'Full syntax documentation: https://Git-scm.com/docs/gitignore',
 				cls: 'setting-item-description mcp-security-note'
 			});
 		}
@@ -1407,7 +1407,7 @@ class MCPSettingTab extends PluginSettingTab {
 			});
 		} else {
 			info.createEl('p', {
-				text: '🔌 plugin integrations: none detected (install dataview for additional functionality)',
+				text: '🔌 Plugin integrations: none detected (install dataview for additional functionality)',
 				cls: 'plugin-integration-status'
 			});
 		}
@@ -1426,7 +1426,7 @@ class MCPSettingTab extends PluginSettingTab {
 		// === Claude Desktop (MCPB) — primary onboarding path ===
 		new Setting(info).setName("Claude desktop (.mcpb — one-click install)").setHeading();
 		info.createEl('p', {
-			text: 'Download the bundle, drop it onto claude desktop, and paste these values in the install prompt.'
+			text: 'Download the bundle, drop it onto Claude desktop, and paste these values in the install prompt.'
 		});
 
 		// Stable "latest" endpoint — always resolves to the most recent release
@@ -1551,7 +1551,7 @@ class MCPSettingTab extends PluginSettingTab {
 					setIcon(copyButton, 'check');
 
 					// Reset after 2 seconds
-					setTimeout(() => {
+					window.setTimeout(() => {
 						setIcon(copyButton, 'copy');
 						copyButton.classList.remove('success');
 					}, 2000);
