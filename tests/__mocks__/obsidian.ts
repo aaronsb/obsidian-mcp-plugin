@@ -7,6 +7,11 @@ export abstract class TAbstractFile {
 
 export class TFile extends TAbstractFile {
   extension!: string;
+  stat: { mtime: number; ctime: number; size: number } = { mtime: 0, ctime: 0, size: 0 };
+}
+
+export class TFolder extends TAbstractFile {
+  children: TAbstractFile[] = [];
 }
 
 export class App {

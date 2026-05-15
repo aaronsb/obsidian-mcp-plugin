@@ -228,7 +228,19 @@ export class ObsidianAPI {
       if (!folder || !(folder instanceof TFolder)) {
         throw new Error(`Directory not found: ${directory}`);
       }
-      files = folder.children;
+      // Walk the folder tree to collect every descendant. Matches the
+      // recursive semantics of vault.getAllLoadedFiles() for the root
+      // case, so a caller doesn't see an empty list when a folder only
+      // contains subfolders.
+      files = [];
+      const stack: TAbstractFile[] = [...folder.children];
+      while (stack.length > 0) {
+        const f = stack.pop()!;
+        files.push(f);
+        if (f instanceof TFolder) {
+          stack.push(...f.children);
+        }
+      }
     } else {
       files = vault.getAllLoadedFiles();
     }
