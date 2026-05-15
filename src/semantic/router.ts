@@ -171,8 +171,11 @@ export class SemanticRouter {
         // recursive=false there; listFilesPaginated routes through
         // the same path regardless.
         if (params.page || params.pageSize) {
-          const page = parseInt(paramStr(params, 'page') ?? '1') || 1;
-          const pageSize = parseInt(paramStr(params, 'pageSize') ?? '20') || 20;
+          // MCP clients send these as JSON numbers; paramStr returns undefined
+          // for non-strings, so parseInt(paramStr(...) ?? '1') silently
+          // collapsed to defaults and made pagination a no-op.
+          const page = paramNum(params, 'page') ?? 1;
+          const pageSize = paramNum(params, 'pageSize') ?? 20;
           const recursive = directory !== undefined;
           return await this.api.listFilesPaginated(directory, page, pageSize, recursive);
         }
@@ -283,8 +286,9 @@ export class SemanticRouter {
 
         // Use advanced search with ranking and snippets
         try {
-          const page = parseInt(paramStr(params, 'page') ?? '1') || 1;
-          const pageSize = parseInt(paramStr(params, 'pageSize') ?? '10') || 10;
+          // MCP clients send these as JSON numbers — use paramNum, not paramStr.
+          const page = paramNum(params, 'page') ?? 1;
+          const pageSize = paramNum(params, 'pageSize') ?? 10;
           // Use searchStrategy for search, fall back to strategy for backward compatibility
           const strategy = (paramStr(params, 'searchStrategy') || paramStr(params, 'strategy') || 'combined') as 'filename' | 'content' | 'combined';
           const includeContent = params.includeContent !== false; // Default to true
@@ -303,7 +307,7 @@ export class SemanticRouter {
             searchOptions.includeSnippets = Boolean(params.includeSnippets);
           }
           if (params.snippetLength !== undefined) {
-            searchOptions.snippetLength = parseInt(paramStr(params, 'snippetLength') ?? '0');
+            searchOptions.snippetLength = paramNum(params, 'snippetLength') ?? 0;
           }
 
           const searchResults = await this.api.searchPaginated(
