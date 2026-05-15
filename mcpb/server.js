@@ -5,6 +5,7 @@ const { createInterface } = require('node:readline');
 
 const MCP_URL = process.env.MCP_URL;
 const API_KEY = process.env.MCP_API_KEY || '';
+const FETCH_TIMEOUT_MS = 30_000;
 
 if (!MCP_URL) {
   process.stderr.write('[obsidian-mcp-bridge] MCP_URL not set\n');
@@ -17,6 +18,9 @@ try { new URL(MCP_URL); } catch {
 
 let sessionId = null;
 let notifyAbort = null;
+// Serializes dispatch until initialize lands a session id. Subsequent
+// messages chain off this promise so they don't race past the handshake.
+let initializing = null;
 
 function headers(extra = {}) {
   const h = {
@@ -41,12 +45,13 @@ async function consumeSse(response) {
     const { value, done } = await reader.read();
     if (done) break;
     buf += decoder.decode(value, { stream: true });
-    let idx;
-    while ((idx = buf.indexOf('\n\n')) !== -1) {
-      const frame = buf.slice(0, idx);
-      buf = buf.slice(idx + 2);
+    // SSE frame boundary is a blank line — tolerate LF or CRLF.
+    let match;
+    while ((match = /\r?\n\r?\n/.exec(buf)) !== null) {
+      const frame = buf.slice(0, match.index);
+      buf = buf.slice(match.index + match[0].length);
       const data = frame
-        .split('\n')
+        .split(/\r?\n/)
         .filter(l => l.startsWith('data:'))
         .map(l => l.slice(5).trimStart())
         .join('\n');
@@ -66,8 +71,12 @@ async function startNotifyStream() {
       headers: headers({ Accept: 'text/event-stream' }),
       signal: notifyAbort.signal,
     });
-    if (response.ok && (response.headers.get('content-type') || '').includes('text/event-stream')) {
+    const ctype = response.headers.get('content-type') || '';
+    if (response.ok && ctype.includes('text/event-stream')) {
       await consumeSse(response);
+    } else {
+      // Server doesn't speak the GET stream — drain so the socket releases.
+      await response.body?.cancel().catch(() => {});
     }
   } catch (e) {
     if (e.name !== 'AbortError') {
@@ -78,14 +87,25 @@ async function startNotifyStream() {
   }
 }
 
+async function postOnce(message) {
+  return await fetch(MCP_URL, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify(message),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+}
+
 async function dispatch(message) {
+  // If we haven't established a session yet and this isn't the initialize,
+  // wait for the in-flight initialize to land first.
+  if (!sessionId && initializing && message.method !== 'initialize') {
+    try { await initializing; } catch { /* let dispatch surface its own error below */ }
+  }
+
   let response;
   try {
-    response = await fetch(MCP_URL, {
-      method: 'POST',
-      headers: headers(),
-      body: JSON.stringify(message),
-    });
+    response = await postOnce(message);
   } catch (err) {
     process.stderr.write(`[obsidian-mcp-bridge] fetch failed: ${err.message}\n`);
     if (message.id != null) {
@@ -120,7 +140,10 @@ async function dispatch(message) {
     return;
   }
 
-  if (response.status === 202) return;
+  if (response.status === 202) {
+    await response.body?.cancel().catch(() => {});
+    return;
+  }
 
   const ctype = response.headers.get('content-type') || '';
   if (ctype.includes('text/event-stream')) {
@@ -143,12 +166,32 @@ rl.on('line', (line) => {
     process.stderr.write(`[obsidian-mcp-bridge] stdin parse: ${e.message}\n`);
     return;
   }
-  dispatch(msg).catch(err => {
-    process.stderr.write(`[obsidian-mcp-bridge] dispatch: ${err.message}\n`);
-  });
+  // Capture the initialize promise so concurrent messages can wait for the
+  // session id before posting.
+  if (msg.method === 'initialize') {
+    initializing = dispatch(msg).finally(() => { initializing = null; });
+    initializing.catch(err => {
+      process.stderr.write(`[obsidian-mcp-bridge] dispatch: ${err.message}\n`);
+    });
+  } else {
+    dispatch(msg).catch(err => {
+      process.stderr.write(`[obsidian-mcp-bridge] dispatch: ${err.message}\n`);
+    });
+  }
 });
 
-process.stdin.on('end', () => {
+process.stdin.on('end', async () => {
   if (notifyAbort) notifyAbort.abort();
+  // Best-effort: tell the server to retire the session so it doesn't linger
+  // in the pool until idle GC.
+  if (sessionId) {
+    try {
+      await fetch(MCP_URL, {
+        method: 'DELETE',
+        headers: headers(),
+        signal: AbortSignal.timeout(5_000),
+      });
+    } catch { /* server may have already gone; ignore */ }
+  }
   process.exit(0);
 });
