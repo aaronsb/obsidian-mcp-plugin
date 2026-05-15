@@ -30,7 +30,10 @@ interface MCPPluginSettings {
 interface MCPServerInfo {
 	version: string;
 	running: boolean;
-	port: number;
+	httpEnabled: boolean;
+	httpsEnabled: boolean;
+	httpPort: number;
+	httpsPort: number;
 	vaultName: string;
 	vaultPath: string;
 	toolsCount: number;
@@ -336,7 +339,10 @@ export default class ObsidianMCPPlugin extends Plugin {
 		return {
 			version: getVersion(),
 			running: this.mcpServer?.isServerRunning() || false,
-			port: this.settings.httpPort,
+			httpEnabled: this.settings.httpEnabled,
+			httpsEnabled: this.settings.httpsEnabled,
+			httpPort: this.settings.httpPort,
+			httpsPort: this.settings.httpsPort,
 			vaultName: this.app.vault.getName(),
 			vaultPath: this.getVaultPath(),
 			toolsCount: 6,
@@ -585,7 +591,7 @@ class MCPSettingTab extends PluginSettingTab {
 			
 			createStatusItem('Status', info.running ? 'Running' : 'Stopped', 
 				info.running ? 'success' : 'error');
-			createStatusItem('Port', info.port.toString());
+			createStatusItem('Port', (info.httpsEnabled ? info.httpsPort : info.httpPort).toString());
 			createStatusItem('Vault', info.vaultName);
 			if (info.vaultPath) {
 				createStatusItem('Path', info.vaultPath.length > 50 ? '...' + info.vaultPath.slice(-47) : info.vaultPath);
@@ -1634,7 +1640,7 @@ class MCPSettingTab extends PluginSettingTab {
 					valueSpan.classList.remove('mcp-status-value', 'success', 'error');
 					valueSpan.classList.add('mcp-status-value', info.running ? 'success' : 'error');
 				} else if (text.includes('Port:') && valueSpan) {
-					valueSpan.textContent = info.port.toString();
+					valueSpan.textContent = (info.httpsEnabled ? info.httpsPort : info.httpPort).toString();
 				} else if (text.includes('Connections:') && valueSpan) {
 					valueSpan.textContent = info.connections.toString();
 				}
@@ -1648,7 +1654,7 @@ class MCPSettingTab extends PluginSettingTab {
 			if (codeBlock && info) {
 				// Get correct protocol and port based on HTTPS setting
 				const protocol = this.plugin.settings.httpsEnabled ? 'https' : 'http';
-				const port = this.plugin.settings.httpsEnabled ? this.plugin.settings.httpsPort : info.port;
+				const port = this.plugin.settings.httpsEnabled ? this.plugin.settings.httpsPort : info.httpPort;
 				const baseUrl = `${protocol}://localhost:${port}`;
 				
 				const claudeCommand = this.plugin.settings.dangerouslyDisableAuth ? 
@@ -1672,7 +1678,7 @@ class MCPSettingTab extends PluginSettingTab {
 					el.textContent = info.connections.toString();
 					break;
 				case 'server-port':
-					el.textContent = info.port.toString();
+					el.textContent = (info.httpsEnabled ? info.httpsPort : info.httpPort).toString();
 					break;
 			}
 		}

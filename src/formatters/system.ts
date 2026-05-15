@@ -26,6 +26,10 @@ export interface SystemInfoResponse {
   mcp?: {
     running?: boolean;
     port?: number;
+    httpEnabled?: boolean;
+    httpsEnabled?: boolean;
+    httpPort?: number;
+    httpsPort?: number;
     connections?: number;
     vault?: string;
   };
@@ -64,7 +68,16 @@ export function formatSystemInfo(response: SystemInfoResponse): string {
     if (response.mcp) {
       lines.push(header(2, 'MCP Server'));
       lines.push(property('Running', response.mcp.running ? 'Yes' : 'No', 0));
-      if (response.mcp.port) {
+      if (response.mcp.httpPort !== undefined) {
+        const httpStatus = response.mcp.httpEnabled === false ? ' (disabled)' : '';
+        lines.push(property('HTTP Port', response.mcp.httpPort.toString() + httpStatus, 0));
+      }
+      if (response.mcp.httpsPort !== undefined) {
+        const httpsStatus = response.mcp.httpsEnabled === false ? ' (disabled)' : '';
+        lines.push(property('HTTPS Port', response.mcp.httpsPort.toString() + httpsStatus, 0));
+      }
+      // Legacy: single port field
+      if (response.mcp.port && response.mcp.httpPort === undefined) {
         lines.push(property('Port', response.mcp.port.toString(), 0));
       }
       if (response.mcp.connections !== undefined) {
