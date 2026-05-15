@@ -67,7 +67,7 @@ _update-versions-json:
 
 _commit-and-publish:
 	@VERSION=$$(jq -r .version package.json); \
-	git add package.json package-lock.json manifest.json src/version.ts versions.json; \
+	git add package.json package-lock.json manifest.json mcpb/manifest.json src/version.ts versions.json; \
 	git commit -m "chore: Bump version to $$VERSION"; \
 	git push origin HEAD; \
 	echo "Triggering release for $$VERSION..."; \
