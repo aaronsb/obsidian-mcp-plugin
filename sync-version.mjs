@@ -7,9 +7,15 @@ try {
   const packageJson = JSON.parse(readFileSync('package.json', 'utf-8'));
   const version = packageJson.version;
 
+  // package.json is the single source of truth for both version and the
+  // plugin description. mcpb/manifest.json keeps its own Claude-Desktop
+  // specific description and is intentionally not synced here.
+  const description = packageJson.description;
+
   // Read and update manifest.json
   const manifest = JSON.parse(readFileSync('manifest.json', 'utf-8'));
   manifest.version = version;
+  manifest.description = description;
 
   // Write updated manifest.json
   writeFileSync('manifest.json', JSON.stringify(manifest, null, 2) + '\n');
@@ -27,7 +33,7 @@ export function getVersion(): string {
 `;
   writeFileSync('src/version.ts', versionTs);
 
-  console.log(`✅ Synced version ${version} to manifest.json, mcpb/manifest.json, and version.ts`);
+  console.log(`✅ Synced version ${version} + description to manifest.json (version also: mcpb/manifest.json, version.ts)`);
 } catch (error) {
   console.error('❌ Failed to sync version:', error.message);
   process.exit(1);

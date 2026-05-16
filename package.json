@@ -1,7 +1,7 @@
 {
   "name": "obsidian-mcp-plugin",
   "version": "0.11.21",
-  "description": "Semantic MCP server providing AI tools with direct vault access via HTTP transport.",
+  "description": "Give Claude Desktop and other AI assistants semantic access to your notes through a built-in Model Context Protocol (MCP) server.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
