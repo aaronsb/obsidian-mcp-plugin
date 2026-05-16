@@ -13,6 +13,8 @@ env:
 
 permissions:
   contents: write
+  id-token: write      # required for build-provenance attestation (#164)
+  attestations: write  # required for build-provenance attestation (#164)
 
 jobs:
   build:
@@ -57,6 +59,15 @@ jobs:
           else
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
+
+      - name: Attest build provenance
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            main.js
+            obsidian-mcp-${{ steps.version.outputs.version }}.mcpb
+            obsidian-mcp.mcpb
 
       - name: Create Release
         if: steps.check_tag.outputs.exists == 'false'
