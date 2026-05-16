@@ -59,7 +59,8 @@ const DEFAULT_SETTINGS: MCPPluginSettings = {
 		enabled: false,
 		selfSigned: true,
 		autoGenerate: true,
-		rejectUnauthorized: false,
+		// rejectUnauthorized omitted on purpose: inert for our inbound HTTPS
+		// server (no requestCert); cert-manager defaults it to true. See #163.
 		minTLSVersion: 'TLSv1.2'
 	},
 	debugLogging: false,
