@@ -358,12 +358,35 @@ async getFile(path: string): Promise<ObsidianFileResponse> {
 
 ## Obsidian Community Plugin Distribution
 
+> **Status:** The plugin is **live in the community directory** as of
+> 2026-05-16 (in submittal since 2025-07-04). It is a *maintained, shipped*
+> plugin now — not a submission in progress.
+>
 > **Historical note:** Obsidian previously required a pull request against the
 > `obsidianmd/obsidian-releases` repo (editing `community-plugins.json`) plus a
 > manual "keep the PR alive" refresh dance. **That process is defunct.**
 > Obsidian moved submission and maintenance to the community developer portal
 > (community.obsidian.md). Do not recreate the `obsidian-releases` fork
 > workflow — there is no PR to maintain anymore.
+
+### Architecture: portal is the source of truth, `community-plugins.json` is a mirror
+
+The developer portal (community.obsidian.md) is now authoritative. A bot
+**mirrors** approved plugins from the portal into
+`obsidianmd/obsidian-releases/community-plugins.json` (commits titled
+`chore: Mirror community plugins and themes`). The desktop app's **in-app
+community browser still reads that mirror**, not the portal directly.
+
+Consequence: after a plugin is approved/updated on the portal, there is a
+**propagation lag** before it appears in the in-app browser search — the
+mirror bot has to run, then the app refreshes its cached list (a restart
+helps *only after* the mirror includes you). This is normal, not a bug. The
+portal page and its "Add to Obsidian" deep link work immediately. If still
+absent from the mirror after ~24h / many mirror commits, that's a real
+pipeline miss worth raising with Obsidian — not a repo-side fix.
+
+`make promote` now auto-updates **real users**, not just BRAT testers. The
+prerelease → BRAT → promote loop is the safety rail, not ceremony.
 
 ### How distribution works now
 
@@ -423,22 +446,37 @@ Key facts about this tool:
   banner** — that means review `scripts/scorecard.mjs`, *not* that the
   scorecard is clean. The scorecard body itself never gates anything.
 
-### Known accepted scorecard cautions
+### Known accepted review findings
 
-Not every "Caution" is a defect — some are deliberate trade-offs. Do not
-"fix" these by reverting the decision behind them:
+The full submit review passed (0.11.23). Not every finding is a defect —
+several are deliberate trade-offs or false positives. Do **not** "fix" these
+by reverting the decision behind them; they were analysed and accepted:
 
-- **"The release contains additional files: …`.mcpb`…"** — expected and
-  accepted. Per **ADR-102**, releases intentionally ship the `.mcpb`
-  bundles so `releases/latest/download/obsidian-mcp.mcpb` (the plugin
-  Settings download) resolves. Clearing this caution would mean breaking
-  ADR-102; it stays.
-- **"… scan not available" disclosures** — neutral. These mean Obsidian's
-  malware/dependency/obfuscation scanners did not run, not that the plugin
-  failed them. Nothing for us to do.
+- **`.mcpb` additional files** (Releases, Recommendation) — expected. Per
+  **ADR-102**, releases intentionally ship the `.mcpb` bundles so
+  `releases/latest/download/obsidian-mcp.mcpb` (the plugin Settings download)
+  resolves. Clearing it would break ADR-102. Confirmed non-gating.
+- **Direct filesystem access** (Behavior, Warning) — `fs` is used in
+  `path-validator.ts` (boundary enforcement via `realpathSync` — itself a
+  security control) and `certificate-manager.ts` (self-signed TLS certs).
+  Load-bearing; cannot remove without dropping HTTPS.
+- **Vault enumeration** (Behavior, Recommendation) — `vault.getFiles` etc.
+  is the plugin's core purpose (semantic search / graph). By design.
+- **Clipboard access** (Behavior, Recommendation) — write-only,
+  user-initiated (copy API key / copy buttons). Benign.
+- **README "unfilled placeholder text"** (Warning) — **false positive**.
+  No real placeholders exist; the heuristic trips on legitimate markdown
+  badge/link labels (`[BRAT]`, `[MIT]`, …). Mangling valid markdown to
+  appease it is the wrong action — leave it.
+- **"… scan not available" disclosures** — neutral. Obsidian's
+  malware/dependency/obfuscation scanners did not run; not a failure.
 
-Genuinely actionable findings get GitHub issues (e.g. #163, #164); the
-scorecard CI-gate idea is tracked in #165.
+**Dynamic code execution** (`new Function` in the Bases evaluator) is a real
+architectural decision, not an accepted finding — tracked for an ADR in #175.
+
+Actionable findings became issues/PRs: #163/#164/#170 (SSL + attestation,
+shipped), #171/#173 (build-dep + CSS, shipped), #174 (js-yaml), #175 (eval
+ADR), #176 (this doc). Scorecard CI-gate idea: #165.
 
 ## Important Notes
 

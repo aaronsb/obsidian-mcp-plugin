@@ -6,6 +6,8 @@
 ![Latest Release](https://img.shields.io/github/v/release/aaronsb/obsidian-mcp-plugin?include_prereleases&label=version)
 ![License](https://img.shields.io/github/license/aaronsb/obsidian-mcp-plugin)
 
+📦 **[Available in the Obsidian Community Plugin directory →](https://community.obsidian.md/plugins/semantic-vault-mcp)**
+
 **Give AI semantic agency over your knowledge graph**
 
 This plugin connects your Obsidian vault to AI assistants through MCP (Model Context Protocol), giving them the ability to understand and navigate your notes as a connected knowledge graph, not just isolated files. Through semantic hints and graph traversal, AI gains the agency to explore concepts, follow connections, and synthesize information across your entire vault.
@@ -30,10 +32,10 @@ Traditional file access gives AI a narrow view - one document at a time. This pl
 
 ### 1. Install the Plugin
 
-**Via Obsidian Community Plugins** (coming soon)
-- Open Settings → Community plugins
-- Search for "Semantic MCP"
-- Install and enable
+**Via Obsidian Community Plugins**
+- Open Settings → Community plugins → Browse
+- Search for "Semantic Notes Vault MCP"
+- Install and enable — or install straight from the [plugin listing](https://community.obsidian.md/plugins/semantic-vault-mcp)
 
 **Via BRAT** (for beta testing)
 - Install [BRAT](https://github.com/TfTHacker/obsidian42-brat)
