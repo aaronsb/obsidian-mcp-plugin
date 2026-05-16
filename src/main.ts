@@ -248,32 +248,38 @@ export default class ObsidianMCPPlugin extends Plugin {
 	private statusBarItem?: HTMLElement;
 
 	updateStatusBar(): void {
-		if (this.statusBarItem) {
-			this.statusBarItem.remove();
+		// Create the status bar element exactly once and mutate it thereafter.
+		// Previously this remove()'d + addStatusBarItem()'d on every call;
+		// updateStatusBar() fires several times during async startup, so
+		// concurrent calls could each add an element while only the last was
+		// tracked in this.statusBarItem — orphaning a transient "Mcp: error"
+		// element that survived until the next Obsidian reload (#178).
+		if (!this.statusBarItem) {
+			this.statusBarItem = this.addStatusBarItem();
 		}
-		
+		const item = this.statusBarItem;
+
+		item.removeClass('mcp-statusbar-disabled', 'mcp-statusbar-running', 'mcp-statusbar-error', 'mcp-hidden');
+
 		if (!this.settings.showConnectionStatus) {
+			item.setText('');
+			item.addClass('mcp-hidden');
 			return;
 		}
 
-		this.statusBarItem = this.addStatusBarItem();
-
-		// Remove any existing status classes
-		this.statusBarItem.removeClass('mcp-statusbar-disabled', 'mcp-statusbar-running', 'mcp-statusbar-error');
-
 		if (!this.settings.httpEnabled && !this.settings.httpsEnabled) {
-			this.statusBarItem.setText('Mcp: disabled');
-			this.statusBarItem.addClass('mcp-statusbar-disabled');
+			item.setText('Mcp: disabled');
+			item.addClass('mcp-statusbar-disabled');
 		} else if (this.mcpServer?.isServerRunning()) {
 			const vaultName = this.app.vault.getName();
 			const protocols: string[] = [];
 			if (this.settings.httpEnabled) protocols.push(`HTTP:${this.settings.httpPort}`);
 			if (this.settings.httpsEnabled) protocols.push(`HTTPS:${this.settings.httpsPort}`);
-			this.statusBarItem.setText(`MCP: ${vaultName} (${protocols.join(', ')})`);
-			this.statusBarItem.addClass('mcp-statusbar-running');
+			item.setText(`MCP: ${vaultName} (${protocols.join(', ')})`);
+			item.addClass('mcp-statusbar-running');
 		} else {
-			this.statusBarItem.setText('Mcp: error');
-			this.statusBarItem.addClass('mcp-statusbar-error');
+			item.setText('Mcp: error');
+			item.addClass('mcp-statusbar-error');
 		}
 	}
 
