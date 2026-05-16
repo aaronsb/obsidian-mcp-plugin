@@ -1,4 +1,4 @@
-# Obsidian MCP Plugin
+# Semantic Notes Vault MCP
 
 ![GitHub stars](https://img.shields.io/github/stars/aaronsb/obsidian-mcp-plugin?style=social)
 ![GitHub forks](https://img.shields.io/github/forks/aaronsb/obsidian-mcp-plugin?style=social)
