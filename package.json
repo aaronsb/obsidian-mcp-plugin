@@ -24,12 +24,11 @@
   "author": "Aaron Bockelie",
   "license": "MIT",
   "overrides": {
-    "yaml": "~2.8.4"
+    "yaml": "$yaml"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@types/jest": "^30.0.0",
-    "@types/js-yaml": "^4.0.9",
     "@types/minimatch": "^5.1.2",
     "@types/node": "^25.3.0",
     "@typescript-eslint/utils": "^8.56.0",
@@ -53,10 +52,10 @@
     "@types/turndown": "^5.0.5",
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "js-yaml": "^4.1.1",
     "minimatch": "^10.2.5",
     "node-forge": "^1.4.0",
     "turndown": "^7.2.4",
+    "yaml": "2.8.4",
     "zod": "^4.4.3"
   }
 }

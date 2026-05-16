@@ -1,5 +1,5 @@
 import { App, TFile, getAllTags, CachedMetadata, LinkCache } from 'obsidian';
-import * as yaml from 'js-yaml';
+import { parseYaml, stringifyBaseConfig } from './yaml-bridge';
 import {
   BaseYAML,
   FilterExpression,
@@ -38,7 +38,7 @@ export class BasesAPI {
       if (file.extension === 'base') {
         try {
           const content = await this.app.vault.read(file);
-          const baseConfig = yaml.load(content) as BaseYAML;
+          const baseConfig = parseYaml(content) as BaseYAML;
           
           bases.push({
             path: file.path,
@@ -65,7 +65,7 @@ export class BasesAPI {
 
     const content = await this.app.vault.read(file);
     try {
-      return yaml.load(content) as BaseYAML;
+      return parseYaml(content) as BaseYAML;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`Invalid YAML in base file: ${message}`);
@@ -82,12 +82,7 @@ export class BasesAPI {
     }
 
     // Convert to YAML
-    const yamlContent = yaml.dump(config, {
-      lineWidth: -1, // Don't wrap lines
-      noRefs: true,  // Don't use YAML references
-      quotingType: '"', // Use double quotes
-      forceQuotes: false // Only quote when necessary
-    });
+    const yamlContent = stringifyBaseConfig(config);
 
     // Create the file
     await this.app.vault.create(path, yamlContent);
@@ -187,7 +182,7 @@ export class BasesAPI {
     try {
       // Parse YAML frontmatter
       const frontmatterText = match[1];
-      const parsed = yaml.load(frontmatterText);
+      const parsed = parseYaml(frontmatterText);
       
       // Ensure we return an object
       if (typeof parsed === 'object' && parsed !== null) {
