@@ -64,8 +64,14 @@ jobs:
         if: steps.check_tag.outputs.exists == 'false'
         uses: actions/attest-build-provenance@v2
         with:
+          # Attest every asset Obsidian installs (main.js, manifest.json,
+          # styles.css) plus the .mcpb bundles. The portal flags any
+          # installable asset lacking attestation — #164 originally missed
+          # styles.css/manifest.json.
           subject-path: |
             main.js
+            manifest.json
+            styles.css
             obsidian-mcp-${{ steps.version.outputs.version }}.mcpb
             obsidian-mcp.mcpb
 
