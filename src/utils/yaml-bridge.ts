@@ -7,12 +7,28 @@ import { parse, stringify } from 'yaml';
  * `yaml.load`/`yaml.dump` calls) keeps the dependency swappable and gives the
  * migration + future Bases work (ADR-201) one tested surface.
  *
- * Migrated from `js-yaml` to the maintained `yaml` package (#174). Behavioural
- * note: `js-yaml`'s default schema coerced bare/ISO dates into `Date`
- * objects; `yaml`'s default (YAML 1.2 core) keeps them as strings. This is
- * safe here because the only consumer of these values
- * (`expression-evaluator.ts`) already accepts both — it does
- * `value instanceof Date ? value : new Date(value)`.
+ * Migrated from `js-yaml` to the maintained `yaml` package (#174).
+ *
+ * Behavioural note — date scalars: `js-yaml`'s default schema coerced
+ * bare/ISO dates into `Date` objects; `yaml`'s default (YAML 1.2 core) keeps
+ * them as strings. This is safe for three independent reasons:
+ *   1. Obsidian's metadata cache is the *primary* frontmatter source
+ *      (`bases-api.ts` createNoteContext); this parser's `parseFrontmatter`
+ *      is only a last-resort fallback, so the dominant path never used
+ *      js-yaml's coercion anyway.
+ *   2. When the fallback does run, `expression-evaluator.ts` pre-processes
+ *      date-like frontmatter keys with `new Date(value)` (the
+ *      "auto-convert date-like strings" block), reconciling string vs Date.
+ *   3. `.base` documents carry no date scalars — only filter/formula/view
+ *      config — so `.base` parsing has zero date exposure.
+ *
+ * Behavioural note — known divergences (acceptable; not exercised by
+ * `.base`/frontmatter in practice, asserted in tests/bases-yaml.test.ts):
+ * YAML merge keys (`<<: *anchor`) are resolved by js-yaml but kept literal
+ * by `yaml`; an empty document parses to `null` (vs js-yaml's `undefined`) —
+ * `parseFrontmatter`'s `typeof === 'object' && !== null` guard neutralizes
+ * this identically; serialized scalar quoting is round-trip-equivalent but
+ * not byte-identical to js-yaml (e.g. `yes` emitted bare, not quoted).
  */
 
 /**

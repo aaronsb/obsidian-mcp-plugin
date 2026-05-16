@@ -23,8 +23,13 @@ describe('yaml-bridge parse — differential vs js-yaml oracle (#174)', () => {
     expect(parseYaml(yaml)).toEqual(jsyaml.load(yaml));
   });
 
-  it('empty document parses to a nullish value (both libs)', () => {
-    expect(parseYaml('')).toBeFalsy();
+  it('empty document: yaml→null vs js-yaml→undefined (real divergence, neutralized downstream)', () => {
+    // Concrete values, not toBeFalsy — this is a genuine divergence.
+    expect(parseYaml('')).toBeNull(); // `yaml`
+    expect(jsyaml.load('')).toBeUndefined(); // js-yaml
+    // Safe: parseFrontmatter's guard is `typeof p === 'object' && p !== null`,
+    // so both null and undefined fall through to `{}` identically. An empty
+    // `.base` is invalid under either lib (no `views`) — same failure mode.
   });
 
   it('date coercion: yaml keeps strings where js-yaml made Dates, and new Date() reconciles (downstream-safe)', () => {
@@ -37,15 +42,38 @@ describe('yaml-bridge parse — differential vs js-yaml oracle (#174)', () => {
     // the bridge (yaml core schema) keeps the original string:
     expect(typeof fromBridge.due).toBe('string');
 
-    // expression-evaluator.ts does `new Date(value)` on non-Date values, so
-    // the representations reconcile to the same instant — the migration is
-    // behaviour-preserving for the only consumer.
+    // Safe because (1) Obsidian's metadata cache is the primary frontmatter
+    // source — this parser is only a fallback; (2) when it does run,
+    // expression-evaluator.ts auto-coerces date-like keys via
+    // `new Date(value)`; (3) .base docs carry no date scalars. The
+    // representations reconcile to the same instant either way.
     expect(new Date(fromBridge.due as string).getTime()).toBe(
       (fromJsYaml.due as Date).getTime(),
     );
     expect(new Date(fromBridge.created as string).getTime()).toBe(
       (fromJsYaml.created as Date).getTime(),
     );
+  });
+});
+
+describe('yaml-bridge — known, accepted divergences from js-yaml (#174)', () => {
+  // These differences are real but not exercised by `.base` configs or note
+  // frontmatter in practice. Asserting them documents the boundary so a
+  // future change into this territory is a deliberate, tested decision.
+
+  it('merge keys: js-yaml resolves `<<: *anchor`, yaml keeps it literal', () => {
+    const doc = ['base: &b', '  a: 1', 'derived:', '  <<: *b', '  c: 2'].join('\n');
+    const js = jsyaml.load(doc) as { derived: Record<string, unknown> };
+    const br = parseYaml(doc) as { derived: Record<string, unknown> };
+    expect(js.derived).toEqual({ a: 1, c: 2 }); // merge resolved
+    expect(br.derived).toEqual({ '<<': { a: 1 }, c: 2 }); // kept literal
+    // Acceptable: `.base`/frontmatter never use merge keys.
+  });
+
+  it('input anchors/aliases still resolve structurally in both libs', () => {
+    const doc = ['x: &v hello', 'y: *v'].join('\n');
+    expect(parseYaml(doc)).toEqual({ x: 'hello', y: 'hello' });
+    expect(jsyaml.load(doc)).toEqual({ x: 'hello', y: 'hello' });
   });
 });
 
