@@ -1,5 +1,5 @@
 .PHONY: help build dev test lint lint-fix check clean install \
-       release-patch release-minor release-major release publish promote sync-version mcpb
+       release-patch release-minor release-major release publish promote sync-version mcpb scorecard
 
 MIN_OBSIDIAN := 0.15.0
 
@@ -89,3 +89,6 @@ sync-version: ## Sync version from package.json to manifest.json and version.ts
 
 mcpb: ## Build MCPB bundle (obsidian-mcp-<version>.mcpb) for Claude Desktop
 	node scripts/build-mcpb.mjs
+
+scorecard: ## Pull the Obsidian community portal scorecard + freshness delta (free post-release signal)
+	@node scripts/scorecard.mjs

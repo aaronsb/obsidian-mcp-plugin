@@ -389,6 +389,46 @@ Obsidian's checks *before* running `make promote`. Treat it as a
 validation/dry-run tool: end-user installs and updates still come from the
 matching stable release tag's assets, not from a scanned branch.
 
+### Reading the scorecard as free signal — `make scorecard`
+
+The public plugin page (`community.obsidian.md/plugins/semantic-vault-mcp`)
+renders an automated **Health** grade and **Review** scan — deterministic
+static analysis, not an LLM. It is free signal we can pull without logging in:
+
+```
+make scorecard          # prose + freshness delta, for reading
+node scripts/scorecard.mjs --json   # one JSON line, for diffing across releases
+```
+
+Key facts about this tool:
+
+- **Freshness is not guaranteed.** A *fresh* scan is only triggered from the
+  authenticated developer portal. The public page reflects the last release
+  Obsidian scanned, so the script reports a `freshness` delta (portal version
+  vs `manifest.json`). `STALE` means a logged-in re-scan is still needed.
+- **Drift guard.** The findings come from Obsidian's Next.js RSC payload, so
+  the parser is coupled to their internal serialization. If the page
+  structure changes, the script exits **non-zero with a `SCRAPER DRIFT`
+  banner** — that means review `scripts/scorecard.mjs`, *not* that the
+  scorecard is clean. The scorecard body itself never gates anything.
+
+### Known accepted scorecard cautions
+
+Not every "Caution" is a defect — some are deliberate trade-offs. Do not
+"fix" these by reverting the decision behind them:
+
+- **"The release contains additional files: …`.mcpb`…"** — expected and
+  accepted. Per **ADR-102**, releases intentionally ship the `.mcpb`
+  bundles so `releases/latest/download/obsidian-mcp.mcpb` (the plugin
+  Settings download) resolves. Clearing this caution would mean breaking
+  ADR-102; it stays.
+- **"… scan not available" disclosures** — neutral. These mean Obsidian's
+  malware/dependency/obfuscation scanners did not run, not that the plugin
+  failed them. Nothing for us to do.
+
+Genuinely actionable findings get GitHub issues (e.g. #163, #164); the
+scorecard CI-gate idea is tracked in #165.
+
 ## Important Notes
 
 - **Critical Path**: The ObsidianAPI abstraction layer is the cornerstone of this architecture
