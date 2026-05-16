@@ -30,3 +30,10 @@ _MCP tool design, semantic operations, graph operations, formatters_
 | ADR | Title | Status |
 |-----|-------|--------|
 | [ADR-200](./tools/ADR-200-close-cli-parity-gaps-add-daily-notes-tasks-templates-and-properties-operations.md) | Close CLI parity gaps — add daily notes, tasks, templates, and properties operations | Draft |
+
+## Delivery
+_Build, release, versioning, community plugin submission_
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| [ADR-300](./delivery/ADR-300-single-branch-release-strategy-with-prerelease-promote.md) | Single-branch release strategy with prerelease/promote | Accepted |

@@ -356,60 +356,38 @@ async getFile(path: string): Promise<ObsidianFileResponse> {
 - **Migration Success**: Smooth transition for existing users
 - **Plugin Directory**: Successful submission and approval
 
-## Obsidian Community Plugin Submission
+## Obsidian Community Plugin Distribution
 
-### Maintaining PR During Review Process
+> **Historical note:** Obsidian previously required a pull request against the
+> `obsidianmd/obsidian-releases` repo (editing `community-plugins.json`) plus a
+> manual "keep the PR alive" refresh dance. **That process is defunct.**
+> Obsidian moved submission and maintenance to the community developer portal
+> (community.obsidian.md). Do not recreate the `obsidian-releases` fork
+> workflow — there is no PR to maintain anymore.
 
-While waiting for Obsidian team review (typically 2-6 weeks), keep the PR active:
+### How distribution works now
 
-#### "I'm Not Dead Yet" PR Refresh Procedure
+The portal scans this repo's **GitHub Releases**. For the plugin to be
+scanned and distributed:
 
-When the PR has been idle and needs to show activity, or when validation checks need to be refreshed:
+- There must be a **stable (non-prerelease) "Latest" release** whose tag
+  exactly matches the `version` field in `manifest.json`.
+- Release tags use **no `v` prefix** — `0.11.21`, not `v0.11.21`. The release
+  workflow already produces the correct format.
+- `versions.json` must contain a `"<version>": "<minAppVersion>"` entry
+  matching `manifest.json` (`make release-*` maintains this).
+- Releases ship as **prereleases by default**, and a prerelease is invisible
+  to the portal. Run `make promote` to flip the proven release to
+  stable + "Latest". This is the step that makes the directory (and the MCPB
+  `releases/latest/download/...` link) pick up the new version.
 
-```bash
-# 1. Navigate to the obsidian-releases fork
-cd /home/aaron/Projects/app/obsidian-releases
+### Validating before publishing
 
-# 2. Fetch latest upstream changes
-git fetch upstream
-
-# 3. Hard reset to upstream (clean slate)
-git reset --hard upstream/master
-
-# 4. Edit community-plugins.json to add plugin entry at the END
-# Add your plugin entry after the LAST plugin in the current list
-# (The bot checks that new entries are at the end)
-
-# 5. Commit and push to trigger validation
-git add community-plugins.json
-git commit -m "chore: Update PR with latest upstream changes"
-git push --force origin master
-```
-
-**Key Points:**
-- Always add your plugin entry at the **END** of `community-plugins.json` (after the current last plugin)
-- Do NOT try to preserve your original queue position - the bot now requires entries at the end
-- The validation bot triggers automatically within a few minutes after pushing
-- This shows the PR is actively maintained and not abandoned
-- Can be done periodically (e.g., monthly) to keep PR visible
-
-#### Validation Bot Requirements
-- Plugin entry MUST be at the end of the list
-- `authorUrl` should be your GitHub profile (not Obsidian website)
-- `fundingUrl` should be your sponsors page or removed if not applicable
-- All checks must pass before human review begins
-
-#### Benefits of Active Development During Review
-- Shows ongoing maintenance and commitment
-- Allows continuous improvement based on BRAT user feedback
-- Keeps PR current with upstream changes
-- Demonstrates plugin stability through multiple versions
-- Prevents PR from being auto-closed due to inactivity
-
-#### Release Tag Format
-- **Important**: Obsidian requires release tags WITHOUT 'v' prefix
-- Use `0.5.4` not `v0.5.4`
-- GitHub Actions workflow configured to create correct format
+The developer portal offers a **"preview a branch scan"** that accepts a
+branch, tag, or commit SHA — use it to confirm a release candidate passes
+Obsidian's checks *before* running `make promote`. Treat it as a
+validation/dry-run tool: end-user installs and updates still come from the
+matching stable release tag's assets, not from a scanned branch.
 
 ## Important Notes
 
