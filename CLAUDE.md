@@ -389,6 +389,17 @@ Obsidian's checks *before* running `make promote`. Treat it as a
 validation/dry-run tool: end-user installs and updates still come from the
 matching stable release tag's assets, not from a scanned branch.
 
+### Where the listing text comes from
+
+- **Short description** — repo-driven. Single source of truth is
+  `package.json`; `sync-version.mjs` propagates it to `manifest.json`; use
+  `make set-description DESC='...'` (never hand-edit the JSON). The portal's
+  one-liner refreshes on the next scan after release.
+- **Long "About"** — *not* in the repo. Obsidian seeded this portal-side
+  during the community.obsidian.md migration; it is decoupled from
+  `package.json`/`manifest.json` and only editable in the authenticated
+  developer portal. Repo edits will **not** change it — update it there.
+
 ### Reading the scorecard as free signal — `make scorecard`
 
 The public plugin page (`community.obsidian.md/plugins/semantic-vault-mcp`)
