@@ -2,7 +2,7 @@
   "id": "semantic-vault-mcp",
   "name": "Semantic Notes Vault MCP",
   "minAppVersion": "1.6.6",
-  "description": "Semantic MCP server providing AI tools with direct vault access via HTTP transport.",
+  "description": "Give Claude Desktop and other AI assistants semantic access to your notes through a built-in Model Context Protocol (MCP) server.",
   "author": "Aaron Bockelie",
   "authorUrl": "https://github.com/aaronsb",
   "fundingUrl": "https://github.com/sponsors/aaronsb",
