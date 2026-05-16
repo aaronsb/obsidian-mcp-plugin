@@ -1,5 +1,5 @@
 .PHONY: help build dev test lint lint-fix check clean install \
-       release-patch release-minor release-major release publish promote sync-version mcpb set-description
+       release-patch release-minor release-major release publish promote sync-version mcpb scorecard set-description
 
 MIN_OBSIDIAN := 0.15.0
 
@@ -89,6 +89,9 @@ sync-version: ## Sync version + description from package.json to manifest.json, 
 
 mcpb: ## Build MCPB bundle (obsidian-mcp-<version>.mcpb) for Claude Desktop
 	node scripts/build-mcpb.mjs
+
+scorecard: ## Pull the Obsidian community portal scorecard + freshness delta (free post-release signal)
+	@node scripts/scorecard.mjs
 
 set-description: ## Set plugin description (SoT: package.json) + sync. Usage: make set-description DESC='...'
 	@node scripts/set-description.mjs "$(DESC)"
