@@ -20,14 +20,16 @@ import { execSync } from 'node:child_process';
 const SLUG = 'semantic-vault-mcp';
 const URL = `https://community.obsidian.md/plugins/${SLUG}`;
 
-// The portal is a Next.js App Router page. The scorecard *summary*
-// (Health/Review/version) is rendered into the DOM, but the detailed
-// findings live only in the RSC flight payload inside <script>
-// self.__next_f.push(...) </script> as escaped JSON. So we decode the
-// whole document — DOM text AND unescaped script payload — into one
-// searchable blob. This coupling to their internal serialization is
-// exactly why the drift guard below exists.
-function htmlToText(html) {
+// The portal is a Next.js App Router page. After Obsidian's 2026 redesign
+// (#183) the scorecard is a card UI: Health/Review render as a coloured
+// grade word plus a segmented bar meter (filled vs `bg-gray-*` segments —
+// that ratio is the portal's numeric trust score now), and the detailed
+// findings live in the RSC flight payload as JSX tuples
+// `["$","div","<finding text>",{...}]`. We unescape the document (unicode +
+// backslash escapes) but keep tags, because the bar meter is structural
+// (class names), not text. A separate tag-stripped view serves the prose
+// fields. This coupling to their serialization is why the drift guard exists.
+function decodeDoc(html) {
   return html
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/\\u003c/gi, '<')
@@ -35,7 +37,11 @@ function htmlToText(html) {
     .replace(/\\u0026/gi, '&')
     .replace(/\\n/g, '\n')
     .replace(/\\"/g, '"')
-    .replace(/\\\//g, '/')
+    .replace(/\\\//g, '/');
+}
+
+function toText(decoded) {
+  return decoded
     .replace(/<[^>]+>/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
@@ -51,6 +57,29 @@ function htmlToText(html) {
 function pick(re, text, group = 1) {
   const m = text.match(re);
   return m ? m[group].trim() : null;
+}
+
+// Health/Review: the grade word is the coloured <span> right after the
+// label span; the score is the fill ratio of the segmented bar meter that
+// immediately follows. Bound the window to the next known label so Health's
+// meter cannot bleed into Review's. Grade vocab is NOT enum-pinned — the old
+// hard-coded list (Excellent|Good|…) is exactly what drifted; capture
+// whatever word the portal renders and let the drift guard catch a null.
+function gradeAndScore(decoded, label, endLabel) {
+  const tag = `>${label}</span>`;
+  const start = decoded.indexOf(tag);
+  if (start === -1) return { grade: null, score: null };
+  const grade = pick(
+    new RegExp(`>${label}</span><span[^>]*>([^<]+)</span>`),
+    decoded,
+  );
+  const end = endLabel ? decoded.indexOf(`>${endLabel}</span>`, start) : -1;
+  const window = decoded.slice(start, end > start ? end : start + 500);
+  const bars = [
+    ...window.matchAll(/h-1\.5 flex-1 rounded-full bg-([a-z]+)-\d+/g),
+  ].map((m) => m[1]);
+  const filled = bars.filter((c) => c !== 'gray').length;
+  return { grade, score: bars.length ? `${filled}/${bars.length}` : null };
 }
 
 function repoState() {
@@ -83,28 +112,42 @@ async function main() {
     process.exit(0);
   }
 
-  const text = htmlToText(html);
+  const decoded = decodeDoc(html);
+  const text = toText(decoded);
+
+  const health = gradeAndScore(decoded, 'Health', 'Review');
+  const review = gradeAndScore(decoded, 'Review', 'About');
 
   const portal = {
-    health: pick(/Health\s+(Excellent|Good|Fair|Poor|Caution)/i, text),
-    review: pick(/Review\s+(Excellent|Good|Caution|Warning|Critical)/i, text),
+    health: health.grade,
+    healthScore: health.score,
+    review: review.grade,
+    reviewScore: review.score,
     issuesFound: pick(/(\d+)\s+issues? found by automated scans/i, text),
     currentVersion: pick(/Current version\s+([0-9][^\s]*)/i, text),
-    lastUpdated: pick(/Last updated\s+([^\n]+?)(?:\s+Created)/i, text),
-    created: pick(/Created\s+([^\n]+?)(?:\s+Updates|\s+Downloads)/i, text),
+    lastUpdated: pick(/Last updated\s+(.+?)\s+Created/i, text),
+    created: pick(/Created\s+(.+?)\s+(?:Updates|Downloads)/i, text),
   };
 
-  // Findings come through as discrete JSON string literals in the decoded
-  // payload, not contiguous prose, so isolate candidate sentences and keep
-  // the ones carrying a known finding signature. The signature set — not a
-  // DOM path — is the contract; if Obsidian rewords these, the drift guard
-  // fires rather than silently dropping findings.
+  // Findings live in the RSC flight payload as JSX tuples
+  // ["$","div"|"details","<finding text>",{"className":...}] within the
+  // scorecard region (anchored to the "issues found by automated scans"
+  // sentence). The SIGNATURE — re-anchored to the redesign's wording: bold
+  // "**Title**:" entries plus the neutral scan/attestation sentences — is
+  // the contract. Reworded findings trip the drift guard below rather than
+  // silently dropping out.
+  const a = decoded.indexOf('issues found by automated scans');
+  const region = a === -1 ? decoded : decoded.slice(a, a + 40000);
   const SIGNATURE =
-    /(scan not available\.|verification not available\.|\)\s*calls|artifact attestation|certificate verification|additional files|are supported\.|issues? found by automated)/i;
+    /\*\*[^*]+\*\*:|scan not available|artifact attestation|certificate verification|additional files|verification not available|are supported/i;
   const candidates = [
     ...new Set(
-      (text.match(/[^\n"]{12,260}/g) || [])
-        .map((s) => s.trim())
+      [
+        ...region.matchAll(
+          /\["\$","(?:div|details|summary)","((?:[^"\\]|\\.){12,500})",\{"className"/g,
+        ),
+      ]
+        .map((m) => m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim())
         .filter((s) => SIGNATURE.test(s)),
     ),
   ];
@@ -114,26 +157,29 @@ async function main() {
     .filter((s) => !candidates.some((o) => o !== s && o.includes(s)))
     .slice(0, 20);
 
-  // Scraper drift guard. This parser depends on the portal's current DOM
-  // wording/structure. When Obsidian reworks the page, anchors silently
-  // vanish and every field returns null — which would look like a clean
-  // scorecard. Treat missing critical anchors as a hard failure that tells
-  // the operator to review THIS script, not as a passing scan.
+  // Scraper drift guard. This parser depends on the portal's current
+  // structure (grade spans, the segmented-bar meter, the RSC finding
+  // tuples). When Obsidian reworks the page, anchors silently vanish and
+  // fields return null — which would look like a clean scorecard. Treat
+  // missing critical anchors as a hard failure that tells the operator to
+  // review THIS script, not as a passing scan. The numeric scores are
+  // first-class anchors now (#183): losing the meter silently is exactly
+  // the drift we guard against.
   const critical = {
     health: portal.health,
+    'health score': portal.healthScore,
     review: portal.review,
+    'review score': portal.reviewScore,
     'issues count': portal.issuesFound,
     'portal version': portal.currentVersion,
   };
   const missing = Object.entries(critical)
     .filter(([, v]) => v == null)
     .map(([k]) => k);
-  // A non-clean Review with zero extracted findings also means the findings
-  // selectors drifted, even if the headline anchors still parse.
+  // A non-zero automated-issue count with zero extracted findings means the
+  // finding selectors drifted even if the headline anchors still parse.
   const findingsDrift =
-    portal.review &&
-    /caution|warning|critical/i.test(portal.review) &&
-    findings.length === 0;
+    Number(portal.issuesFound) > 0 && findings.length === 0;
   const drift = missing.length > 0 || findingsDrift;
 
   const repo = repoState();
@@ -181,8 +227,8 @@ async function main() {
   console.log(`Obsidian scorecard — ${SLUG}`);
   console.log(URL);
   console.log(line);
-  console.log(`Health          : ${portal.health ?? '?'}`);
-  console.log(`Review          : ${portal.review ?? '?'}  (${portal.issuesFound ?? '?'} issues)`);
+  console.log(`Health          : ${portal.health ?? '?'} ${portal.healthScore ? `(${portal.healthScore})` : ''}`.trimEnd());
+  console.log(`Review          : ${portal.review ?? '?'} ${portal.reviewScore ? `(${portal.reviewScore})` : ''}  (${portal.issuesFound ?? '?'} issues)`);
   console.log(`Portal version  : ${portal.currentVersion ?? '?'}`);
   console.log(`Portal updated  : ${portal.lastUpdated ?? '?'}`);
   console.log(`Portal created  : ${portal.created ?? '?'}`);
