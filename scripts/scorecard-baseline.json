@@ -1,0 +1,24 @@
+{
+  "note": "Regenerate intentionally via `make scorecard-baseline` after an ACCEPTED scorecard change. scripts/scorecard-gate.mjs fails on regressions vs this snapshot.",
+  "capturedFor": "0.11.25",
+  "capturedAt": "2026-05-17",
+  "health": "Excellent",
+  "healthScore": "4/4",
+  "review": "Satisfactory",
+  "reviewScore": "3/4",
+  "issuesFound": 5,
+  "findings": [
+    "**Clipboard Access**: Reads or writes the system clipboard. May expose content copied from outside Obsidian.",
+    "**Direct Filesystem Access**: Uses the Node.js `fs` module to access the filesystem outside of the Obsidian vault API. Can read and write any file on the system.",
+    "**Dynamic Code Execution**: Executes dynamically generated code via `eval()` or `new Function()`. Prevents full static analysis of plugin behavior.",
+    "**Vault Enumeration**: Enumerates all files in the vault (`vault.getFiles`, `getMarkdownFiles`, etc.). Gives the plugin access to every file path in the vault.",
+    "**Vault Read**: Reads individual vault files via the Obsidian API (`vault.read`, `vault.cachedRead`)",
+    "**Vault Write**: Creates or modifies vault files via the Obsidian API (`vault.modify`, `vault.create`, etc.)",
+    "Malware scan not available.",
+    "Network requests scan not available.",
+    "Obfuscation scan not available.",
+    "The `main.js` release asset has a verified GitHub artifact attestation.",
+    "The `styles.css` release asset has a verified GitHub artifact attestation.",
+    "The release contains additional files: `obsidian-mcp-0.11.25.mcpb`, `obsidian-mcp.mcpb`. Only `main.js`, `manifest.json`, and `styles.css` are supported."
+  ]
+}
