@@ -227,4 +227,10 @@ export const SECURITY_EXPRESSIONS: string[] = [
   'this',
   'note.__proto__',
   'note.constructor',
+  // Runtime-computed member name: our static pre-walk sees a BinaryExpression
+  // property (not Identifier/Literal) and does NOT catch this — it must fail
+  // closed via expression-eval's own access guard. Pins that the two layers
+  // compose, so the "defense-in-depth" claim is test-grounded, not asserted.
+  'note[("cons" + "tructor")]',
+  'file[("__pro" + "to__")]',
 ];

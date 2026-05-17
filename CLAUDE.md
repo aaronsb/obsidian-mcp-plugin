@@ -471,12 +471,28 @@ by reverting the decision behind them; they were analysed and accepted:
 - **"… scan not available" disclosures** — neutral. Obsidian's
   malware/dependency/obfuscation scanners did not run; not a failure.
 
-**Dynamic code execution** (`new Function` in the Bases evaluator) is a real
-architectural decision, not an accepted finding — tracked for an ADR in #175.
+**Dynamic code execution** — the Bases-evaluator `new Function` (the
+exploitable vector: arbitrary JS from a synced/shared `.base`) is **removed**
+per **ADR-201**, implemented in #180 (PR #185 corpus/baseline, PR #186
+expression-eval swap). The evaluator now parses with `expression-eval` (jsep
+grammar, no globals) plus a tested `constructor`/`__proto__`/`prototype`/
+`this` denylist; a differential corpus proves behavioural parity.
+
+Caveat for future scans: `grep "new Function" main.js` is **not** zero by
+design. The residual occurrences are transitive-dependency codegen — ajv
+@6.14.0 schema-validator compilation + a library deprecation shim — a
+different, library-internal class **not reachable from vault content**. They
+were already in 0.11.25's bundle, the release that passed full review with
+only the fs Warning, so they were non-gating then. The "Dynamic Code
+Execution" Recommendation was attributed to the Bases path specifically;
+this clears that path. Whether a heuristic re-scan re-flags the ajv-class
+residual is unknown until the next scan (scorecard blind — #183); if it
+does, it is the *transitive* class above, not the closed Bases vector.
 
 Actionable findings became issues/PRs: #163/#164/#170 (SSL + attestation,
-shipped), #171/#173 (build-dep + CSS, shipped), #174 (js-yaml), #175 (eval
-ADR), #176 (this doc). Scorecard CI-gate idea: #165.
+shipped), #171/#173 (build-dep + CSS, shipped), #174 (js-yaml, shipped),
+#180 (sandboxed Bases evaluator, PR #185/#186), #176 (this doc). Scorecard
+CI-gate idea: #165.
 
 ## Important Notes
 
