@@ -1,7 +1,65 @@
 import { App, getAllTags, LinkCache } from 'obsidian';
+import { parse, eval as evaluateAst } from 'expression-eval';
 import { NoteContext } from '../types/bases-yaml';
 import { Debug } from './debug';
 import { BasesReference } from './bases-reference';
+
+/**
+ * Member names that bridge from a plain value to the `Function` constructor
+ * (`x.constructor.constructor("…")()`) or the prototype chain. expression-eval
+ * 5.x already blocks `constructor`/`__proto__` internally; this denylist is
+ * defense-in-depth that (a) also covers `prototype`, (b) covers the computed
+ * form `x["constructor"]`, and (c) does not silently weaken if the pinned
+ * library's internal list changes. ADR-201's "explicit, tested no-globals
+ * safety property" lives here, not in a transitive dependency.
+ */
+const FORBIDDEN_MEMBERS = new Set(['constructor', '__proto__', 'prototype']);
+
+/** Minimal structural view of the jsep AST nodes we need to walk. */
+interface AstNode {
+  type: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Reject any member access whose property resolves to a forbidden name,
+ * whether written as `a.constructor` (Identifier) or `a["constructor"]`
+ * (computed Literal). Throws so the caller's existing catch returns the
+ * evaluator's safe `false` — a blocked `.base` expression fails closed,
+ * exactly as a malformed one already does.
+ */
+function assertNoForbiddenAccess(node: unknown): void {
+  if (!node || typeof node !== 'object') return;
+  const n = node as AstNode;
+
+  // `this` resolves to the whole evaluation context object — no legitimate
+  // use in a `.base` filter/formula, and a needless reflection surface. Reject.
+  if (n.type === 'ThisExpression') {
+    throw new Error('`this` is not allowed in Bases expressions');
+  }
+
+  if (n.type === 'MemberExpression') {
+    const property = n.property as AstNode | undefined;
+    const computed = n.computed === true;
+    const name =
+      !computed && property?.type === 'Identifier'
+        ? (property.name as string)
+        : computed && property?.type === 'Literal'
+          ? String(property.value)
+          : undefined;
+    if (name !== undefined && FORBIDDEN_MEMBERS.has(name)) {
+      throw new Error(`Access to member "${name}" is not allowed`);
+    }
+  }
+
+  for (const value of Object.values(n)) {
+    if (Array.isArray(value)) {
+      value.forEach(assertNoForbiddenAccess);
+    } else if (value && typeof value === 'object') {
+      assertNoForbiddenAccess(value);
+    }
+  }
+}
 
 /**
  * Evaluates Bases filter and formula expressions
@@ -37,16 +95,13 @@ export class ExpressionEvaluator {
         }
       }
       
-      // Parse and evaluate the expression
-      // Use 'with' statement to avoid reserved word conflicts
-      // Note: 'with' is discouraged but safe in our controlled context
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval -- Intentional for Bases filter/formula evaluation
-      const func = new Function('context', `
-        with (context) {
-          return ${expression};
-        }
-      `) as (ctx: Record<string, unknown>) => unknown;
-      const result: unknown = func(evalContext);
+      // Parse with expression-eval (jsep grammar — no `eval`/`Function`/`new`
+      // and no global scope), reject prototype-chain escapes, then evaluate
+      // against the curated context. `.base` files are synced/shareable, so
+      // this must not execute arbitrary JS (ADR-201).
+      const ast = parse(expression);
+      assertNoForbiddenAccess(ast);
+      const result: unknown = evaluateAst(ast, evalContext);
       
       if (Debug.isDebugMode()) {
         Debug.log(`Expression result: ${String(result)}`);
