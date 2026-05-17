@@ -1,15 +1,14 @@
 /**
- * Characterization corpus for the ADR-201 sandboxed-evaluator work (#180).
+ * Differential corpus for the ADR-201 sandboxed evaluator (#180).
  *
- * PR1 (this file): lock the *current* `new Function` evaluator's behaviour
- * over the differential corpus, and prove the live RCE the ADR exists to
- * close — `constructor.constructor` reaches the `Function` constructor through
- * the `with` scope chain, so a synced/shared `.base` runs arbitrary JS today.
+ * EVAL_CASES is the behavioural-parity contract: these expectations were
+ * locked in PR1 against the old `new Function` path and must keep passing
+ * unchanged now that expression-eval backs the evaluator — that equivalence
+ * IS the migration's safety proof.
  *
- * PR2 swaps in the vetted no-eval library: the EVAL_CASES block must keep
- * passing unchanged (proving behavioural parity), and the SECURITY block here
- * gets *inverted* — every escape must then throw or return the evaluator's
- * safe `false`, never a computed value.
+ * The SECURITY block is the inverted half: the sandbox-escape expressions
+ * that executed arbitrary JS under `new Function` must now all fail closed —
+ * never a function, never the real global, never a computed value.
  */
 
 import { App } from 'obsidian';
@@ -30,29 +29,33 @@ describe('ExpressionEvaluator — behavioural baseline (current new Function, AD
   }
 });
 
-describe('ExpressionEvaluator — live RCE the new Function path exposes (ADR-201 motivation)', () => {
-  // These assertions are intentionally the *vulnerability*: a computed return
-  // value proves arbitrary JS executed. PR2 inverts each to expect a thrown
-  // error or the evaluator's safe `false` — never the number below.
-  const proofs: { expr: string; reachedValue: number }[] = [
-    { expr: 'constructor.constructor("return 1 + 1")()', reachedValue: 2 },
-    { expr: '({}).constructor.constructor("return 42")()', reachedValue: 42 },
-    { expr: '(1).constructor.constructor("return 99")()', reachedValue: 99 },
+describe('ExpressionEvaluator — sandbox escapes fail closed (ADR-201)', () => {
+  // The exact expressions that returned 2/42/99 under `new Function` must now
+  // yield the evaluator's safe `false` (denylist throws → existing catch).
+  const formerlyExecuting = [
+    'constructor.constructor("return 1 + 1")()',
+    '({}).constructor.constructor("return 42")()',
+    '(1).constructor.constructor("return 99")()',
   ];
 
-  for (const { expr, reachedValue } of proofs) {
-    it(`TODAY executes arbitrary code via: ${expr}`, () => {
-      expect(evaluator.evaluate(expr, makeNoteContext())).toBe(reachedValue);
+  for (const expr of formerlyExecuting) {
+    it(`no longer executes: ${expr}`, () => {
+      expect(evaluator.evaluate(expr, makeNoteContext())).toBe(false);
     });
   }
 
-  it('every SECURITY_EXPRESSIONS entry is a defined escape vector to invert in PR2', () => {
-    // No behavioural assertion here (some escapes return huge globals); this
-    // pins the set's existence so PR2 has an explicit inversion checklist.
-    expect(SECURITY_EXPRESSIONS.length).toBeGreaterThanOrEqual(10);
-    expect(SECURITY_EXPRESSIONS).toContain('globalThis');
-    expect(SECURITY_EXPRESSIONS).toContain(
-      'constructor.constructor("return 1 + 1")()',
-    );
+  it('no SECURITY_EXPRESSIONS entry reaches a function, the real global, or a value', () => {
+    for (const expr of SECURITY_EXPRESSIONS) {
+      const result = evaluator.evaluate(expr, makeNoteContext());
+      // The security property: never a callable, never the real globalThis,
+      // and never a "successful" computed value — only the safe failure
+      // sentinels (false from the catch, or an unresolved-identifier undefined
+      // that carries no global reach).
+      expect(typeof result).not.toBe('function');
+      expect(result).not.toBe(globalThis);
+      expect(result === false || result === undefined || result === null).toBe(
+        true,
+      );
+    }
   });
 });
