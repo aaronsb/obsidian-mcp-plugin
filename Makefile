@@ -93,6 +93,12 @@ mcpb: ## Build MCPB bundle (obsidian-mcp-<version>.mcpb) for Claude Desktop
 scorecard: ## Pull the Obsidian community portal scorecard + freshness delta (free post-release signal)
 	@node scripts/scorecard.mjs
 
+scorecard-gate: ## Diff the live scorecard vs the committed baseline (exit 1 = regression, 3 = drift)
+	@node scripts/scorecard-gate.mjs
+
+scorecard-baseline: ## DELIBERATELY re-snapshot scorecard-baseline.json (only after an ACCEPTED change; commit it)
+	@node scripts/scorecard-baseline.mjs
+
 set-description: ## Set plugin description (SoT: package.json) + sync. Usage: make set-description DESC='...'
 	@node scripts/set-description.mjs "$(DESC)"
 	@node sync-version.mjs

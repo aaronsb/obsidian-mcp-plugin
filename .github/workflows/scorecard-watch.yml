@@ -1,0 +1,54 @@
+name: Scorecard watch
+
+# Standalone scheduled regression watch over the Obsidian community portal
+# scorecard (#165). It gates NOTHING in the release path — it does not run
+# on PRs or releases. Its only job is to turn a silent portal regression
+# (Health/Review downgrade, more automated issues, a new permission/
+# behaviour finding vs the committed baseline) into a visible red check.
+#
+# The gate never inspects advisory wording — only structured deltas vs
+# scripts/scorecard-baseline.json. Scraper drift (exit 3) is reported
+# distinctly from a real regression (exit 1); a transient unreachable
+# portal is inconclusive and never fails (exit 0).
+
+on:
+  schedule:
+    - cron: '17 14 * * 1' # Mondays 14:17 UTC — offset off the hour
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scorecard-watch
+  cancel-in-progress: false
+
+jobs:
+  scorecard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      # No dependency install: scorecard.mjs + scorecard-gate.mjs use only
+      # Node builtins (fetch, fs, child_process). Keeps this fast and off
+      # the dependency surface.
+      - name: Scorecard regression gate
+        id: gate
+        run: |
+          set +e
+          node scripts/scorecard-gate.mjs
+          code=$?
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          case $code in
+            0) echo "::notice::Scorecard gate: no regression vs baseline." ;;
+            1) echo "::error::Scorecard gate: REGRESSION vs baseline — see log. Re-baseline only if the change is accepted (make scorecard-baseline)." ;;
+            3) echo "::error::Scorecard gate: SCRAPER DRIFT — fix scripts/scorecard.mjs. This is NOT a portal/plugin regression (#183-class)." ;;
+            *) echo "::error::Scorecard gate: unexpected exit $code." ;;
+          esac
+          exit $code
