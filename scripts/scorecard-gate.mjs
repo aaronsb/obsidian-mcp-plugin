@@ -120,6 +120,12 @@ function main() {
   );
   console.log(line);
 
+  if (typeof live.freshness === 'string' && live.freshness.startsWith('STALE')) {
+    // Not a regression and not gating: the portal simply hasn't re-scanned
+    // the current release yet. Surface it so a pass/fail is read in context.
+    console.log(`note: portal scan is STALE — ${live.freshness}`);
+  }
+
   if (regressions.length) {
     console.error('REGRESSION vs baseline:');
     for (const r of regressions) console.error(`  ✗ ${r}`);

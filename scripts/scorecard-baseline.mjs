@@ -32,6 +32,17 @@ if (j.integrity === 'DRIFT' || run.status === 2) {
   );
   process.exit(3);
 }
+// The gate tolerates a STALE portal (reading an old scan is harmless when
+// comparing). Anchoring the baseline to one is not: it would freeze an
+// outdated truth and silently mis-calibrate every future gate run until
+// the next re-baseline. Refuse — re-baseline only against a portal that
+// has actually scanned the version in manifest.json.
+if (typeof j.freshness === 'string' && j.freshness.startsWith('STALE')) {
+  console.error(
+    `scorecard-baseline: portal is STALE (${j.freshness}). Refusing — re-baseline only after the dev portal has re-scanned the current release.`,
+  );
+  process.exit(4);
+}
 
 const baseline = {
   note: 'Regenerate intentionally via `make scorecard-baseline` after an ACCEPTED scorecard change. scripts/scorecard-gate.mjs fails on regressions vs this snapshot.',
