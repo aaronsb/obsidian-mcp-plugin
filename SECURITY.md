@@ -21,7 +21,7 @@ We're actively working on fixing these security vulnerabilities:
 
 | Issue | Status | Priority |
 |-------|---------|----------|
-| No authentication on MCP server | 🔧 In Progress | CRITICAL |
+| No authentication on MCP server | ✅ Done | CRITICAL |
 | Path traversal in file operations | 📋 Planned | CRITICAL |
 | Missing input validation | 📋 Planned | HIGH |
 | Insecure session management | 📋 Planned | HIGH |
@@ -37,6 +37,7 @@ Until security improvements are complete:
 3. **Monitor vault access** for unexpected changes
 4. **Keep backups** of your vault
 5. **Review plugin permissions** in Obsidian
+6. **Edit MCP config files directly** instead of using `claude mcp add --header` — the CLI echoes resolved header values to stdout, exposing your API key to parent processes and (on macOS) the unified log
 
 ## Secure Configuration
 
@@ -51,7 +52,7 @@ Until security improvements are complete:
 
 ## Future Security Enhancements
 
-- [ ] API key authentication
+- [x] API key authentication
 - [ ] Path validation framework
 - [ ] Input sanitization
 - [ ] Rate limiting
