@@ -140,8 +140,12 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility): Sem
     // Check for read-only mode before processing write operations
     const plugin = (api as unknown as { plugin?: PluginWithSettings }).plugin;
     if (plugin?.settings?.readOnlyMode && operation === 'vault') {
-      const writeOperations = ['create', 'update', 'delete', 'move', 'rename', 'copy', 'split', 'combine', 'concatenate'];
-      if (writeOperations.includes(args.action)) {
+      const writeOperations = ['create', 'update', 'delete', 'move', 'rename', 'copy', 'split', 'concatenate'];
+      // combine writes a file only when a destination is given; without one it
+      // returns content inline (no side effects) and is safe in read-only mode.
+      const isWriteOp = writeOperations.includes(args.action) ||
+        (args.action === 'combine' && Boolean(args.destination));
+      if (isWriteOp) {
         return {
           content: [{
             type: 'text' as const,
@@ -454,7 +458,7 @@ function getParametersForOperation(operation: string): Record<string, unknown> {
       },
       destination: {
         type: 'string',
-        description: 'Destination path for move/copy operations'
+        description: 'Destination path for move/copy/combine operations. For combine: omit to return the combined content inline without writing a file'
       },
       newName: {
         type: 'string',

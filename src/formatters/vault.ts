@@ -407,7 +407,9 @@ export function formatFileSplit(response: FileSplitResponse): string {
  */
 export interface FileCombineResponse {
   success: boolean;
-  destination: string;
+  destination?: string;
+  inline?: boolean;
+  content?: string;
   filesCombined: number;
   totalSize?: number;
   sourceFiles?: string[];
@@ -417,11 +419,27 @@ export function formatFileCombine(response: FileCombineResponse): string {
   const lines: string[] = [];
 
   const icon = response.success ? '✓' : '✗';
+
+  // Inline mode: no file was written — return the combined content directly
+  if (response.inline && response.content !== undefined) {
+    lines.push(header(1, `${icon} Combined ${response.filesCombined} files (inline)`));
+    lines.push('');
+    if (response.totalSize !== undefined) {
+      lines.push(property('Total size', formatFileSize(response.totalSize), 0));
+      lines.push('');
+    }
+    lines.push(response.content);
+    lines.push('');
+    lines.push(divider());
+    lines.push(summaryFooter());
+    return joinLines(lines);
+  }
+
   lines.push(header(1, `${icon} Combined: ${response.destination}`));
   lines.push('');
 
   if (response.success) {
-    lines.push(property('Destination', response.destination, 0));
+    lines.push(property('Destination', response.destination ?? '(none)', 0));
     lines.push(property('Files combined', response.filesCombined.toString(), 0));
     if (response.totalSize !== undefined) {
       lines.push(property('Total size', formatFileSize(response.totalSize), 0));
