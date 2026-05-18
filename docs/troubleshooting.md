@@ -19,19 +19,25 @@ AI client cannot connect to the MCP server.
 Connection works but requests are rejected with 401/403 errors.
 
 **Solutions:**
-1. **Check API key**: Ensure the key in your client config matches the one in plugin settings
-2. **Header format**: Use `Authorization: Bearer YOUR_KEY` (note the space after Bearer)
-3. **Regenerated key**: The API key regenerates on plugin updates — copy the new key from settings
+1. **Check API key**: Ensure the key in your client config matches the one shown in plugin settings
+2. **Check config location**: For Claude Code, the config lives in `~/.claude/settings.json` (user scope) or `.mcp.json` (project scope). Verify the `headers.Authorization` value is `Bearer <your key>` (note the space after Bearer)
+3. **Regenerated key**: The API key regenerates on plugin updates — copy the new key from settings and update your config file
+4. **Don't use `claude mcp add --header`**: it echoes the resolved token to stdout and (on macOS) the unified log. Edit the config file directly instead
 
 ## SSL Certificate Errors
 
 **Symptoms:**
-Certificate warnings or connection failures when using HTTPS.
+Certificate warnings, TLS handshake failures, or silent connection failures when using HTTPS. The failure is often silent server-side — the handshake aborts before the HTTP request is sent, so the plugin's debug log shows nothing. Bun-based clients can fail this way even after trusting the cert in Keychain Access, because **Bun does not consult the macOS system keychain for TLS trust**.
 
-**Solutions:**
-1. **For development**: Set `NODE_TLS_REJECT_UNAUTHORIZED=0` in your client config
-2. **Self-signed certs**: The plugin generates self-signed certificates on first run
-3. **Certificate location**: Certificates are stored in the plugin's data folder
+**Solution:**
+Trust the plugin's self-signed certificate properly. See [Trusting the self-signed certificate](../README.md#trusting-the-self-signed-certificate) in the README for the full instructions, covering:
+
+- **macOS Keychain** (`security add-trusted-cert`) — for clients that use the system trust store.
+- **`NODE_EXTRA_CA_CERTS`** — required for Bun-based runtimes; set via `launchctl setenv` so dock-launched GUI apps inherit it.
+
+The cert is auto-generated on first start under `.obsidian/plugins/semantic-vault-mcp/certificates/default.crt` inside your vault; re-trust it whenever the plugin regenerates it.
+
+**Avoid `NODE_TLS_REJECT_UNAUTHORIZED=0`:** it disables TLS verification process-wide — not just for the plugin — and masks legitimate certificate problems (expired, revoked, tampered) instead of fixing them.
 
 ## Server Not Starting
 

@@ -1461,18 +1461,10 @@ class MCPSettingTab extends PluginSettingTab {
 			this.addCopyButton(keyRow, this.plugin.settings.apiKey);
 		}
 
-		// === Claude Code (CLI) ===
-		new Setting(info).setName("Claude code (CLI)").setHeading();
+		// === Claude Code ===
+		new Setting(info).setName("Claude code").setHeading();
 		const commandExample = info.createDiv('protocol-command-example');
-		const codeEl = commandExample.createEl('code');
-		codeEl.classList.add('mcp-code-block');
-
-		const claudeCommand = this.plugin.settings.dangerouslyDisableAuth ?
-			`claude mcp add --transport http obsidian ${mcpUrl}` :
-			`claude mcp add --transport http obsidian ${mcpUrl} --header "Authorization: Bearer ${this.plugin.settings.apiKey}"`;
-
-		codeEl.textContent = claudeCommand;
-		this.addCopyButton(commandExample, claudeCommand);
+		this.renderClaudeCodeConnection(commandExample, baseUrl);
 
 		// === Advanced: collapsed by default to keep the default view tidy ===
 		// Contains the JSON path (for Cline/Continue/custom clients and multi-vault
@@ -1523,6 +1515,65 @@ class MCPSettingTab extends PluginSettingTab {
 		new Setting(advanced).setName("Custom bundle per vault").setHeading();
 		advanced.createEl('p', {
 			text: 'Clone the plugin repo and run `node scripts/make-mcpb.mjs`. It prompts for a display name, url, and api key, then writes a custom-named .mcpb you drop into claude desktop — one-click install per vault, no fields to type at install time.'
+		});
+	}
+
+	/**
+	 * Render the Claude Code connection block.
+	 *
+	 * When auth is enabled we deliberately do NOT show `claude mcp add --header`:
+	 * that CLI resolves and echoes the header value to stdout (captured by any
+	 * parent process, including AI agents), and on macOS the spawned MCP child
+	 * process argv is written to the unified log — both leak the bearer token.
+	 * Editing the config file directly avoids every one of those vectors, so the
+	 * authenticated path shows a ready-to-paste JSON snippet plus a warning
+	 * instead. The no-auth path carries no secret, so the plain CLI command is
+	 * safe and kept for convenience.
+	 *
+	 * Single source of truth for both the initial render and the live-refresh
+	 * handler, so the two cannot drift apart.
+	 */
+	private renderClaudeCodeConnection(container: HTMLElement, baseUrl: string): void {
+		container.empty();
+
+		if (this.plugin.settings.dangerouslyDisableAuth) {
+			const codeEl = container.createEl('code');
+			codeEl.classList.add('mcp-code-block');
+			const cmd = `claude mcp add --transport http obsidian ${baseUrl}/mcp`;
+			codeEl.textContent = cmd;
+			this.addCopyButton(container, cmd);
+			return;
+		}
+
+		container.createEl('p', {
+			text: 'Add to ~/.claude/settings.json (user scope) or .mcp.json (project scope):',
+		});
+
+		const vaultName = this.app.vault.getName();
+		const configJson = {
+			mcpServers: {
+				[vaultName]: {
+					transport: {
+						type: 'http',
+						url: `${baseUrl}/mcp`,
+						headers: {
+							Authorization: `Bearer ${this.plugin.settings.apiKey}`,
+						},
+					},
+				},
+			},
+		};
+		const configText = JSON.stringify(configJson, null, 2);
+
+		const pre = container.createEl('pre');
+		pre.classList.add('mcp-config-example');
+		pre.textContent = configText;
+		this.addCopyButton(container, configText);
+
+		container.createEl('p', {
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "claude mcp add --header" is a literal lowercase CLI command; capitalizing it would misrepresent the command users must avoid
+			text: 'Do not use "claude mcp add --header" to register this server — the CLI echoes the resolved token to stdout and (on macOS) the unified log, exposing your API key. Edit the config file directly instead.',
+			cls: 'mcp-security-warning',
 		});
 	}
 
@@ -1654,22 +1705,17 @@ class MCPSettingTab extends PluginSettingTab {
 			}
 		}
 		
-		// Update protocol information section with proper auth handling
+		// Update Claude Code connection section with proper auth handling.
+		// Rebuild via the shared renderer so the live view matches the initial
+		// render exactly (including the JSON-config + warning auth path).
 		const protocolSection = document.querySelector('.protocol-command-example');
-		if (protocolSection) {
-			const codeBlock = protocolSection.querySelector('code');
-			if (codeBlock && info) {
-				// Get correct protocol and port based on HTTPS setting
-				const protocol = this.plugin.settings.httpsEnabled ? 'https' : 'http';
-				const port = this.plugin.settings.httpsEnabled ? this.plugin.settings.httpsPort : info.httpPort;
-				const baseUrl = `${protocol}://localhost:${port}`;
-				
-				const claudeCommand = this.plugin.settings.dangerouslyDisableAuth ? 
-					`claude mcp add --transport http obsidian ${baseUrl}/mcp` :
-					`claude mcp add --transport http obsidian ${baseUrl}/mcp --header "Authorization: Bearer ${this.plugin.settings.apiKey}"`;
-				
-				codeBlock.textContent = claudeCommand;
-			}
+		if (protocolSection instanceof HTMLElement && info) {
+			// Get correct protocol and port based on HTTPS setting
+			const protocol = this.plugin.settings.httpsEnabled ? 'https' : 'http';
+			const port = this.plugin.settings.httpsEnabled ? this.plugin.settings.httpsPort : info.httpPort;
+			const baseUrl = `${protocol}://localhost:${port}`;
+
+			this.renderClaudeCodeConnection(protocolSection, baseUrl);
 		}
 		
 		// Update any other dynamic content areas that need live updates

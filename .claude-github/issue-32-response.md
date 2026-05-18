@@ -1,69 +1,78 @@
-Thank you for reporting this issue! Based on the logs, I can see the server is connecting successfully but the tools aren't appearing in Claude Desktop.
+Thank you for reporting this issue! Based on the logs, the server is connecting but the tools aren't appearing in your client.
 
-This appears to be related to SSL certificate validation when using HTTPS with the plugin. The solution depends on whether you're using HTTP or HTTPS:
+This is almost always MCP transport configuration or SSL certificate trust. Modern MCP clients speak HTTP transport natively — you no longer need the `mcp-remote` bridge.
 
-## Solution 1: Using HTTP (Recommended for troubleshooting)
-If you're using the HTTP endpoint, your configuration should look like this:
+## Solution 1: Using HTTP (recommended for troubleshooting)
+
 ```json
 {
   "mcpServers": {
     "obsidian-vault": {
-      "command": "npx",
-      "args": [
-        "mcp-remote",
-        "http://localhost:3001/mcp"
-      ]
-    }
-  }
-}
-```
-
-## Solution 2: Using HTTPS with Self-Signed Certificates
-If you're using HTTPS (port 3443), you need to add the `NODE_TLS_REJECT_UNAUTHORIZED` environment variable:
-```json
-{
-  "mcpServers": {
-    "obsidian-vault": {
-      "command": "npx",
-      "args": [
-        "mcp-remote",
-        "https://localhost:3443/mcp"
-      ],
-      "env": {
-        "NODE_TLS_REJECT_UNAUTHORIZED": "0"
+      "transport": {
+        "type": "http",
+        "url": "http://localhost:3001/mcp"
       }
     }
   }
 }
 ```
 
-## With API Key Authentication
-If you have API key authentication enabled, use this format:
+## Solution 2: Using HTTPS with the self-signed certificate
+
+If you're using HTTPS (port 3443), **trust the plugin's self-signed certificate** rather than disabling TLS verification. The cert is at `.obsidian/plugins/semantic-vault-mcp/certificates/default.crt` inside your vault.
+
+**macOS Keychain** (clients that use the system trust store):
+```bash
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain \
+  /path/to/vault/.obsidian/plugins/semantic-vault-mcp/certificates/default.crt
+```
+
+**Bun-based runtimes (Claude Code)** — Bun does not read the macOS keychain, so set `NODE_EXTRA_CA_CERTS` instead:
+```bash
+export NODE_EXTRA_CA_CERTS=/path/to/vault/.obsidian/plugins/semantic-vault-mcp/certificates/default.crt
+launchctl setenv NODE_EXTRA_CA_CERTS /path/to/vault/.obsidian/plugins/semantic-vault-mcp/certificates/default.crt
+```
+
+Then point the config at the HTTPS endpoint:
 ```json
 {
   "mcpServers": {
     "obsidian-vault": {
-      "command": "npx",
-      "args": [
-        "mcp-remote",
-        "https://localhost:3443/mcp",
-        "--header",
-        "Authorization:${AUTH}"
-      ],
-      "env": {
-        "NODE_TLS_REJECT_UNAUTHORIZED": "0",
-        "AUTH": "Bearer YOUR_API_KEY_HERE"
+      "transport": {
+        "type": "http",
+        "url": "https://localhost:3443/mcp"
       }
     }
   }
 }
 ```
+
+> **Avoid `NODE_TLS_REJECT_UNAUTHORIZED=0`** — it disables TLS verification process-wide, not just for the plugin. Trust the certificate explicitly instead.
+
+## With API key authentication
+
+Add a `headers` field to any of the configs above:
+```json
+{
+  "mcpServers": {
+    "obsidian-vault": {
+      "transport": {
+        "type": "http",
+        "url": "https://localhost:3443/mcp",
+        "headers": {
+          "Authorization": "Bearer YOUR_API_KEY_HERE"
+        }
+      }
+    }
+  }
+}
+```
+
+> **Important:** do not register this server with `claude mcp add --header` — the CLI echoes the resolved header to stdout and (on macOS) the unified log, exposing your API key. Edit the config file directly: `~/.claude/settings.json` (user scope) or `.mcp.json` (project scope) for Claude Code, or your client's MCP config file. The plugin's Settings tab has a ready-to-paste snippet.
 
 Could you please:
-1. Confirm which URL you're using (HTTP on port 3001 or HTTPS on port 3443)?
+1. Confirm which URL you're using (HTTP on 3001 or HTTPS on 3443)?
 2. Try the appropriate configuration above?
-3. Restart Claude Desktop after updating the configuration
-
-The `NODE_TLS_REJECT_UNAUTHORIZED` environment variable is crucial when using HTTPS with self-signed certificates, as Claude Desktop needs to bypass certificate validation for local development certificates.
+3. Restart your MCP client after updating the configuration?
 
 Please let me know if this resolves the issue!
