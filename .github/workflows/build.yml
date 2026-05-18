@@ -54,6 +54,9 @@ jobs:
 
       - name: Comment on PR with build status
         if: github.event_name == 'pull_request'
+        # Never let the status-comment step (can fail on fork PRs / limited
+        # token perms) red the whole build — the build itself already passed.
+        continue-on-error: true
         uses: actions/github-script@v9
         with:
           script: |
