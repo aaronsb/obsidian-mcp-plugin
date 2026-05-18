@@ -62,7 +62,7 @@ jobs:
 
       - name: Attest build provenance
         if: steps.check_tag.outputs.exists == 'false'
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           # Attest every asset Obsidian installs (main.js, manifest.json,
           # styles.css) plus the .mcpb bundles. The portal flags any
