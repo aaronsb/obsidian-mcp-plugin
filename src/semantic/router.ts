@@ -653,20 +653,20 @@ export class SemanticRouter {
           throw new Error('paths array is required for combine operation');
         }
 
-        if (!destination) {
-          throw new Error('destination is required for combine operation');
-        }
-        
-        // Check if destination exists
-        try {
-          const destFile = await this.api.getFile(destination);
-          if (destFile && !overwrite) {
-            throw new Error(`Destination already exists: ${destination}. Set overwrite=true to replace.`);
+        // When a destination is given, refuse to clobber it unless overwrite.
+        // When omitted, the combined content is returned inline (no write) —
+        // see the inline branch below.
+        if (destination) {
+          try {
+            const destFile = await this.api.getFile(destination);
+            if (destFile && !overwrite) {
+              throw new Error(`Destination already exists: ${destination}. Set overwrite=true to replace.`);
+            }
+          } catch {
+            // File doesn't exist, which is what we want
           }
-        } catch {
-          // File doesn't exist, which is what we want
         }
-        
+
         // Validate and get all source files
         const sourceFiles = [];
         for (const path of paths) {
@@ -697,14 +697,37 @@ export class SemanticRouter {
         }
         
         const finalContent = combinedContent.join(separator);
-        
+
+        // No destination → return the combined content inline without writing
+        // to the vault. Lets read-only consumers use combine for multi-file
+        // retrieval with no side effects.
+        if (!destination) {
+          return {
+            success: true,
+            inline: true,
+            content: finalContent,
+            filesCombined: paths.length,
+            totalSize: finalContent.length,
+            sourceFiles: paths,
+            workflow: {
+              message: `Combined ${paths.length} files inline (no file written)`,
+              suggested_next: [
+                {
+                  description: 'Save the combined content to a file',
+                  command: `vault(action='combine', paths=${JSON.stringify(paths)}, destination='combined.md')`
+                }
+              ]
+            }
+          };
+        }
+
         // Create or update destination file
         if (overwrite) {
           await this.api.updateFile(destination, finalContent);
         } else {
           await this.api.createFile(destination, finalContent);
         }
-        
+
         return {
           success: true,
           destination,
