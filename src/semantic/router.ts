@@ -708,7 +708,10 @@ export class SemanticRouter {
             content: finalContent,
             filesCombined: paths.length,
             totalSize: finalContent.length,
-            sourceFiles: paths,
+            // Reflect the order the content was actually combined in
+            // (sortFiles mutates sourceFiles in place when sortBy is set),
+            // so consumers can map sections back to files correctly.
+            sourceFiles: sourceFiles.map(f => f.path),
             workflow: {
               message: `Combined ${paths.length} files inline (no file written)`,
               suggested_next: [
