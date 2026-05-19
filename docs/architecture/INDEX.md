@@ -35,6 +35,7 @@ _MCP tool design, semantic operations, graph operations, formatters_
 |-----|-------|--------|
 | [ADR-200](./tools/ADR-200-close-cli-parity-gaps-add-daily-notes-tasks-templates-and-properties-operations.md) | Close CLI parity gaps — add daily notes, tasks, templates, and properties operations | Draft |
 | [ADR-201](./tools/ADR-201-replace-new-function-with-a-sandboxed-expression-evaluator-for-bases.md) | Replace new Function with a sandboxed expression evaluator for Bases | Accepted |
+| [ADR-202](./tools/ADR-202-split-semantic-router-monolith-into-per-operation-modules.md) | Split semantic router monolith into per-operation modules | Accepted |
 
 ## Delivery
 _Build, release, versioning, community plugin submission_
