@@ -342,19 +342,27 @@ export class MCPHttpServer {
       });
     });
 
-    // GET endpoint for MCP info (for debugging)
-    this.app.get('/mcp', (req, res) => {
+    // Debug/info endpoint — moved off `GET /mcp` so it no longer shadows the
+    // SSE stream the client opens with `GET /mcp` (the shadowing caused the
+    // SSE reconnection loop in #125).
+    this.app.get('/mcp-info', (req, res) => {
       res.json({
         message: 'MCP endpoint active',
-        usage: 'POST /mcp with MCP protocol messages',
+        usage: 'POST /mcp for messages, GET /mcp for the SSE stream',
         protocol: 'Model Context Protocol',
         transport: 'HTTP',
         sessionHeader: 'Mcp-Session-Id'
       });
     });
 
-    // MCP protocol endpoint - using StreamableHTTPServerTransport
+    // MCP protocol endpoint — StreamableHTTPServerTransport. POST carries
+    // messages, GET establishes the SSE stream; both go to the same handler.
+    // DELETE keeps its own explicit session-close handler below, so we route
+    // GET/POST individually rather than `app.all` (which would shadow it).
     this.app.post('/mcp', (req, res) => {
+      void this.handleMCPRequest(req, res);
+    });
+    this.app.get('/mcp', (req, res) => {
       void this.handleMCPRequest(req, res);
     });
 
