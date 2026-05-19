@@ -51,28 +51,13 @@ Download `obsidian-mcp-<version>.mcpb` from the [latest release](https://github.
 
 > *Cross-platform note:* `.mcpb` files install via Claude Desktop's bundled handler. If double-click doesn't trigger Claude on your system, drag the file onto Claude Desktop's window instead, or right-click → "Open with…" and pick Claude Desktop (then "always open with" if your OS asks). Behavior varies by platform: macOS usually auto-associates, Windows may need a one-time association, Linux varies by desktop environment.
 
-**Claude Code** — add to `~/.claude/settings.json` (user scope) or `.mcp.json` (project scope):
+**Claude Code** — one command (copy the ready-made version with your API key from the plugin's Settings tab):
 
-```json
-{
-  "mcpServers": {
-    "obsidian-vault": {
-      "transport": {
-        "type": "http",
-        "url": "http://localhost:3001/mcp",
-        "headers": {
-          "Authorization": "Bearer YOUR_API_KEY"
-        }
-      }
-    }
-  }
-}
+```bash
+claude mcp add --transport http obsidian http://localhost:3001/mcp --header "Authorization: Bearer YOUR_API_KEY"
 ```
 
 For HTTPS, use `https://localhost:3443/mcp` instead — see [Trusting the self-signed certificate](#trusting-the-self-signed-certificate) below. **Claude Code runs on Bun, which does not read the macOS system keychain**, so you will need to set `NODE_EXTRA_CA_CERTS`.
-
-> [!WARNING]
-> **Do not use `claude mcp add --header` to register this server.** The CLI resolves and echoes the header value to stdout, exposing your API key to any parent process — including AI agents that capture tool output as context. On macOS the spawned MCP child process arguments are also written to the unified log. Edit the config file directly instead; copy the ready-made snippet from the plugin's Settings tab.
 
 **Other MCP clients (Cline, Continue, custom integrations, multi-vault setups)**
 

@@ -37,7 +37,6 @@ Until security improvements are complete:
 3. **Monitor vault access** for unexpected changes
 4. **Keep backups** of your vault
 5. **Review plugin permissions** in Obsidian
-6. **Edit MCP config files directly** instead of using `claude mcp add --header` — the CLI echoes resolved header values to stdout, exposing your API key to parent processes and (on macOS) the unified log
 
 ## Secure Configuration
 
