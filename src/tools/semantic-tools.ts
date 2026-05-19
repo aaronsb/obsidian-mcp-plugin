@@ -433,7 +433,7 @@ function getParametersForOperation(operation: string): Record<string, unknown> {
       },
       page: {
         type: 'number',
-        description: 'Page number for paginated results'
+        description: 'Page number for paginated results (list/search; also large-file read — see returnFullFile)'
       },
       pageSize: {
         type: 'number',
@@ -450,7 +450,7 @@ function getParametersForOperation(operation: string): Record<string, unknown> {
       },
       returnFullFile: {
         type: 'boolean',
-        description: 'Return full file instead of fragments (WARNING: large files can consume significant context)'
+        description: 'read: force the ENTIRE file verbatim regardless of size (explicit large-context override). Default read already returns the whole file verbatim when it fits the size budget; large files return a verbatim page 1 with absolute line bookends (use page=N to continue, or query/strategy/maxFragments for fragments).'
       },
       includeContent: {
         type: 'boolean',

@@ -150,13 +150,15 @@ export interface FileReadFragment {
 }
 
 export interface FileReadResponse {
-  path: string;
+  path?: string;
   content: string | FileReadFragment[];
   metadata?: {
-    size: number;
-    modified: number;
+    size?: number;
+    modified?: number;
     created?: number;
-    extension: string;
+    extension?: string;
+    totalLines?: number;
+    bytes?: number;
   };
   frontmatter?: Record<string, unknown>;
   tags?: string[];
@@ -166,21 +168,40 @@ export interface FileReadResponse {
     strategy: string;
     query?: string;
   };
+  pagination?: {
+    paginated: boolean;
+    page: number;
+    pageLineStart: number;
+    pageLineEnd: number;
+    totalLines: number;
+    bytes: number;
+    hasMore: boolean;
+    nextPage: string | null;
+    oversizedLine?: boolean;
+    beyondEnd?: boolean;
+  };
+  warning?: string;
 }
 
 export function formatFileRead(response: FileReadResponse): string {
-  const { path, content, metadata, frontmatter, tags, fragmentMetadata } = response;
+  const { path, content, metadata, frontmatter, tags, fragmentMetadata, pagination } = response;
   const lines: string[] = [];
 
-  const fileName = path.split('/').pop() || path;
+  const safePath = path || 'file';
+  const fileName = safePath.split('/').pop() || safePath;
   lines.push(header(1, `File: ${fileName}`));
   lines.push('');
 
   // Metadata summary
-  lines.push(property('Path', path, 0));
-  if (metadata) {
+  lines.push(property('Path', safePath, 0));
+  if (metadata && typeof metadata.size === 'number') {
     lines.push(property('Size', formatFileSize(metadata.size), 0));
+  }
+  if (metadata && typeof metadata.modified === 'number') {
     lines.push(property('Modified', formatDate(metadata.modified), 0));
+  }
+  if (metadata && typeof metadata.totalLines === 'number') {
+    lines.push(property('Lines', String(metadata.totalLines), 0));
   }
 
   // Tags
@@ -251,6 +272,24 @@ export function formatFileRead(response: FileReadResponse): string {
       lines.push(`\n... (${contentLines.length - 50} more lines)`);
     }
     lines.push('```');
+  }
+
+  if (pagination && pagination.paginated) {
+    lines.push('');
+    lines.push(header(2, 'Pagination'));
+    lines.push(property('Page', `${pagination.page} (lines ${pagination.pageLineStart}-${pagination.pageLineEnd} of ${pagination.totalLines})`, 0));
+    if (pagination.hasMore && pagination.nextPage) {
+      lines.push(property('Next', pagination.nextPage, 0));
+    }
+    if (pagination.beyondEnd) {
+      lines.push('   (requested page is past end of file)');
+    }
+    lines.push('   returnFullFile=true for the whole file · query/strategy/maxFragments for fragments · line numbers are absolute (edit.at_line works)');
+  }
+
+  if (response.warning) {
+    lines.push('');
+    lines.push(`> ${response.warning}`);
   }
 
   lines.push(divider());

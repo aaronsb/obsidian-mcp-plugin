@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- ⚠️ BREAKING: `vault.read` is now **faithful by default** (ADR-203, [#133](https://github.com/aaronsb/obsidian-mcp-plugin/issues/133)). It returns the **complete, byte-exact file source** (no more newline-flattened fragments) when the file fits a ~50k-char budget. Large files return a **verbatim page 1 with absolute line bookends** (`page=N` to continue) instead of a context-breaking raw dump. `returnFullFile: true` is the explicit whole-large-file override; `query`/`strategy`/`maxFragments` still return semantic fragments. The structured envelope no longer double-encodes the body. Clients that relied on the old fragmented default should pass fragment params explicitly.
+
 ### Security
 - 🔴 CRITICAL: Identified authentication vulnerability - no API key validation ([#9](https://github.com/aaronsb/obsidian-mcp-plugin/issues/9))
 - 🔴 CRITICAL: Identified path traversal vulnerability in file operations ([#10](https://github.com/aaronsb/obsidian-mcp-plugin/issues/10))
