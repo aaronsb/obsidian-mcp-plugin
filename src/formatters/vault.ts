@@ -238,6 +238,17 @@ export function formatFileRead(response: FileReadResponse): string {
   // Content - handle both string and fragment array formats
   lines.push('');
 
+  if (content != null && typeof content !== 'string' && !Array.isArray(content)) {
+    // Unrecognized/binary structured passthrough — render a safe note
+    // instead of falling through to the _Formatter error_ fallback.
+    lines.push(header(2, 'Content'));
+    lines.push('');
+    lines.push('_(non-text content; use `raw: true` for the structured payload)_');
+    lines.push(divider());
+    lines.push(summaryFooter());
+    return joinLines(lines);
+  }
+
   if (Array.isArray(content)) {
     // Fragment-based response
     const fragments = content;
@@ -260,18 +271,17 @@ export function formatFileRead(response: FileReadResponse): string {
       lines.push(`... and ${fragments.length - 5} more fragments`);
     }
   } else {
-    // Simple string content
+    // Verbatim string content (ADR-203: content reads are faithful by
+    // default — the formatted default path must NOT truncate, or an agent
+    // cannot derive a byte-matching edit.window oldText without raw:true,
+    // which is the exact #133 friction this ADR retires). The data layer
+    // already bounds size to READ_PAGE_CHARS (or it's an explicit
+    // returnFullFile override), so emitting the full block is safe. No
+    // wrapping code fence: the body may itself contain ``` fences, and a
+    // wrapper would corrupt round-trip fidelity.
     lines.push(header(2, 'Content'));
     lines.push('');
-
-    const contentLines = content.split('\n');
-    const previewLines = contentLines.slice(0, 50);
-    lines.push('```markdown');
-    lines.push(previewLines.join('\n'));
-    if (contentLines.length > 50) {
-      lines.push(`\n... (${contentLines.length - 50} more lines)`);
-    }
-    lines.push('```');
+    lines.push(content);
   }
 
   if (pagination && pagination.paginated) {

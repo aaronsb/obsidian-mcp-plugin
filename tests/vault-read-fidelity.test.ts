@@ -102,22 +102,33 @@ describe('vault.read fidelity & pagination (ADR-203)', () => {
     expect(r.fragmentMetadata).toBeDefined();
   });
 
-  test('formatter renders all shapes without the _Formatter error_ crash', () => {
-    // whole-file string shape
-    expect(() => formatFileRead({
-      path: 's.md', content: TRICKY,
-      metadata: { totalLines: 14, bytes: TRICKY.length },
-      pagination: { paginated: false, page: 1, pageLineStart: 1, pageLineEnd: 14, totalLines: 14, bytes: TRICKY.length, hasMore: false, nextPage: null },
-    } as any)).not.toThrow();
-    // paginated shape
+  test('formatted (non-raw) default output is byte-faithful — no truncation, no fence corruption', () => {
+    // The blocking #133 case: an agent reading the DEFAULT (raw:false)
+    // formatted output must be able to lift a byte-exact edit.window oldText.
     const out = formatFileRead({
+      path: 's.md', content: TRICKY,
+      metadata: { totalLines: TRICKY.split('\n').length, bytes: TRICKY.length },
+      pagination: { paginated: false, page: 1, pageLineStart: 1, pageLineEnd: TRICKY.split('\n').length, totalLines: TRICKY.split('\n').length, bytes: TRICKY.length, hasMore: false, nextPage: null },
+    } as any);
+    // Verbatim body present in full, including the inner ```python fence,
+    // the indented code line, and the trailing-space + tab line.
+    expect(out).toContain(TRICKY);
+    expect(out).toContain('    return x*2  # indented');
+    expect(out).toContain('\ttab-line   ');
+    expect(out).not.toMatch(/more lines\)/); // no truncation marker
+  });
+
+  test('formatter renders paginated + edge shapes without the _Formatter error_ crash', () => {
+    const out2 = formatFileRead({
       path: 'big.md', content: 'line 1 ...\nline 2 ...',
       metadata: { totalLines: 4000, bytes: 90000 },
       pagination: { paginated: true, page: 1, pageLineStart: 1, pageLineEnd: 1800, totalLines: 4000, bytes: 90000, hasMore: true, nextPage: "vault.read(path='big.md', page=2)" },
       warning: 'Large file …',
     } as any);
-    expect(out).toContain('Pagination');
-    expect(out).toContain('page=2');
-    expect(out).not.toContain('Formatter error');
+    expect(out2).toContain('Pagination');
+    expect(out2).toContain('page=2');
+    expect(out2).not.toContain('Formatter error');
+    // non-text passthrough must not crash
+    expect(() => formatFileRead({ path: 'x.bin', content: { binary: true } } as any)).not.toThrow();
   });
 });
