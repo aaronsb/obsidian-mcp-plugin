@@ -9,7 +9,6 @@ import {
   isInitializeRequest
 } from '@modelcontextprotocol/sdk/types.js';
 import { randomUUID } from 'crypto';
-import * as path from 'path';
 import { getVersion } from './version';
 import { ObsidianAPI } from './utils/obsidian-api';
 import { SecureObsidianAPI, VaultSecurityManager } from './security';
@@ -89,7 +88,10 @@ export class MCPHttpServer {
   private connectionCount: number = 0;
   private plugin?: MCPPluginRef; // Reference to the plugin
   private connectionPool?: ConnectionPool;
-  private sessionManager?: SessionManager;
+  // Assigned unconditionally in the constructor. Non-optional so the
+  // "initialize is never short-circuited as a terminated session" invariant
+  // (ADR-106) is guaranteed by the type system, not just construction order.
+  private sessionManager: SessionManager;
   private certificateManager: CertificateManager | null;
   private isHttps: boolean = false;
 
@@ -166,8 +168,7 @@ export class MCPHttpServer {
       maxQueueSize: 100,
       requestTimeout: 30000,
       sessionTimeout: 3600000,
-      sessionCheckInterval: 60000,
-      workerScript: path.join(plugin?.manifest.dir ?? '', 'dist', 'workers', 'semantic-worker.js')
+      sessionCheckInterval: 60000
     });
     void this.connectionPool.initialize();
 
@@ -191,7 +192,6 @@ export class MCPHttpServer {
           }
 
           const sessionAPI = this.getSessionAPI(request.sessionId);
-          this.prepareWorkerContext(request);
           const result = await tool.handler(sessionAPI, request.params);
 
           this.connectionPool!.completeRequest(request.id, {
@@ -744,53 +744,5 @@ export class MCPHttpServer {
     // For now, return the same API instance
     // In the future, we could create session-specific instances with isolated state
     return this.obsidianAPI;
-  }
-
-  /**
-   * Prepare context data for worker thread operations
-   */
-  private prepareWorkerContext(request: PooledRequest): unknown {
-    // Only prepare context for worker-compatible operations
-    const workerOps = [
-      'tool.vault.search',
-      'tool.vault.fragments',
-      'tool.graph.search-traverse',
-      'tool.graph.advanced-traverse'
-    ];
-    
-    if (!workerOps.some(op => request.method.includes(op))) {
-      return undefined;
-    }
-    
-    Debug.log(`📦 Preparing worker context for ${request.method}`);
-    
-    // For search operations, we might need to pre-fetch file contents
-    if (request.method.includes('vault.search')) {
-      // This would be implemented based on the specific needs
-      // For now, return undefined to use main thread
-      return undefined;
-    }
-    
-    // For graph operations, we need file contents and link graph
-    if (request.method.includes('graph.search-traverse')) {
-      try {
-        const params = request.params as Record<string, unknown> | undefined;
-        const startPath = typeof params?.startPath === 'string' ? params.startPath : undefined;
-        if (!startPath) return undefined;
-
-        // Get initial file and its links
-        const file = this.obsidianApp.vault.getAbstractFileByPath(startPath);
-        if (!file || !('extension' in file)) return undefined;
-
-        // This would need more sophisticated pre-fetching logic
-        // For now, return undefined to use main thread
-        return undefined;
-      } catch (error) {
-        Debug.error('Failed to prepare worker context:', error);
-        return undefined;
-      }
-    }
-    
-    return undefined;
   }
 }

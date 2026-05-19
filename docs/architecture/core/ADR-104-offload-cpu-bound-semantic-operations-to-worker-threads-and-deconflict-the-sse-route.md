@@ -4,10 +4,24 @@ date: 2026-05-18
 deciders:
   - aaronsb
   - claude
-related: []
+related: [105]
 ---
 
 # ADR-104: Offload CPU-bound semantic operations to worker threads and deconflict the SSE route
+
+> **⚠️ Partially superseded by [ADR-105](ADR-105-remove-dormant-worker-offload-path-partial-reversal-of-adr-104.md).**
+> The **worker-offload** half of this decision (the worker-thread pool for
+> CPU-bound `vault`/`graph`/`edit` operations) was found to have been
+> **dormant since introduction** — the pool's action-level `workerOps` gate
+> never matched the operation-level method strings the pool actually emits,
+> so no request ever reached a worker. It is **removed** by ADR-105 rather
+> than repaired (verified dead, no CPU-starvation reports, repairing it would
+> widen the #139 parallel-edit race via a new TOCTOU window).
+>
+> The **SSE-route deconfliction** half (debug endpoint → `GET /mcp-info`,
+> `app.all('/mcp', …)`) was real, shipped in #196, and **remains in
+> effect**. This ADR's status stays `Accepted` because that half is still
+> the governing decision; only the worker-offload portion is reversed.
 
 ## Context
 

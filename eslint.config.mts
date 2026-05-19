@@ -75,7 +75,6 @@ export default tseslint.config(
 		"esbuild.config.mjs",
 		"eslint.config.mts",
 		"sync-version.mjs",
-		"build-worker.js",
 		"version-bump.mjs",
 		"jest.config.js",
 		"versions.json",
