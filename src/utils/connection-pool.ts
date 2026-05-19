@@ -1,6 +1,5 @@
 import { EventEmitter } from 'events';
 import { Debug } from './debug';
-import { WorkerManager } from './worker-manager';
 
 export interface PooledRequest {
   id: string;
@@ -22,17 +21,16 @@ export interface ConnectionPoolOptions {
   requestTimeout: number;
   sessionTimeout: number;
   sessionCheckInterval: number;
-  workerScript?: string;
 }
 
 /**
- * Connection pool manager for handling concurrent MCP requests
- * Uses worker threads for true parallel processing
+ * Connection pool manager for handling concurrent MCP requests.
+ * Requests are queued and dispatched to the main-thread handler via the
+ * 'process' event, bounded by maxConnections.
  */
 export class ConnectionPool extends EventEmitter {
   protected activeConnections: Map<string, PooledRequest> = new Map();
   protected requestQueue: PooledRequest[] = [];
-  protected workerManager?: WorkerManager;
   protected options: ConnectionPoolOptions;
   protected isShuttingDown: boolean = false;
 
@@ -43,8 +41,7 @@ export class ConnectionPool extends EventEmitter {
       maxQueueSize: options.maxQueueSize || 100,
       requestTimeout: options.requestTimeout || 30000, // 30 seconds
       sessionTimeout: options.sessionTimeout || 3600000, // 1 hour
-      sessionCheckInterval: options.sessionCheckInterval || 60000, // 1 minute
-      workerScript: options.workerScript
+      sessionCheckInterval: options.sessionCheckInterval || 60000 // 1 minute
     };
   }
 
@@ -53,18 +50,6 @@ export class ConnectionPool extends EventEmitter {
    */
   initialize(): void {
     Debug.log(`🏊 Initializing connection pool with ${this.options.maxConnections} max connections`);
-    
-    // Initialize worker manager
-    this.workerManager = new WorkerManager(this.options.workerScript);
-    
-    // Listen for worker events
-    this.workerManager.on('worker-ready', (sessionId) => {
-      Debug.log(`🎉 Worker ready for session ${sessionId}`);
-    });
-    
-    this.workerManager.on('worker-error', ({ sessionId, error }) => {
-      Debug.error(`💥 Worker error for session ${sessionId}:`, error);
-    });
   }
 
   /**
@@ -114,11 +99,11 @@ export class ConnectionPool extends EventEmitter {
   }
 
   /**
-   * Process queued requests using worker threads
+   * Process queued requests, bounded by maxConnections.
    */
   protected processQueue(): void {
     while (
-      this.requestQueue.length > 0 && 
+      this.requestQueue.length > 0 &&
       this.activeConnections.size < this.options.maxConnections
     ) {
       const request = this.requestQueue.shift();
@@ -127,67 +112,6 @@ export class ConnectionPool extends EventEmitter {
       this.activeConnections.set(request.id, request);
       Debug.log(`🔄 Processing request ${request.id}. Active: ${this.activeConnections.size}/${this.options.maxConnections}`);
 
-      // Check if this operation should use a worker
-      if (this.shouldUseWorker(request)) {
-        void this.processWithWorker(request);
-      } else {
-        // Process on main thread
-        this.emit('process', request);
-      }
-    }
-  }
-
-  /**
-   * Check if this request should use a worker
-   */
-  private shouldUseWorker(request: PooledRequest): boolean {
-    if (!this.workerManager || !request.sessionId) {
-      return false;
-    }
-    
-    // List of CPU-intensive operations that benefit from workers
-    const workerOps = [
-      'tool.vault.search',
-      'tool.vault.fragments', 
-      'tool.graph.search-traverse',
-      'tool.graph.advanced-traverse'
-    ];
-    
-    return workerOps.some(op => request.method.includes(op));
-  }
-  
-  /**
-   * Process request with worker thread
-   */
-  private async processWithWorker(request: PooledRequest): Promise<void> {
-    if (!this.workerManager || !request.sessionId) {
-      // Fallback to main thread
-      this.emit('process', request);
-      return;
-    }
-    
-    try {
-      Debug.log(`🚀 Processing ${request.method} with worker for session ${request.sessionId}`);
-      
-      // Extract operation details from method
-      const [, , operation] = request.method.split('.');
-      
-      const result = await this.workerManager.submitTask({
-        id: request.id,
-        sessionId: request.sessionId,
-        operation,
-        data: request.params
-      });
-      
-      // Complete the request
-      this.completeRequest(request.id, {
-        id: request.id,
-        result: result.result
-      });
-    } catch (error) {
-      Debug.error(`❌ Worker processing failed for ${request.id}:`, error);
-      
-      // Fallback to main thread
       this.emit('process', request);
     }
   }
@@ -262,11 +186,6 @@ export class ConnectionPool extends EventEmitter {
     if (this.activeConnections.size > 0) {
       Debug.warn(`⚠️ Force closing ${this.activeConnections.size} active connections`);
       this.activeConnections.clear();
-    }
-
-    // Terminate all workers
-    if (this.workerManager) {
-      await this.workerManager.terminateAll();
     }
 
     Debug.log('👋 Connection pool shutdown complete');

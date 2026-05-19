@@ -15,7 +15,7 @@ install: ## Install dependencies
 dev: ## Start dev mode (watch + rebuild)
 	npm run dev
 
-build: ## Build plugin (typecheck + workers + bundle)
+build: ## Build plugin (typecheck + bundle)
 	npm run build
 
 # --- Quality ---

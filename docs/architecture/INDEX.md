@@ -25,6 +25,7 @@ _Server architecture, transport, connection handling, plugin lifecycle_
 | [ADR-102](./core/ADR-102-ship-mcpb-bundle-as-primary-claude-desktop-onboarding.md) | Ship MCPB bundle as primary Claude Desktop onboarding | Draft |
 | [ADR-103](./core/ADR-103-tls-certificate-and-key-storage-strategy-for-localhost-https.md) | TLS certificate and key storage strategy for localhost HTTPS | Accepted |
 | [ADR-104](./core/ADR-104-offload-cpu-bound-semantic-operations-to-worker-threads-and-deconflict-the-sse-route.md) | Offload CPU-bound semantic operations to worker threads and deconflict the SSE route | Accepted |
+| [ADR-105](./core/ADR-105-remove-dormant-worker-offload-path-partial-reversal-of-adr-104.md) | Remove dormant worker-offload path (partial reversal of ADR-104) | Accepted |
 
 ## Tools & API
 _MCP tool design, semantic operations, graph operations, formatters_
