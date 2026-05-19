@@ -57,10 +57,16 @@ build-worker.js` step from the `build` script. Strip the worker wiring from
 `processWithWorker`, the worker-event listeners, `terminateAll`) and the
 dead `prepareWorkerContext` / `workerScript` option from `mcp-server.ts`.
 
-`ConnectionPool` is **retained** as a main-thread bounded request queue
-(its `maxConnections` back-pressure and session tracking were always the
-only behaviour that actually ran). `processQueue` now unconditionally emits
-`'process'`, which is exactly the path every request already took.
+`ConnectionPool` is **retained** as a main-thread bounded request queue.
+Scope note: review of #197 established that the `ConnectionPool` request
+pipeline itself was *also* dormant — `submitRequest`/`submitPriorityRequest`
+are never called; the live request path is `MCPServerPool` → SDK
+`setRequestHandler` → `tool.handler()` directly. This ADR deliberately
+**limits scope to the worker-offload path** (the ADR-104 subject); whether
+to also remove the unused `ConnectionPool`/`MCPServerPool` scaffolding is
+left to a separate decision, not bundled here. `processQueue` now
+unconditionally emits `'process'`, the path the (dormant) queue already
+took.
 
 This is a **partial reversal of ADR-104**: the worker-offload decision is
 withdrawn; the SSE-route deconfliction decision is untouched and remains in
