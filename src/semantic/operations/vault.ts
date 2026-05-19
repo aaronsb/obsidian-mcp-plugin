@@ -435,7 +435,7 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
         }
 
         // Split the content
-        const splitFiles = splitContent(ctx, sourceFile.content, params);
+        const splitFiles = splitContent(sourceFile.content, params);
         
         // Create output files
         const createdFiles = [];
@@ -539,7 +539,7 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
         
         // Sort files if requested
         if (sortBy) {
-          sortFiles(ctx, sourceFiles, sortBy, sortOrder);
+          sortFiles(sourceFiles, sortBy, sortOrder);
         }
         
         // Combine content
@@ -642,7 +642,7 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
     }
   }
   
-function splitContent(ctx: RouterContext, content: string, params: Params): Array<{ content: string }> {
+function splitContent(content: string, params: Params): Array<{ content: string }> {
     const splitBy = paramStr(params, 'splitBy');
     const delimiter = paramStr(params, 'delimiter');
     const level = paramNum(params, 'level');
@@ -766,7 +766,7 @@ function splitContent(ctx: RouterContext, content: string, params: Params): Arra
     return splitFiles.length > 0 ? splitFiles : [{ content }];
   }
   
-function sortFiles(ctx: RouterContext, files: Array<{ path: string; content: string }>, sortBy: string, sortOrder: string): void {
+function sortFiles(files: Array<{ path: string; content: string }>, sortBy: string, sortOrder: string): void {
     // For file metadata, we'd need to use Obsidian's API
     // For now, we'll sort by name and size (which we can calculate)
     
