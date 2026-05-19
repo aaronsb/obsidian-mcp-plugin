@@ -59,22 +59,6 @@ interface ServerWithTimeouts {
   setTimeout: (msecs: number) => unknown;
 }
 
-/** Null response shim for internal initialize calls */
-interface NullResponse {
-  writeHead: (status: number, headers?: Record<string, string>) => void;
-  setHeader: (k: string, v: string) => void;
-  getHeader: (k: string) => string | undefined;
-  statusCode: number;
-  headersSent: boolean;
-  write: (chunk: unknown) => void;
-  end: (data?: unknown) => void;
-  on: (event: string, handler: (...args: unknown[]) => void) => void;
-  once: (event: string, handler: (...args: unknown[]) => void) => void;
-  status: (v: number) => NullResponse;
-  json: (body: unknown) => void;
-  send: (body?: unknown) => void;
-}
-
 /** Connection pool stats response */
 interface ConnectionPoolStatsResponse {
   enabled: boolean;
@@ -383,6 +367,57 @@ export class MCPHttpServer {
     });
   }
 
+  /**
+   * Emit the Streamable HTTP spec's session-lifecycle signal so the client
+   * can recover a dropped/evicted session on its own (client-driven re-init,
+   * ADR-106).
+   *
+   * - If the request carried an `Mcp-Session-Id` we no longer hold a
+   *   transport for, the session is terminated: respond **HTTP 404**
+   *   (Session Management §3). A spec-compliant client/bridge MUST then
+   *   start a new session by sending a fresh `InitializeRequest` with no
+   *   session ID (§4) — no client restart required, fixing #128.
+   * - If no `Mcp-Session-Id` was sent on a non-initialize request, a session
+   *   is required: respond **HTTP 400** (§2).
+   *
+   * The HTTP status is the load-bearing signal; the JSON-RPC error body is
+   * courtesy for clients that surface it. We deliberately do not attempt a
+   * server-side synthetic initialize — that cannot drive SDK 1.29's
+   * web-standard transport to an initialized state (see #190).
+   */
+  private sendSessionTerminated(
+    res: express.Response,
+    request: JsonRpcRequest | undefined,
+    sessionId: string | undefined
+  ): void {
+    const id = request?.id ?? null;
+    if (sessionId) {
+      // Spec §3: terminated session → 404; client re-inits per §4.
+      res.setHeader('Mcp-Session-Id', sessionId);
+      res.status(404).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32001,
+          message: 'Session expired or not found. Start a new session by sending an initialize request without a session ID.',
+          data: { sessionId }
+        },
+        id
+      });
+      Debug.log(`🔁 Session ${sessionId} terminated → 404 (client should re-initialize per MCP spec §4)`);
+      return;
+    }
+    // Spec §2: session required for non-initialize requests → 400.
+    res.status(400).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32600,
+        message: 'Bad Request: a session is required. Send an initialize request first.'
+      },
+      id
+    });
+    Debug.log('⚠️ Non-initialize request with no session id → 400 (session required)');
+  }
+
   private async handleMCPRequest(req: express.Request, res: express.Response): Promise<void> {
     try {
       const request = req.body as JsonRpcRequest | undefined;
@@ -407,35 +442,6 @@ export class MCPHttpServer {
         effectiveSessionId = sessionId;
       }
           let mcpServer: MCPServer;
-
-      // Helper: create a null response shim so we can send an internal initialize
-      const createNullRes = (): NullResponse => {
-        const headers: Record<string, string> = {};
-        let sent = false;
-        let code = 200;
-        const resp: NullResponse = {
-          // Node-style response interface (minimal no-op implementation)
-          writeHead: (_status: number, _headers?: Record<string, string>) => { code = _status; sent = true; },
-          setHeader: (k: string, v: string) => { headers[k] = v; },
-          getHeader: (k: string) => headers[k],
-          get statusCode() { return code; },
-          set statusCode(v: number) { code = v; },
-          get headersSent() { return sent; },
-          write: (_chunk: unknown) => { /* no-op */ },
-          end: (_data?: unknown) => { sent = true; },
-          on: (_event: string, _handler: (...args: unknown[]) => void) => { /* no-op */ },
-          once: (_event: string, _handler: (...args: unknown[]) => void) => { /* no-op */ },
-          // Express-like helpers (used by some wrappers)
-          status: (v: number) => { code = v; return resp; },
-          json: (_body: unknown) => { sent = true; },
-          send: (_body?: unknown) => { sent = true; },
-        };
-        return resp;
-      };
-      // When a non-initialize request arrives without an active transport,
-      // we return a JSON-RPC error instructing the client to initialize using
-      // the provided session ID. This avoids fragile internal auto-initialize.
-      let requireInitializeNotice = false;
 
       // Helper: register transport with lifecycle hooks
       const attachTransportHandlers = (sessId: string, tr: StreamableHTTPServerTransport) => {
@@ -491,18 +497,18 @@ export class MCPHttpServer {
             this.connectionCount++;
             Debug.log(`♻️ Recreated transport for session ${sessionId} (requests: ${session.requestCount})`);
           } else {
-            // Create transport and require client initialize on next call
-            const newSessionId = sessionId; // reuse provided id (guaranteed by branch)
-            mcpServer = this.mcpServerPool.getOrCreateServer(newSessionId);
-            effectiveSessionId = newSessionId;
-            transport = new StreamableHTTPServerTransport({
-              sessionIdGenerator: () => effectiveSessionId
-            });
-            await mcpServer.connect(transport);
-            this.transports.set(effectiveSessionId, transport);
-            attachTransportHandlers(effectiveSessionId, transport);
-            this.connectionCount++;
-            requireInitializeNotice = true;
+            // Stale/evicted session: the client presented an Mcp-Session-Id
+            // we no longer hold a transport for, and this is not an
+            // initialize request. Per the Streamable HTTP spec (Session
+            // Management §3) the server MUST respond HTTP 404 for a
+            // terminated session; per §4 the client must then start a new
+            // session by sending a fresh InitializeRequest with no session
+            // ID. We do NOT fabricate a transport or attempt a server-side
+            // synthetic initialize — that cannot drive SDK 1.29's
+            // web-standard transport to an initialized state (ADR-106 /
+            // #190) and only produces an unrecoverable 400 loop (#128).
+            this.sendSessionTerminated(res, request, sessionId);
+            return;
           }
         } else if (!sessionId && isInitializeRequest(request)) {
           // New initialization request - create new transport with session
@@ -528,91 +534,25 @@ export class MCPHttpServer {
             this.sessionManager.getOrCreateSession(effectiveSessionId);
           }
         } else {
-          // No or unknown session on non-initialize request.
-          // Generate a session (or reuse provided) and require client initialize next.
-          const newSessionId = sessionId ?? randomUUID();
-          mcpServer = this.mcpServerPool.getOrCreateServer(newSessionId);
-          effectiveSessionId = newSessionId;
-          transport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: () => effectiveSessionId
-          });
-          await mcpServer.connect(transport);
-          this.transports.set(effectiveSessionId, transport);
-          attachTransportHandlers(effectiveSessionId, transport);
-          this.connectionCount++;
-          requireInitializeNotice = true;
+          // Non-initialize request with no usable session. Either:
+          //  - an Mcp-Session-Id we don't hold a transport for → spec §3
+          //    terminated-session signal (HTTP 404), client re-inits per §4;
+          //  - no Mcp-Session-Id at all and not an initialize → spec §2
+          //    "session required" (HTTP 400).
+          // sendSessionTerminated picks the status from sessionId presence.
+          // No phantom transport, no synthetic initialize (see #190/#128).
+          this.sendSessionTerminated(res, request, sessionId);
+          return;
         }
 
-      // Compatibility: if we just created a transport for a non-initialize call,
-      // attempt a safe, internal initialize to avoid client retry loops.
-      if (requireInitializeNotice && transport && !isInitializeRequest(request)) {
-        // Clone req to ensure session header is present for compat initialize
-        const compatReq = {
-          ...req,
-          headers: {
-            ...req.headers,
-            'mcp-session-id': effectiveSessionId
-          }
-        } as unknown as IncomingMessage;
-        const versionsToTry = ['2025-06-18', '2024-11-05', '1.0'];
-        let initOk = false;
-        for (const ver of versionsToTry) {
-          try {
-            const initReq = {
-              jsonrpc: '2.0',
-              id: '__compat_init__',
-              method: 'initialize',
-              params: {
-                protocolVersion: ver,
-                capabilities: {},
-                clientInfo: { name: 'obsidian-mcp-compat', version: getVersion() }
-              }
-            } as unknown;
-            await transport.handleRequest(compatReq, createNullRes() as unknown as ServerResponse, initReq);
-            initOk = true;
-            Debug.log(`Compat initialize succeeded with protocolVersion=${ver}`);
-            break;
-          } catch (e) {
-            Debug.error(`Compat initialize attempt failed (protocolVersion=${ver}):`, e);
-          }
-        }
-        // Fail-open: even if initialize failed, proceed with the original request
-        // to avoid client retry loops. The transport/server may still reject it,
-        // but this gives us a concrete server error to act on.
-        requireInitializeNotice = false;
-        if (!initOk) {
-          Debug.log('Compat initialize failed; proceeding without explicit initialize (fail-open).');
-        }
-      }
-
-      // If initialization is still required and this isn't an initialize request,
-      // instruct the client to initialize for this session.
-      if (requireInitializeNotice && !isInitializeRequest(request)) {
-        const id = request?.id ?? null;
-        res.setHeader('Mcp-Session-Id', effectiveSessionId);
-        res.status(400).json({
-          jsonrpc: '2.0',
-          error: {
-            code: -32000,
-            message: 'Bad Request: Server not initialized',
-            data: { sessionId: effectiveSessionId }
-          },
-          id
-        });
-        return;
-      }
-
-      // Safety: ensure we have a transport before forwarding
+      // Safety: every reachable path above either bound a live `transport`
+      // (existing session, recreate-on-initialize, fresh initialize) or
+      // returned a spec-compliant terminated/required-session response. A
+      // missing transport here is an unexpected invariant break, not a stale
+      // session — surface it explicitly rather than papering it.
       if (!transport) {
-        const id = request?.id ?? null;
-        if (effectiveSessionId) {
-          res.setHeader('Mcp-Session-Id', effectiveSessionId);
-        }
-        res.status(200).json({
-          jsonrpc: '2.0',
-          error: { code: -32001, message: 'No active transport/session. Please initialize and retry.', data: effectiveSessionId ? { sessionId: effectiveSessionId } : undefined },
-          id
-        });
+        Debug.error('Invariant: no transport after session resolution');
+        this.sendSessionTerminated(res, request, sessionId);
         return;
       }
 
