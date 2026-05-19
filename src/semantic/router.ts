@@ -10,6 +10,7 @@ import {
   EfficiencyRule
 } from '../types/semantic';
 import { ContentBufferManager } from '../utils/content-buffer';
+import { FileLockManager } from '../utils/file-lock';
 import { StateTokenManager } from './state-tokens';
 import { limitResponse } from '../utils/response-limiter';
 import { isImageFile, ObsidianFileResponse } from '../types/obsidian';
@@ -1369,12 +1370,17 @@ export class SemanticRouter {
   }
   
   private async executeEditOperation(action: string, params: Params): Promise<unknown> {
-    // Import window edit tools dynamically to avoid circular dependencies
-    const { performWindowEdit } = await import('../tools/window-edit.js');
     const buffer = ContentBufferManager.getInstance();
 
+    // Serialize all edit actions targeting the same file so parallel
+    // edit.window/append/patch/at_line/from_buffer calls from a batched MCP
+    // client can no longer silently clobber each other (#139). Different
+    // files remain fully concurrent.
+    return FileLockManager.getInstance().withLock(String(params.path), async () => {
     switch (action) {
       case 'window': {
+        // Imported dynamically (only when needed) to avoid circular deps.
+        const { performWindowEdit } = await import('../tools/window-edit.js');
         const result = await performWindowEdit(
           this.api,
           String(params.path),
@@ -1446,6 +1452,7 @@ export class SemanticRouter {
         if (!buffered) {
           throw new Error('No buffered content available');
         }
+        const { performWindowEdit } = await import('../tools/window-edit.js');
         return await performWindowEdit(
           this.api,
           String(params.path),
@@ -1457,8 +1464,9 @@ export class SemanticRouter {
       default:
         throw new Error(`Unknown edit action: ${action}`);
     }
+    });
   }
-  
+
   private async executeViewOperation(action: string, params: Params): Promise<unknown> {
     switch (action) {
       case 'file':
