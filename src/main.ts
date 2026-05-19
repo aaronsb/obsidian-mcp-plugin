@@ -1536,45 +1536,20 @@ class MCPSettingTab extends PluginSettingTab {
 	private renderClaudeCodeConnection(container: HTMLElement, baseUrl: string): void {
 		container.empty();
 
-		if (this.plugin.settings.dangerouslyDisableAuth) {
-			const codeEl = container.createEl('code');
-			codeEl.classList.add('mcp-code-block');
-			const cmd = `claude mcp add --transport http obsidian ${baseUrl}/mcp`;
-			codeEl.textContent = cmd;
-			this.addCopyButton(container, cmd);
-			return;
-		}
+		// One-command copy/paste — the simplest onboarding path for Claude
+		// Code. For HTTP transport the `--header` value is sent as an HTTP
+		// request header and stored in the same config file the CLI would
+		// write anyway; it is NOT placed in any spawned process's argv (that
+		// only applies to stdio transports like the deprecated mcp-remote).
+		// The JSON-config form for other clients is in the Advanced section.
+		const cmd = this.plugin.settings.dangerouslyDisableAuth
+			? `claude mcp add --transport http obsidian ${baseUrl}/mcp`
+			: `claude mcp add --transport http obsidian ${baseUrl}/mcp --header "Authorization: Bearer ${this.plugin.settings.apiKey}"`;
 
-		container.createEl('p', {
-			text: 'Add to ~/.claude/settings.json (user scope) or .mcp.json (project scope):',
-		});
-
-		const vaultName = this.app.vault.getName();
-		const configJson = {
-			mcpServers: {
-				[vaultName]: {
-					transport: {
-						type: 'http',
-						url: `${baseUrl}/mcp`,
-						headers: {
-							Authorization: `Bearer ${this.plugin.settings.apiKey}`,
-						},
-					},
-				},
-			},
-		};
-		const configText = JSON.stringify(configJson, null, 2);
-
-		const pre = container.createEl('pre');
-		pre.classList.add('mcp-config-example');
-		pre.textContent = configText;
-		this.addCopyButton(container, configText);
-
-		container.createEl('p', {
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "claude mcp add --header" is a literal lowercase CLI command; capitalizing it would misrepresent the command users must avoid
-			text: 'Do not use "claude mcp add --header" to register this server — the CLI echoes the resolved token to stdout and (on macOS) the unified log, exposing your API key. Edit the config file directly instead.',
-			cls: 'mcp-security-warning',
-		});
+		const codeEl = container.createEl('code');
+		codeEl.classList.add('mcp-code-block');
+		codeEl.textContent = cmd;
+		this.addCopyButton(container, cmd);
 	}
 
 	private addCopyButton(container: HTMLElement, textToCopy: string): void {

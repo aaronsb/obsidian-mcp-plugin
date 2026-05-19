@@ -68,7 +68,11 @@ Add a `headers` field to any of the configs above:
 }
 ```
 
-> **Important:** do not register this server with `claude mcp add --header` — the CLI echoes the resolved header to stdout and (on macOS) the unified log, exposing your API key. Edit the config file directly: `~/.claude/settings.json` (user scope) or `.mcp.json` (project scope) for Claude Code, or your client's MCP config file. The plugin's Settings tab has a ready-to-paste snippet.
+> For **Claude Code** specifically, the simplest path is one command — no manual JSON editing:
+> ```bash
+> claude mcp add --transport http obsidian https://localhost:3443/mcp --header "Authorization: Bearer YOUR_API_KEY_HERE"
+> ```
+> (Use `http://localhost:3001/mcp` if you're on HTTP.) The plugin's Settings tab has the ready-made command with your key filled in.
 
 Could you please:
 1. Confirm which URL you're using (HTTP on 3001 or HTTPS on 3443)?
