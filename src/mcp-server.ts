@@ -75,6 +75,7 @@ interface ConnectionPoolStatsResponse {
   };
 }
 
+export const MCP_LISTEN_HOST = '127.0.0.1';
 
 export class MCPHttpServer {
   private app: express.Application;
@@ -635,11 +636,11 @@ export class MCPHttpServer {
         Debug.error('Failed to configure server timeouts:', e);
       }
       
-      this.server.listen(this.port, () => {
+      this.server.listen(this.port, MCP_LISTEN_HOST, () => {
         this.isRunning = true;
-        Debug.log(`🚀 MCP server started on ${protocol}://localhost:${this.port}`);
-        Debug.log(`📍 Health check: ${protocol}://localhost:${this.port}/`);
-        Debug.log(`🔗 MCP endpoint: ${protocol}://localhost:${this.port}/mcp`);
+        Debug.log(`🚀 MCP server started on ${protocol}://${MCP_LISTEN_HOST}:${this.port}`);
+        Debug.log(`📍 Health check: ${protocol}://${MCP_LISTEN_HOST}:${this.port}/`);
+        Debug.log(`🔗 MCP endpoint: ${protocol}://${MCP_LISTEN_HOST}:${this.port}/mcp`);
         
         if (this.isHttps) {
           Debug.log('🔒 HTTPS enabled with certificate');
