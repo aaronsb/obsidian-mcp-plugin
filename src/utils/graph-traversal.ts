@@ -56,6 +56,31 @@ export class GraphTraversal {
   constructor(private app: App) {}
 
   /**
+   * Get a human-friendly graph node title for a file.
+   *
+   * Vaults commonly use <topic>/index.md as landing pages. Showing every
+   * such node as "index" makes graph results ambiguous, so use the parent
+   * folder name for index files when available.
+   */
+  getNodeTitle(file: TFile): string {
+    if (file.basename === 'index' && file.parent?.name) {
+      return file.parent.name;
+    }
+    return file.basename;
+  }
+
+  /**
+   * Resolve a path to a graph node title, falling back to the path basename.
+   */
+  getNodeTitleForPath(filePath: string): string {
+    const file = this.app.vault.getAbstractFileByPath(filePath);
+    if (file instanceof TFile) {
+      return this.getNodeTitle(file);
+    }
+    return filePath.replace(/\.md$/, '').split('/').pop() || filePath;
+  }
+
+  /**
    * Get all nodes (files) in the vault
    */
   getAllNodes(): GraphNode[] {
@@ -63,7 +88,7 @@ export class GraphTraversal {
     return files.map(file => ({
       file,
       path: file.path,
-      title: file.basename,
+      title: this.getNodeTitle(file),
       metadata: this.app.metadataCache.getFileCache(file) || undefined
     }));
   }
@@ -223,7 +248,7 @@ export class GraphTraversal {
       const node: GraphNode = {
         file,
         path: file.path,
-        title: file.basename,
+        title: this.getNodeTitle(file),
         metadata: this.app.metadataCache.getFileCache(file) || undefined
       };
 
@@ -378,7 +403,7 @@ export class GraphTraversal {
       const neighbors: GraphNode[] = recentFiles.map(file => ({
         file,
         path: file.path,
-        title: file.basename,
+        title: this.getNodeTitle(file),
         metadata: this.app.metadataCache.getFileCache(file) || undefined
       }));
 
@@ -413,7 +438,7 @@ export class GraphTraversal {
     const node: GraphNode = {
       file,
       path: file.path,
-      title: file.basename,
+      title: this.getNodeTitle(file),
       metadata: this.app.metadataCache.getFileCache(file) || undefined
     };
 
@@ -432,7 +457,7 @@ export class GraphTraversal {
         neighbors.push({
           file: neighborFile,
           path: neighborFile.path,
-          title: neighborFile.basename,
+          title: this.getNodeTitle(neighborFile),
           metadata: this.app.metadataCache.getFileCache(neighborFile) || undefined
         });
       }
