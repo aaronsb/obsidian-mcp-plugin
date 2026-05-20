@@ -2,6 +2,8 @@ import { Debug } from './utils/debug';
 import { App } from 'obsidian';
 import type { IncomingMessage, ServerResponse, Server } from 'http';
 
+export const NODE_MCP_LISTEN_HOST = '127.0.0.1';
+
 interface MCPToolCallParams {
   name?: string;
   arguments?: Record<string, unknown>;
@@ -49,9 +51,9 @@ export class NodeMCPServer {
       });
 
       await new Promise<void>((resolve, reject) => {
-        this.server!.listen(this.port, () => {
+        this.server!.listen(this.port, NODE_MCP_LISTEN_HOST, () => {
           this.isRunning = true;
-          Debug.log(`🚀 MCP server started on port ${this.port}`);
+          Debug.log(`🚀 MCP server started on ${NODE_MCP_LISTEN_HOST}:${this.port}`);
           Debug.log(`📍 Health check: /`);
           Debug.log(`🔗 MCP endpoint: /mcp`);
           resolve();
