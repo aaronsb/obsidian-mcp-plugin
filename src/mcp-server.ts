@@ -18,6 +18,13 @@ import { ConnectionPool, PooledRequest } from './utils/connection-pool';
 import { SessionManager } from './utils/session-manager';
 import { MCPServerPool } from './utils/mcp-server-pool';
 import { CertificateManager, CertificateConfig } from './utils/certificate-manager';
+import {
+  classifyFromSettings,
+  resolveListenHost,
+  agentInstructionsForVerdict,
+  BindMode,
+  Verdict
+} from './utils/network-classifier';
 
 /** Minimal plugin interface for MCPHttpServer.
  * Includes fields from SecurePluginRef and ObsidianAPIPluginRef so the same object
@@ -28,6 +35,9 @@ interface MCPPluginRef {
     httpsPort?: number;
     httpPort?: number;
     certificateConfig?: CertificateConfig;
+    // ADR-107: bind mode + custom host
+    bindMode?: BindMode;
+    customBindHost?: string;
     readOnlyMode?: boolean;
     apiKey?: string;
     dangerouslyDisableAuth?: boolean;
@@ -94,6 +104,9 @@ export class MCPHttpServer {
   private sessionManager: SessionManager;
   private certificateManager: CertificateManager | null;
   private isHttps: boolean = false;
+  // ADR-107: resolved at bind time, consumed by initialize.instructions
+  private currentVerdict?: Verdict;
+  private resolvedListenHost: string = '127.0.0.1';
 
   constructor(obsidianApp: App, port: number = 3001, plugin?: MCPPluginRef) {
     this.obsidianApp = obsidianApp;
@@ -635,17 +648,47 @@ export class MCPHttpServer {
         Debug.error('Failed to configure server timeouts:', e);
       }
       
-      this.server.listen(this.port, () => {
+      // ADR-107: resolve bind host from settings and classify the combined state
+      const bindMode = this.plugin?.settings?.bindMode ?? 'loopback';
+      const customHost = this.plugin?.settings?.customBindHost ?? '';
+      this.resolvedListenHost = resolveListenHost(bindMode, customHost);
+      this.currentVerdict = classifyFromSettings({
+        httpsEnabled: this.isHttps,
+        bindMode,
+        customBindHost: customHost,
+        userSuppliedCert: this.plugin?.settings?.certificateConfig?.selfSigned === false
+      });
+      // Push the agent-visible warning to the server pool so subsequent
+      // sessions surface it in MCP initialize.instructions.
+      this.mcpServerPool.setInitializeInstructions(
+        agentInstructionsForVerdict(this.currentVerdict, this.resolvedListenHost, this.port)
+      );
+
+      this.server.listen(this.port, this.resolvedListenHost, () => {
         this.isRunning = true;
-        Debug.log(`🚀 MCP server started on ${protocol}://localhost:${this.port}`);
-        Debug.log(`📍 Health check: ${protocol}://localhost:${this.port}/`);
-        Debug.log(`🔗 MCP endpoint: ${protocol}://localhost:${this.port}/mcp`);
-        
+        const host = this.resolvedListenHost;
+        Debug.log(`🚀 MCP server started on ${protocol}://${host}:${this.port}`);
+        Debug.log(`📍 Health check: ${protocol}://${host}:${this.port}/`);
+        Debug.log(`🔗 MCP endpoint: ${protocol}://${host}:${this.port}/mcp`);
+
         if (this.isHttps) {
           Debug.log('🔒 HTTPS enabled with certificate');
           new Notice(`MCP server running on HTTPS port ${this.port}`);
         }
-        
+
+        // ADR-107: act on the classified verdict
+        const verdict = this.currentVerdict!;
+        if (verdict.class === 'jail') {
+          Debug.error(`🚨 Network exposure: ${verdict.reason}`);
+          new Notice(
+            `⚠️ MCP server is serving vault contents over an unencrypted network interface (${host}:${this.port}). ` +
+              'API key and document text travel in cleartext. Reconfigure to HTTPS or loopback in the plugin settings.',
+            15000
+          );
+        } else if (verdict.class === 'warn') {
+          Debug.warn(`⚠️ Network exposure: ${verdict.reason}`);
+        }
+
         resolve();
       });
 

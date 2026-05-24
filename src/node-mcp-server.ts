@@ -48,10 +48,14 @@ export class NodeMCPServer {
         this.handleRequest(req, res);
       });
 
+      // ADR-107: this fallback path has no plugin-settings hook;
+      // hardcode the loopback default. If this server is ever wired up
+      // live, extend it with the bindMode/customBindHost plumbing.
+      const host = '127.0.0.1';
       await new Promise<void>((resolve, reject) => {
-        this.server!.listen(this.port, () => {
+        this.server!.listen(this.port, host, () => {
           this.isRunning = true;
-          Debug.log(`🚀 MCP server started on port ${this.port}`);
+          Debug.log(`🚀 MCP server started on http://${host}:${this.port}`);
           Debug.log(`📍 Health check: /`);
           Debug.log(`🔗 MCP endpoint: /mcp`);
           resolve();

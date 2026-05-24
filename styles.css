@@ -349,3 +349,35 @@ input.mcp-api-key-input {
     font-style: italic;
     margin-top: 15px;
 }
+/* ADR-107: network exposure verdict badge + caution banner */
+.mcp-network-badge {
+    padding: 8px 12px;
+    margin: 8px 0 12px 0;
+    border-radius: 6px;
+    border-left: 4px solid;
+    background: var(--background-secondary);
+}
+
+.mcp-network-badge-ok {
+    border-left-color: var(--color-green);
+}
+
+.mcp-network-badge-warn {
+    border-left-color: var(--color-yellow);
+    background: var(--background-modifier-warning);
+}
+
+.mcp-network-badge-jail {
+    border-left-color: var(--color-red);
+    background: var(--background-modifier-error);
+    color: var(--text-on-accent);
+}
+
+.mcp-network-caution {
+    padding: 8px 12px;
+    margin: 4px 0 12px 24px;
+    border-radius: 4px;
+    background: var(--background-modifier-error);
+    color: var(--text-on-accent);
+    font-size: 0.9em;
+}

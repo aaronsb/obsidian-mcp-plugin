@@ -8,6 +8,7 @@ import { PluginDetector } from './utils/plugin-detector';
 import { CertificateConfig } from './utils/certificate-manager';
 import { ValidationConfig } from './validation/input-validator';
 import { ALL_OPERATIONS, getActionsForOperation, getOperationDescription } from './tools/semantic-tools';
+import { BindMode, classifyFromSettings, normalizeBindInput } from './utils/network-classifier';
 
 interface MCPPluginSettings {
 	httpEnabled: boolean;
@@ -15,6 +16,10 @@ interface MCPPluginSettings {
 	httpsEnabled: boolean;
 	httpsPort: number;
 	certificateConfig: CertificateConfig;
+	// ADR-107: network exposure modes
+	bindMode: BindMode;
+	customBindHost: string;
+	hasShownBindMigrationNotice: boolean;
 	debugLogging: boolean;
 	showConnectionStatus: boolean;
 	autoDetectPortConflicts: boolean;
@@ -63,6 +68,9 @@ const DEFAULT_SETTINGS: MCPPluginSettings = {
 		// server (no requestCert); cert-manager defaults it to true. See #163.
 		minTLSVersion: 'TLSv1.2'
 	},
+	bindMode: 'loopback',
+	customBindHost: '',
+	hasShownBindMigrationNotice: false,
 	debugLogging: false,
 	showConnectionStatus: true,
 	autoDetectPortConflicts: true,
@@ -97,6 +105,24 @@ export default class ObsidianMCPPlugin extends Plugin {
 			await this.loadSettings();
 			Debug.setDebugMode(this.settings.debugLogging);
 			Debug.log('✅ Settings loaded');
+
+			// ADR-107: one-time post-upgrade migration notice when defaults
+			// flipped the implicit 0.0.0.0 bind to loopback. Suppresses on
+			// fresh installs where the user already saw the default; only
+			// fires when settings existed but the field did not.
+			if (this.settings.hasShownBindMigrationNotice === false) {
+				const wasExistingInstall = await this.isExistingPreBindModeInstall();
+				if (wasExistingInstall) {
+					new Notice(
+						'MCP plugin: network binding now defaults to loopback only. ' +
+							'If you previously accessed the MCP server from another machine on your LAN, ' +
+							'open MCP settings → Network binding and switch to "All interfaces" or "Custom".',
+						20000
+					);
+				}
+				this.settings.hasShownBindMigrationNotice = true;
+				await this.saveSettings();
+			}
 			
 			// Debug log read-only mode status at startup
 			if (this.settings.readOnlyMode) {
@@ -285,13 +311,25 @@ export default class ObsidianMCPPlugin extends Plugin {
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MCPPluginSettings>);
-		
+
 		// Generate API key on first load if not present
 		if (!this.settings.apiKey) {
 			this.settings.apiKey = this.generateApiKey();
 			await this.saveSettings();
 			Debug.log('🔐 Generated new API key for authentication');
 		}
+	}
+
+	/**
+	 * ADR-107: returns true iff the user has a pre-existing settings file
+	 * that lacks the bindMode field — i.e. they were running on the old
+	 * implicit 0.0.0.0 default and are being migrated to loopback.
+	 * Fresh installs return false (no nag).
+	 */
+	private async isExistingPreBindModeInstall(): Promise<boolean> {
+		const raw = (await this.loadData()) as Partial<MCPPluginSettings> | null;
+		if (!raw) return false;
+		return raw.bindMode === undefined;
 	}
 	
 	public generateApiKey(): string {
@@ -561,7 +599,10 @@ class MCPSettingTab extends PluginSettingTab {
 		
 		// Server Configuration Section
 		this.createServerConfigSection(containerEl);
-		
+
+		// Network Binding Section (ADR-107)
+		this.createNetworkBindingSection(containerEl);
+
 		// HTTPS Configuration Section
 		this.createHTTPSConfigSection(containerEl);
 		
@@ -730,6 +771,82 @@ class MCPSettingTab extends PluginSettingTab {
 				}));
 	}
 	
+	private createNetworkBindingSection(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName("Network binding").setHeading();
+
+		// ADR-107: live verdict badge
+		const verdict = classifyFromSettings({
+			httpsEnabled: this.plugin.settings.httpsEnabled,
+			bindMode: this.plugin.settings.bindMode,
+			customBindHost: this.plugin.settings.customBindHost,
+			userSuppliedCert: this.plugin.settings.certificateConfig?.selfSigned === false
+		});
+		const badgeEmoji = verdict.class === 'ok' ? '🟢' : verdict.class === 'warn' ? '🟡' : '🔴';
+		const badgeLabel = verdict.class === 'ok' ? 'OK' : verdict.class === 'warn' ? 'WARN' : 'INSECURE';
+		const badgeEl = containerEl.createDiv({ cls: `mcp-network-badge mcp-network-badge-${verdict.class}` });
+		badgeEl.createEl('strong', { text: `${badgeEmoji} ${badgeLabel} — ` });
+		badgeEl.createSpan({ text: verdict.reason });
+
+		new Setting(containerEl)
+			.setName('Bind address')
+			.setDesc('Which network interface the mcp server listens on. Loopback only is recommended.')
+			.addDropdown(dropdown => dropdown
+				.addOption('loopback', 'Loopback only — local machine')
+				.addOption('all', 'All interfaces — anyone on the network can attempt to connect')
+				.addOption('custom', 'Custom address…')
+				.setValue(this.plugin.settings.bindMode)
+				.onChange(async (value: string) => {
+					const mode = value as BindMode;
+					this.plugin.settings.bindMode = mode;
+					if (mode !== 'custom') {
+						this.plugin.settings.customBindHost = '';
+					}
+					await this.plugin.saveSettings();
+					this.display();
+					await this.restartIfRunning('bind address');
+				}));
+
+		if (this.plugin.settings.bindMode === 'all') {
+			const caution = containerEl.createDiv({ cls: 'mcp-network-caution' });
+			caution.createEl('strong', { text: '⚠ All interfaces selected. ' });
+			caution.createSpan({
+				text: this.plugin.settings.httpsEnabled
+					? 'Encrypted via HTTPS — clients must trust the certificate. Use a real (non-self-signed) cert for public networks.'
+					: 'API key and document text will be sent in cleartext over the network. Enable HTTPS or switch to loopback.'
+			});
+		}
+
+		if (this.plugin.settings.bindMode === 'custom') {
+			new Setting(containerEl)
+				.setName('Custom bind address')
+				.setDesc('IPv4/IPv6/hostname to bind to. Typing a loopback address auto-switches to loopback; typing a wildcard auto-switches to all interfaces.')
+				.addText(text => text
+					.setPlaceholder('e.g. 192.168.1.50')
+					.setValue(this.plugin.settings.customBindHost)
+					.onChange((value) => {
+						this.plugin.settings.customBindHost = value;
+					})
+					.inputEl.addEventListener('blur', () => {
+						void (async () => {
+							const normalized = normalizeBindInput('custom', this.plugin.settings.customBindHost);
+							this.plugin.settings.bindMode = normalized.mode;
+							this.plugin.settings.customBindHost = normalized.customHost;
+							await this.plugin.saveSettings();
+							this.display();
+							await this.restartIfRunning('bind address');
+						})();
+					}));
+		}
+	}
+
+	private async restartIfRunning(changedThing: string): Promise<void> {
+		if (this.plugin.mcpServer?.isServerRunning()) {
+			new Notice(`Restarting server with new ${changedThing}...`);
+			await this.plugin.stopMCPServer();
+			await this.plugin.startMCPServer();
+		}
+	}
+
 	private createHTTPSConfigSection(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName("Secure transport").setHeading();
 		
