@@ -79,24 +79,21 @@ jobs:
         if: steps.check_tag.outputs.exists == 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NAME: ${{ steps.version.outputs.name }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          # Bind via env to avoid shell interpretation of user-supplied notes
+          # (backticks, $vars, etc. in the notes must NOT be evaluated).
+          RELEASE_NOTES_INPUT: ${{ inputs.release_notes }}
         run: |
-          NOTES="## ${{ steps.version.outputs.name }} ${{ steps.version.outputs.version }}
+          NOTES=$(printf '## %s %s\n\n%s\n\n### Installation via BRAT\n1. Install the BRAT plugin if you haven'\''t already\n2. Command palette → "BRAT: Add a beta plugin for testing"\n3. Enter: `aaronsb/obsidian-mcp-plugin`\n4. Enable the plugin in Community Plugins\n' "$RELEASE_NAME" "$RELEASE_VERSION" "$RELEASE_NOTES_INPUT")
 
-          ${{ inputs.release_notes }}
-
-          ### Installation via BRAT
-          1. Install the BRAT plugin if you haven't already
-          2. Command palette → \"BRAT: Add a beta plugin for testing\"
-          3. Enter: \`aaronsb/obsidian-mcp-plugin\`
-          4. Enable the plugin in Community Plugins"
-
-          gh release create "${{ steps.version.outputs.version }}" \
-            --title "${{ steps.version.outputs.name }} ${{ steps.version.outputs.version }}" \
+          gh release create "$RELEASE_VERSION" \
+            --title "$RELEASE_NAME $RELEASE_VERSION" \
             --generate-notes \
             --notes "$NOTES" \
             --prerelease \
             main.js \
             manifest.json \
             styles.css \
-            "obsidian-mcp-${{ steps.version.outputs.version }}.mcpb" \
+            "obsidian-mcp-$RELEASE_VERSION.mcpb" \
             obsidian-mcp.mcpb
