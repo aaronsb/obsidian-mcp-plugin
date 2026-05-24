@@ -46,6 +46,7 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
         return await readFileWithFragments(ctx.api, ctx.fragmentRetriever, {
           path,
           returnFullFile: paramBool(params, 'returnFullFile'),
+          page: paramNum(params, 'page'),
           query: paramStr(params, 'query'),
           strategy,
           maxFragments: paramNum(params, 'maxFragments')
