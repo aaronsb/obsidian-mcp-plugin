@@ -656,7 +656,8 @@ export class MCPHttpServer {
         httpsEnabled: this.isHttps,
         bindMode,
         customBindHost: customHost,
-        userSuppliedCert: this.plugin?.settings?.certificateConfig?.selfSigned === false
+        userSuppliedCert: !!(this.plugin?.settings?.certificateConfig?.certPath
+          && this.plugin?.settings?.certificateConfig?.keyPath)
       });
       // Push the agent-visible warning to the server pool so subsequent
       // sessions surface it in MCP initialize.instructions.

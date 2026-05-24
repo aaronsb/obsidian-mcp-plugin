@@ -102,6 +102,13 @@ export default class ObsidianMCPPlugin extends Plugin {
 		Debug.log(`🚀 Starting Semantic Notes Vault MCP v${getVersion()}`);
 		
 		try {
+			// ADR-107: snapshot raw persisted data BEFORE loadSettings(),
+			// since loadSettings may write a fresh apiKey and (with merged
+			// defaults) bake in bindMode='loopback', erasing the "this is
+			// an upgrading install" signal we need below.
+			const rawDataBeforeLoad = (await this.loadData()) as Partial<MCPPluginSettings> | null;
+			const wasExistingPreBindModeInstall = !!rawDataBeforeLoad && rawDataBeforeLoad.bindMode === undefined;
+
 			await this.loadSettings();
 			Debug.setDebugMode(this.settings.debugLogging);
 			Debug.log('✅ Settings loaded');
@@ -111,8 +118,7 @@ export default class ObsidianMCPPlugin extends Plugin {
 			// fresh installs where the user already saw the default; only
 			// fires when settings existed but the field did not.
 			if (this.settings.hasShownBindMigrationNotice === false) {
-				const wasExistingInstall = await this.isExistingPreBindModeInstall();
-				if (wasExistingInstall) {
+				if (wasExistingPreBindModeInstall) {
 					new Notice(
 						'MCP plugin: network binding now defaults to loopback only. ' +
 							'If you previously accessed the MCP server from another machine on your LAN, ' +
@@ -320,17 +326,6 @@ export default class ObsidianMCPPlugin extends Plugin {
 		}
 	}
 
-	/**
-	 * ADR-107: returns true iff the user has a pre-existing settings file
-	 * that lacks the bindMode field — i.e. they were running on the old
-	 * implicit 0.0.0.0 default and are being migrated to loopback.
-	 * Fresh installs return false (no nag).
-	 */
-	private async isExistingPreBindModeInstall(): Promise<boolean> {
-		const raw = (await this.loadData()) as Partial<MCPPluginSettings> | null;
-		if (!raw) return false;
-		return raw.bindMode === undefined;
-	}
 	
 	public generateApiKey(): string {
 		// Generate a secure random API key
@@ -779,13 +774,21 @@ class MCPSettingTab extends PluginSettingTab {
 			httpsEnabled: this.plugin.settings.httpsEnabled,
 			bindMode: this.plugin.settings.bindMode,
 			customBindHost: this.plugin.settings.customBindHost,
-			userSuppliedCert: this.plugin.settings.certificateConfig?.selfSigned === false
+			userSuppliedCert: !!(this.plugin.settings.certificateConfig?.certPath
+				&& this.plugin.settings.certificateConfig?.keyPath)
 		});
 		const badgeEmoji = verdict.class === 'ok' ? '🟢' : verdict.class === 'warn' ? '🟡' : '🔴';
 		const badgeLabel = verdict.class === 'ok' ? 'OK' : verdict.class === 'warn' ? 'WARN' : 'INSECURE';
 		const badgeEl = containerEl.createDiv({ cls: `mcp-network-badge mcp-network-badge-${verdict.class}` });
 		badgeEl.createEl('strong', { text: `${badgeEmoji} ${badgeLabel} — ` });
 		badgeEl.createSpan({ text: verdict.reason });
+		if (verdict.class === 'jail') {
+			badgeEl.createEl('br');
+			badgeEl.createSpan({
+				text: 'Reconfigure: switch the bind address below to Loopback, or enable HTTPS.',
+				cls: 'mcp-network-badge-hint'
+			});
+		}
 
 		new Setting(containerEl)
 			.setName('Bind address')
@@ -817,6 +820,10 @@ class MCPSettingTab extends PluginSettingTab {
 		}
 
 		if (this.plugin.settings.bindMode === 'custom') {
+			if (this.plugin.settings.customBindHost.trim() === '') {
+				const empty = containerEl.createDiv({ cls: 'mcp-network-caution' });
+				empty.createSpan({ text: 'No custom address entered yet — server will fall back to loopback (127.0.0.1) until you enter one.' });
+			}
 			new Setting(containerEl)
 				.setName('Custom bind address')
 				.setDesc('IPv4/IPv6/hostname to bind to. Typing a loopback address auto-switches to loopback; typing a wildcard auto-switches to all interfaces.')

@@ -381,3 +381,10 @@ input.mcp-api-key-input {
     color: var(--text-on-accent);
     font-size: 0.9em;
 }
+
+.mcp-network-badge-hint {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 0.9em;
+    opacity: 0.9;
+}

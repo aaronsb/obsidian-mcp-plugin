@@ -29,12 +29,14 @@ export interface Verdict {
 
 const LOOPBACK_ALIASES = new Set(['127.0.0.1', 'localhost', '::1', '::ffff:127.0.0.1']);
 const WILDCARD_ALIASES = new Set(['0.0.0.0', '::']);
-const LOOPBACK_PREFIXES = ['127.'];
+// 127.0.0.0/8 — only strict dotted-quad IPv4 in the loopback block, not
+// arbitrary hostnames that happen to start with "127." (e.g. 127.evil.com).
+const LOOPBACK_IPV4_RE = /^127(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
 
 function isLoopbackHost(host: string): boolean {
   const h = host.trim().toLowerCase();
   if (LOOPBACK_ALIASES.has(h)) return true;
-  return LOOPBACK_PREFIXES.some((p) => h.startsWith(p));
+  return LOOPBACK_IPV4_RE.test(h);
 }
 
 function isWildcardHost(host: string): boolean {

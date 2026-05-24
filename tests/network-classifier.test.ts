@@ -46,11 +46,23 @@ describe('normalizeBindInput()', () => {
     ['::1',               'loopback'],
     ['::ffff:127.0.0.1',  'loopback'],
     ['127.0.0.99',        'loopback'],
+    ['127.255.255.254',   'loopback'],
     ['  127.0.0.1  ',     'loopback']
   ])('"%s" collapses to loopback mode', (input, expectedMode) => {
     const out = normalizeBindInput('custom', input);
     expect(out.mode).toBe(expectedMode);
     expect(out.customHost).toBe('');
+  });
+
+  test.each([
+    '127.evil.com',
+    '127.0.0.1.attacker.tld',
+    '127.300.0.1',
+    '1270.0.0.1'
+  ])('"%s" does NOT collapse to loopback (hostile/invalid)', (input) => {
+    const out = normalizeBindInput('custom', input);
+    expect(out.mode).toBe('custom');
+    expect(out.customHost).toBe(input);
   });
 
   test.each([
