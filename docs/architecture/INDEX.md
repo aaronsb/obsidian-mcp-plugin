@@ -27,6 +27,7 @@ _Server architecture, transport, connection handling, plugin lifecycle_
 | [ADR-104](./core/ADR-104-offload-cpu-bound-semantic-operations-to-worker-threads-and-deconflict-the-sse-route.md) | Offload CPU-bound semantic operations to worker threads and deconflict the SSE route | Accepted |
 | [ADR-105](./core/ADR-105-remove-dormant-worker-offload-path-partial-reversal-of-adr-104.md) | Remove dormant worker-offload path (partial reversal of ADR-104) | Accepted |
 | [ADR-106](./core/ADR-106-client-driven-session-re-initialization-via-spec-compliant-http-404.md) | Client-driven session re-initialization via spec-compliant HTTP 404 | Accepted |
+| [ADR-107](./core/ADR-107-network-exposure-modes-as-a-classified-state-machine.md) | Network exposure modes as a classified state machine | Accepted |
 
 ## Tools & API
 _MCP tool design, semantic operations, graph operations, formatters_
