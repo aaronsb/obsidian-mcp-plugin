@@ -49,6 +49,9 @@ export class MCPServerPool extends EventEmitter {
   private plugin?: PluginWithSettings;
   private sessionManager?: SessionManager;
   private connectionPool?: ConnectionPool;
+  // ADR-107: agent-visible warning string injected into MCP initialize.instructions
+  // when the network exposure verdict is 'jail'. Null otherwise (no field sent).
+  private initializeInstructions: string | null = null;
 
   constructor(obsidianAPI: ObsidianAPI | SecureObsidianAPI, maxServers: number = 32, plugin?: PluginWithSettings) {
     super();
@@ -63,6 +66,15 @@ export class MCPServerPool extends EventEmitter {
   setContexts(sessionManager: SessionManager, connectionPool: ConnectionPool) {
     this.sessionManager = sessionManager;
     this.connectionPool = connectionPool;
+  }
+
+  /**
+   * ADR-107: set the instructions string returned on MCP initialize.
+   * Called from MCPHttpServer.start() after the verdict is classified.
+   * Pass null to clear (no instructions field on initialize result).
+   */
+  setInitializeInstructions(instructions: string | null) {
+    this.initializeInstructions = instructions;
   }
 
   /**
@@ -116,7 +128,9 @@ export class MCPServerPool extends EventEmitter {
         capabilities: {
           tools: {},
           resources: {}
-        }
+        },
+        // ADR-107: agent-visible network-exposure warning, only set when 🔴
+        ...(this.initializeInstructions ? { instructions: this.initializeInstructions } : {})
       }
     );
 
