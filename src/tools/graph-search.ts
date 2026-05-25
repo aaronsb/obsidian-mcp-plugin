@@ -421,10 +421,14 @@ export class GraphSearchTool {
     }
 
     const forwardLinks = this.graphTraversal.getForwardLinks(params.sourcePath);
+    const unresolvedLinks = params.includeUnresolved
+      ? this.graphTraversal.getUnresolvedForwardLinks(params.sourcePath)
+      : [];
+    const allForwardLinks = [...forwardLinks, ...unresolvedLinks];
     const nodes: GraphSearchResult['nodes'] = [];
     
     // Get node information for each forward link target
-    for (const edge of forwardLinks) {
+    for (const edge of allForwardLinks) {
       const file = this.app.vault.getAbstractFileByPath(edge.target);
       if (file && file instanceof TFile) {
         const cache = this.app.metadataCache.getFileCache(file);
@@ -448,8 +452,8 @@ export class GraphSearchTool {
       operation: 'forwardlinks',
       sourcePath: params.sourcePath,
       nodes,
-      edges: forwardLinks,
-      message: `Found ${forwardLinks.length} files linked from this file`,
+      edges: allForwardLinks,
+      message: `Found ${allForwardLinks.length} files linked from this file`,
       workflow: {
         message: 'Forward links retrieved. You can explore these referenced files.',
         suggested_next: [

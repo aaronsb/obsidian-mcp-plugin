@@ -141,8 +141,23 @@ export class GraphTraversal {
    * Get unresolved links from a file
    */
   getUnresolvedLinks(filePath: string): string[] {
-    const unresolvedLinks = this.app.metadataCache.unresolvedLinks[filePath];
+    const unresolvedLinks = this.app.metadataCache.unresolvedLinks?.[filePath];
     return unresolvedLinks ? Object.keys(unresolvedLinks) : [];
+  }
+
+  /**
+   * Get unresolved forward links as graph edges.
+   */
+  getUnresolvedForwardLinks(filePath: string): GraphEdge[] {
+    const unresolvedLinks = this.app.metadataCache.unresolvedLinks?.[filePath];
+    if (!unresolvedLinks) return [];
+
+    return Object.entries(unresolvedLinks).map(([targetPath, count]) => ({
+      source: filePath,
+      target: targetPath,
+      type: 'link',
+      count
+    }));
   }
 
   /**
