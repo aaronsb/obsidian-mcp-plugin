@@ -131,7 +131,7 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
           params,
           'content',
           'vault.update',
-          "For partial replacement, use vault.patch with operation='replace', oldText, newText — or edit.window for fuzzy in-place edits.",
+          "For partial replacement, use edit.patch with operation='replace', oldText, newText — or edit.window for fuzzy in-place edits.",
         );
         return await ctx.api.updateFile(path, content);
       }

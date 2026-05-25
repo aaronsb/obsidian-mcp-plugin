@@ -137,7 +137,7 @@ export class SemanticRouter implements RouterContext {
     // client can no longer silently clobber each other (#139). Different
     // files remain fully concurrent.
     // Guard the lock key up-front so a missing path can't take a lock on
-     // the literal string "undefined" and serialize unrelated bad calls.
+    // the literal string "undefined" and serialize unrelated bad calls.
     const lockPath = requireParamStr(params, 'path', `edit.${action}`);
     return FileLockManager.getInstance().withLock(lockPath, async () => {
     switch (action) {

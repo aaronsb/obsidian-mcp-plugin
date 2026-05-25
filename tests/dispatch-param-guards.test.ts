@@ -21,6 +21,7 @@ type Mutation =
 
 class RecordingAPI extends ObsidianAPI {
   readonly mutations: Mutation[] = [];
+  readonly reads: string[] = [];
   private files = new Map<string, string>([['existing.md', 'original']]);
 
   constructor() {
@@ -28,6 +29,7 @@ class RecordingAPI extends ObsidianAPI {
   }
 
   async getFile(path: string): Promise<any> {
+    this.reads.push(path);
     const content = this.files.get(path);
     if (content === undefined) throw new Error(`File not found: ${path}`);
     return { content, path, type: 'text' };
@@ -142,7 +144,7 @@ describe('dispatch-level param guards (#210)', () => {
     expect((await api.getFile('existing.md')).content).toBe('original');
   });
 
-  test('edit.window without oldText/newText rejects before searching the file', async () => {
+  test('edit.window without oldText/newText rejects before reading or writing the file', async () => {
     const response = await router.route({
       operation: 'edit',
       action: 'window',
@@ -150,6 +152,10 @@ describe('dispatch-level param guards (#210)', () => {
     });
     expect((response as any).error).toBeDefined();
     expect(api.mutations).toEqual([]);
+    // The guard must run before performWindowEdit fetches the file —
+    // otherwise a missing oldText could still trigger a search for the
+    // literal string "undefined" with confusing diagnostics.
+    expect(api.reads).toEqual([]);
   });
 
   test('edit.* without path rejects before taking a file lock', async () => {
