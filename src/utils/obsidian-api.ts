@@ -437,7 +437,9 @@ export class ObsidianAPI {
     }
 
     await this.app.vault.modify(file, content);
-    return { success: true };
+    // Include `path` so formatFileWrite renders "Updated: <path>" instead of
+    // the misleading "Updated: undefined" that masked #210 client-side.
+    return { success: true, path };
   }
 
   async deleteFile(path: string) {
@@ -447,7 +449,7 @@ export class ObsidianAPI {
     }
 
     await this.app.fileManager.trashFile(file);
-    return { success: true };
+    return { success: true, path };
   }
 
   async appendToFile(path: string, content: string) {

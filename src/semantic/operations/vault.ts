@@ -10,7 +10,7 @@ import { isImageFile, ObsidianFileResponse } from '../../types/obsidian';
 import { readFileWithFragments } from '../../utils/file-reader';
 import { ValidationException } from '../../validation/input-validator';
 import { RouterContext } from './router-context';
-import { Params, paramStr, paramNum, paramBool } from './shared';
+import { Params, paramStr, paramNum, paramBool, requireParamStr } from './shared';
 
 export async function executeVaultOperation(ctx: RouterContext, action: string, params: Params): Promise<unknown> {
     switch (action) {
@@ -119,12 +119,26 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
           };
         }
       }
-      case 'create':
-        return await ctx.api.createFile(paramStr(params, 'path') ?? '', paramStr(params, 'content') ?? '');
-      case 'update':
-        return await ctx.api.updateFile(String(params.path), String(params.content));
-      case 'delete':
-        return await ctx.api.deleteFile(String(params.path));
+      case 'create': {
+        const path = requireParamStr(params, 'path', 'vault.create');
+        // Empty content is a legitimate "touch" — only the path is required.
+        const content = paramStr(params, 'content') ?? '';
+        return await ctx.api.createFile(path, content);
+      }
+      case 'update': {
+        const path = requireParamStr(params, 'path', 'vault.update');
+        const content = requireParamStr(
+          params,
+          'content',
+          'vault.update',
+          "For partial replacement, use vault.patch with operation='replace', oldText, newText — or edit.window for fuzzy in-place edits.",
+        );
+        return await ctx.api.updateFile(path, content);
+      }
+      case 'delete': {
+        const path = requireParamStr(params, 'path', 'vault.delete');
+        return await ctx.api.deleteFile(path);
+      }
       case 'search': {
         // Validate query
         const queryStr = paramStr(params, 'query');

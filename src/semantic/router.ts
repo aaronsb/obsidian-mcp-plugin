@@ -22,7 +22,7 @@ import { InputValidator } from '../validation/input-validator';
 import { BaseYAML } from '../types/bases-yaml';
 import { RouterContext } from './operations/router-context';
 import { executeVaultOperation } from './operations/vault';
-import { Params, SearchResultItem, paramStr, paramNum, paramBool } from './operations/shared';
+import { Params, SearchResultItem, paramStr, paramNum, paramBool, requireParamStr } from './operations/shared';
 
 export class SemanticRouter implements RouterContext {
   private config!: WorkflowConfig;
@@ -136,16 +136,21 @@ export class SemanticRouter implements RouterContext {
     // edit.window/append/patch/at_line/from_buffer calls from a batched MCP
     // client can no longer silently clobber each other (#139). Different
     // files remain fully concurrent.
-    return FileLockManager.getInstance().withLock(String(params.path), async () => {
+    // Guard the lock key up-front so a missing path can't take a lock on
+     // the literal string "undefined" and serialize unrelated bad calls.
+    const lockPath = requireParamStr(params, 'path', `edit.${action}`);
+    return FileLockManager.getInstance().withLock(lockPath, async () => {
     switch (action) {
       case 'window': {
+        const oldText = requireParamStr(params, 'oldText', 'edit.window');
+        const newText = requireParamStr(params, 'newText', 'edit.window');
         // Imported dynamically (only when needed) to avoid circular deps.
         const { performWindowEdit } = await import('../tools/window-edit.js');
         const result = await performWindowEdit(
           this.api,
-          String(params.path),
-          String(params.oldText),
-          String(params.newText),
+          lockPath,
+          oldText,
+          newText,
           paramNum(params, 'fuzzyThreshold')
         );
         if (result.isError) {
@@ -153,10 +158,17 @@ export class SemanticRouter implements RouterContext {
         }
         return result;
       }
-      case 'append':
-        return await this.api.appendToFile(String(params.path), String(params.content));
+      case 'append': {
+        const content = requireParamStr(
+          params,
+          'content',
+          'edit.append',
+          "Pass the text to append as 'content'.",
+        );
+        return await this.api.appendToFile(lockPath, content);
+      }
       case 'patch':
-        return await this.api.patchVaultFile(String(params.path), {
+        return await this.api.patchVaultFile(lockPath, {
           operation: paramStr(params, 'operation'),
           targetType: paramStr(params, 'targetType'),
           target: paramStr(params, 'target'),
@@ -176,7 +188,7 @@ export class SemanticRouter implements RouterContext {
         }
 
         // Get file and perform line-based edit
-        const filePath = String(params.path);
+        const filePath = lockPath;
         const file = await this.api.getFile(filePath);
         if (isImageFile(file)) {
           throw new Error('Cannot perform line-based edits on image files');
@@ -215,7 +227,7 @@ export class SemanticRouter implements RouterContext {
         const { performWindowEdit } = await import('../tools/window-edit.js');
         return await performWindowEdit(
           this.api,
-          String(params.path),
+          lockPath,
           paramStr(params, 'oldText') || buffered.searchText || '',
           buffered.content,
           paramNum(params, 'fuzzyThreshold')
@@ -230,10 +242,10 @@ export class SemanticRouter implements RouterContext {
   private async executeViewOperation(action: string, params: Params): Promise<unknown> {
     switch (action) {
       case 'file':
-        return await this.api.getFile(String(params.path));
+        return await this.api.getFile(requireParamStr(params, 'path', 'view.file'));
       case 'window': {
         // View a portion of a file
-        const viewPath = String(params.path);
+        const viewPath = requireParamStr(params, 'path', 'view.window');
         const file = await this.api.getFile(viewPath);
         if (isImageFile(file)) {
           throw new Error('Cannot view window of image files');
@@ -291,7 +303,7 @@ export class SemanticRouter implements RouterContext {
         }
         
       case 'open_in_obsidian':
-        return await this.api.openFile(String(params.path));
+        return await this.api.openFile(requireParamStr(params, 'path', 'view.open_in_obsidian'));
         
       default:
         throw new Error(`Unknown view action: ${action}`);
