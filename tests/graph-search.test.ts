@@ -6,6 +6,9 @@ function makeFile(path: string): TFile {
   const file = new TFile();
   file.path = path;
   file.name = path.split('/').pop() ?? path;
+  // getNodeTitle (added in #207, merged before this PR landed) reads
+  // basename — make the mock match the real TFile API.
+  file.basename = file.name.replace(/\.md$/, '');
   file.extension = 'md';
   return file;
 }
