@@ -274,7 +274,7 @@ export class GraphSearchTool {
     const paths = rawPaths.map(pathList =>
       pathList.map(filePath => ({
         path: filePath,
-        title: filePath.replace(/\.md$/, '').split('/').pop() || filePath
+        title: this.graphTraversal.getNodeTitleForPath(filePath)
       }))
     );
 
@@ -324,12 +324,15 @@ export class GraphSearchTool {
 
     const stats = this.graphTraversal.getNodeStatistics(params.sourcePath);
     const file = this.app.vault.getAbstractFileByPath(params.sourcePath);
+    const title = file instanceof TFile
+      ? this.graphTraversal.getNodeTitle(file)
+      : params.sourcePath;
     
     return {
       operation: 'statistics',
       sourcePath: params.sourcePath,
       statistics: stats,
-      message: `Link statistics for ${file?.name || params.sourcePath}`,
+      message: `Link statistics for ${title}`,
       workflow: {
         message: 'Statistics retrieved. You can explore the actual links or find connected nodes.',
         suggested_next: [
@@ -371,7 +374,7 @@ export class GraphSearchTool {
         const cache = this.app.metadataCache.getFileCache(file);
         nodes.push({
           path: edge.source,
-          title: file.name.replace(/\.md$/, ''),
+          title: this.graphTraversal.getNodeTitle(file),
           type: 'file',
           tags: cache?.tags?.map(t => t.tag),
           links: {
@@ -427,7 +430,7 @@ export class GraphSearchTool {
         const cache = this.app.metadataCache.getFileCache(file);
         nodes.push({
           path: edge.target,
-          title: file.name.replace(/\.md$/, ''),
+          title: this.graphTraversal.getNodeTitle(file),
           type: 'file',
           tags: cache?.tags?.map(t => t.tag),
           links: {
