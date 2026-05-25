@@ -63,6 +63,14 @@ export interface GraphSearchResult {
     unresolvedCount: number;
     tagCount: number;
   };
+  vaultStatistics?: {
+    totalNotes: number;
+    totalLinks: number;
+    orphanCount: number;
+    averageDegree: number;
+    largestComponentSize: number;
+    isolatedClusters: number;
+  };
   graphStats?: {
     totalNodes: number;
     totalEdges: number;
@@ -315,11 +323,32 @@ export class GraphSearchTool {
   }
 
   /**
-   * Get link statistics for a file
+   * Get link statistics — vault-wide when sourcePath is omitted (#132),
+   * per-node when sourcePath is provided.
    */
   private getStatistics(params: GraphSearchParams): GraphSearchResult {
     if (!params.sourcePath) {
-      throw new Error('Source path is required for statistics operation');
+      const vaultStats = this.graphTraversal.getVaultStatistics();
+      return {
+        operation: 'statistics',
+        vaultStatistics: vaultStats,
+        message: `Vault-wide statistics: ${vaultStats.totalNotes} notes, ${vaultStats.totalLinks} links, ${vaultStats.orphanCount} orphans, ${vaultStats.isolatedClusters} components`,
+        workflow: {
+          message: 'Vault statistics retrieved. You can drill into specific files or explore the largest component.',
+          suggested_next: [
+            {
+              description: 'Get per-node statistics for a specific file',
+              command: 'graph:statistics',
+              reason: 'Pass sourcePath to see degree/tag counts for one note'
+            },
+            {
+              description: 'Traverse from a known hub',
+              command: 'graph:traverse',
+              reason: 'Explore the connected structure of the largest component'
+            }
+          ]
+        }
+      };
     }
 
     const stats = this.graphTraversal.getNodeStatistics(params.sourcePath);
@@ -327,7 +356,7 @@ export class GraphSearchTool {
     const title = file instanceof TFile
       ? this.graphTraversal.getNodeTitle(file)
       : params.sourcePath;
-    
+
     return {
       operation: 'statistics',
       sourcePath: params.sourcePath,
@@ -343,7 +372,7 @@ export class GraphSearchTool {
           },
           {
             description: 'Get forward links',
-            command: 'graph:forwardlinks', 
+            command: 'graph:forwardlinks',
             reason: `To see the ${stats.outDegree} files this file links to`
           },
           {
