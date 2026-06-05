@@ -482,6 +482,83 @@ export class GraphTraversal {
   }
 
   /**
+   * Calculate vault-wide graph statistics.
+   *
+   * Treats the graph as undirected for component analysis (a link from A to B
+   * means A and B are in the same component) while keeping link counts directed
+   * (each resolved-link occurrence is one totalLink, matching how Obsidian's
+   * metadataCache exposes them). Orphans are nodes with no resolved links in
+   * either direction. isolatedClusters is the total connected-component count,
+   * inclusive of singletons — derive non-trivial cluster count as
+   * `isolatedClusters - orphanCount` if needed.
+   *
+   * O(V + E) over the resolvedLinks adjacency, single pass.
+   */
+  getVaultStatistics(): {
+    totalNotes: number;
+    totalLinks: number;
+    orphanCount: number;
+    averageDegree: number;
+    largestComponentSize: number;
+    isolatedClusters: number;
+  } {
+    const mdFiles = this.app.vault.getFiles().filter(f => f.extension === 'md');
+    const totalNotes = mdFiles.length;
+
+    const resolved = this.app.metadataCache.resolvedLinks ?? {};
+    const adjacency = new Map<string, Set<string>>();
+    for (const file of mdFiles) {
+      adjacency.set(file.path, new Set());
+    }
+
+    let totalLinks = 0;
+    for (const [source, targets] of Object.entries(resolved)) {
+      if (!adjacency.has(source)) continue;
+      const sourceSet = adjacency.get(source)!;
+      for (const [target, count] of Object.entries(targets)) {
+        if (!adjacency.has(target)) continue;
+        sourceSet.add(target);
+        adjacency.get(target)!.add(source);
+        totalLinks += count;
+      }
+    }
+
+    const visited = new Set<string>();
+    const componentSizes: number[] = [];
+    for (const start of adjacency.keys()) {
+      if (visited.has(start)) continue;
+      let size = 0;
+      const queue: string[] = [start];
+      while (queue.length > 0) {
+        const node = queue.pop()!;
+        if (visited.has(node)) continue;
+        visited.add(node);
+        size++;
+        for (const neighbor of adjacency.get(node)!) {
+          if (!visited.has(neighbor)) queue.push(neighbor);
+        }
+      }
+      componentSizes.push(size);
+    }
+
+    const orphanCount = componentSizes.filter(s => s === 1).length;
+    const largestComponentSize = componentSizes.length > 0
+      ? Math.max(...componentSizes)
+      : 0;
+    const isolatedClusters = componentSizes.length;
+    const averageDegree = totalNotes > 0 ? (totalLinks * 2) / totalNotes : 0;
+
+    return {
+      totalNotes,
+      totalLinks,
+      orphanCount,
+      averageDegree,
+      largestComponentSize,
+      isolatedClusters,
+    };
+  }
+
+  /**
    * Calculate graph statistics for a file
    */
   getNodeStatistics(filePath: string): {
