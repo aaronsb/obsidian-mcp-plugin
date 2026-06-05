@@ -1,5 +1,6 @@
 import { DataviewTool, isDataviewToolAvailable } from '../src/tools/dataview-tool';
 import { PluginDetector } from '../src/utils/plugin-detector';
+import { formatResponse } from '../src/formatters';
 
 /**
  * Mock Obsidian App for testing
@@ -36,24 +37,29 @@ class MockApp {
  */
 class MockDataviewAPI {
   query(query: string) {
-    // Mock DQL query execution
+    // Mock DQL query execution. Dataview's real query() resolves to a Result
+    // monad — { successful, value, error } — where value.values is a PLAIN
+    // array (not a wrapped DataArray). The previous mock used the wrong flat +
+    // wrapped shape, which is why CI stayed green while real Dataview broke (#216).
     if (query.includes('LIST')) {
       return {
-        type: 'list',
-        values: {
-          array: () => ['Note 1', 'Note 2', 'Note 3']
+        successful: true,
+        value: {
+          type: 'list',
+          values: ['Note 1', 'Note 2', 'Note 3']
         }
       };
     }
-    
+
     if (query.includes('TABLE')) {
       return {
-        type: 'table',
-        headers: ['Name', 'Created', 'Tags'],
-        values: {
-          array: () => [
-            { array: () => ['Note 1', '2024-01-01', '#tag1'] },
-            { array: () => ['Note 2', '2024-01-02', '#tag2'] }
+        successful: true,
+        value: {
+          type: 'table',
+          headers: ['Name', 'Created', 'Tags'],
+          values: [
+            ['Note 1', '2024-01-01', '#tag1'],
+            ['Note 2', '2024-01-02', '#tag2']
           ]
         }
       };
@@ -346,9 +352,10 @@ describe('Dataview Integration', () => {
       const tool = new DataviewTool(api as any);
 
       const dvApi = (app.plugins.plugins['dataview'] as any).api as MockDataviewAPI;
+      // A failed Dataview query resolves the Result monad with no `value`,
+      // only `{ successful: false, error }`.
       dvApi.query = (() => ({
         successful: false,
-        type: 'table',
         error: 'No field "nonexistent" on this page'
       })) as any;
 
@@ -369,6 +376,50 @@ describe('Dataview Integration', () => {
       const invalidResult = await tool.validateQuery('INVALID QUERY') as any;
       expect(invalidResult.valid).toBe(false);
       expect(invalidResult.error).toContain('Query must start with one of');
+    });
+  });
+
+  // #216: the formatted (non-raw) output is what MCP clients see by default.
+  // These exercise the full producer → formatResponse() path that was broken,
+  // not just the raw envelope (which already worked).
+  describe('Formatted output (#216)', () => {
+    test('dataview.query LIST renders results, not "UNKNOWN"/"No results found"', async () => {
+      const app = new MockApp(true, true);
+      const api = new MockObsidianAPI(app);
+      const tool = new DataviewTool(api as any);
+
+      const queryResult = await tool.executeQuery('LIST FROM #tag');
+      const output = formatResponse('dataview', 'query', queryResult, false);
+
+      expect(output).toContain('Dataview: LIST');
+      expect(output).not.toContain('UNKNOWN');
+      expect(output).not.toContain('No results found');
+      expect(output).toContain('Note 1');
+    });
+
+    test('dataview.query TABLE renders its rows', async () => {
+      const app = new MockApp(true, true);
+      const api = new MockObsidianAPI(app);
+      const tool = new DataviewTool(api as any);
+
+      const queryResult = await tool.executeQuery('TABLE name FROM #tag');
+      const output = formatResponse('dataview', 'query', queryResult, false);
+
+      expect(output).toContain('Dataview: TABLE');
+      expect(output).not.toContain('No results found');
+      expect(output).toContain('Note 1');
+    });
+
+    test('dataview.status renders "available" when the plugin is ready', () => {
+      const app = new MockApp(true, true);
+      const api = new MockObsidianAPI(app);
+      const tool = new DataviewTool(api as any);
+
+      const output = formatResponse('dataview', 'status', tool.getStatus(), false);
+
+      expect(output).toContain('✓ Dataview plugin is available');
+      expect(output).not.toContain('✗ Dataview plugin is not available');
+      expect(output).toContain('0.5.64');
     });
   });
 
