@@ -363,6 +363,26 @@ function normalizeResponse(key: string, response: unknown): NormalizedResponse {
       };
     }
 
+    // dataview.status: detector returns {installed, enabled, apiReady, version},
+    // formatter expects {available, version}. Without this bridge the formatter
+    // reads a non-existent `available` field and always renders "not available"
+    // even when Dataview is fully ready (#216). Treat apiReady as the source of
+    // truth (it already implies installed + enabled), falling back to the
+    // conjunction for older status shapes.
+    case 'dataview.status': {
+      const s = resp as {
+        installed?: boolean;
+        enabled?: boolean;
+        apiReady?: boolean;
+        available?: boolean;
+        version?: string;
+      };
+      return {
+        available: s.available ?? s.apiReady ?? (Boolean(s.installed) && Boolean(s.enabled)),
+        version: s.version
+      };
+    }
+
     // edit.window: router returns {isError, content}, formatter expects {success, path}
     case 'edit.window':
     case 'edit.from_buffer': {

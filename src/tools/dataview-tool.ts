@@ -43,6 +43,21 @@ function toIsoOptional(value: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * Coerce a Dataview `values` field to a plain array.
+ *
+ * Dataview's `query()` returns plain arrays (`Literal[]` / `Literal[][]`), but
+ * other API surfaces (`pages()`, `page().file.*`) hand back wrapped `DataArray`
+ * collections that expose `.array()`. Accepting either keeps the query path
+ * correct while staying defensive against version drift.
+ */
+function toPlainArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  const wrapped = value as { array?: () => unknown[] } | null | undefined;
+  if (wrapped && typeof wrapped.array === 'function') return wrapped.array();
+  return [];
+}
+
 /** Dataview link value */
 interface DataviewLink {
   path: string;
@@ -80,12 +95,24 @@ interface DataviewPage {
   [key: string]: unknown;
 }
 
-/** Query result from dataviewAPI.query() */
+/**
+ * Query result from `dataviewAPI.query()`.
+ *
+ * Dataview resolves `query()` to a `Result` monad — `{ successful, value, error }`
+ * — NOT a flat `{ type, values }` object. The actual query payload (type /
+ * values / headers) lives under `.value`, and `value.values` is a *plain*
+ * array (`Literal[]` / `Literal[][]`), not a wrapped `DataArray` with `.array()`.
+ * Modelling this faithfully is what fixes #216: reading `result.type` /
+ * `result.values` directly yields `undefined`, collapsing every query to the
+ * `unknown`/"No results found" branch.
+ */
 interface DataviewQueryResult {
   successful?: boolean;
-  type: string;
-  values?: DataviewArray;
-  headers?: string[];
+  value?: {
+    type: string;
+    values?: unknown;
+    headers?: string[];
+  };
   error?: string;
 }
 
@@ -185,7 +212,7 @@ export class DataviewTool {
           query,
           format,
           result: this.formatQueryResult(result),
-          type: result.type || 'unknown',
+          type: result.value?.type || 'unknown',
           error: innerSuccess ? undefined : result.error,
           workflow: this.generateQueryWorkflow(query, result),
           hints: this.generateQueryHints(query)
@@ -338,26 +365,31 @@ export class DataviewTool {
   private formatQueryResult(result: DataviewQueryResult): FormattedQueryResult | null {
     if (!result) return null;
 
+    // Unwrap Dataview's Result monad: the typed payload lives under `.value`.
+    // A failed query (`successful: false`) carries no `value`.
+    const payload = result.value;
+    if (!payload) return null;
+
     // Handle different result types
-    switch (result.type) {
+    switch (payload.type) {
       case 'list':
         return {
           type: 'list',
-          values: result.values?.array() ?? []
+          values: toPlainArray(payload.values)
         };
       case 'table':
         return {
           type: 'table',
-          headers: result.headers ?? [],
-          values: result.values?.array()?.map((row: unknown) => {
+          headers: payload.headers ?? [],
+          values: toPlainArray(payload.values).map((row: unknown) => {
             const tableRow = row as DataviewTableRow;
             return typeof tableRow?.array === 'function' ? tableRow.array() : row;
-          }) ?? []
+          })
         };
       case 'task':
         return {
           type: 'task',
-          values: result.values?.array()?.map((task: unknown) => {
+          values: toPlainArray(payload.values).map((task: unknown) => {
             const dvTask = task as DataviewTask;
             return {
               text: dvTask.text,
@@ -365,12 +397,12 @@ export class DataviewTool {
               line: dvTask.line,
               path: dvTask.path
             };
-          }) ?? []
+          })
         };
       case 'calendar':
         return {
           type: 'calendar',
-          values: result.values?.array() ?? []
+          values: toPlainArray(payload.values)
         };
       default:
         return {
