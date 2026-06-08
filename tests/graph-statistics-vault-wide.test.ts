@@ -58,7 +58,7 @@ describe('graph.statistics — vault-wide (#132)', () => {
         'd.md': { 'e.md': 1 },
       },
     });
-    tool = new GraphSearchTool({} as ObsidianAPI, app);
+    tool = new GraphSearchTool({ getIgnoreManager: () => undefined } as unknown as ObsidianAPI, app);
   });
 
   it('returns vaultStatistics when sourcePath is omitted', () => {
@@ -95,7 +95,7 @@ describe('graph.statistics — vault-wide (#132)', () => {
       files: [A, B],
       resolvedLinks: { 'a.md': { 'b.md': 3 } },
     });
-    const t = new GraphSearchTool({} as ObsidianAPI, app);
+    const t = new GraphSearchTool({ getIgnoreManager: () => undefined } as unknown as ObsidianAPI, app);
 
     const result = t.search({ operation: 'statistics' });
     expect(result.vaultStatistics).toMatchObject({
@@ -108,7 +108,7 @@ describe('graph.statistics — vault-wide (#132)', () => {
 
   it('handles an empty vault without dividing by zero', () => {
     const app = buildApp({ files: [], resolvedLinks: {} });
-    const t = new GraphSearchTool({} as ObsidianAPI, app);
+    const t = new GraphSearchTool({ getIgnoreManager: () => undefined } as unknown as ObsidianAPI, app);
 
     const result = t.search({ operation: 'statistics' });
     expect(result.vaultStatistics).toEqual({
@@ -127,7 +127,7 @@ describe('graph.statistics — vault-wide (#132)', () => {
       files: [A, B, image],
       resolvedLinks: { 'a.md': { 'b.md': 1 } },
     });
-    const t = new GraphSearchTool({} as ObsidianAPI, app);
+    const t = new GraphSearchTool({ getIgnoreManager: () => undefined } as unknown as ObsidianAPI, app);
 
     const result = t.search({ operation: 'statistics' });
     expect(result.vaultStatistics?.totalNotes).toBe(2);
@@ -142,7 +142,7 @@ describe('graph.statistics — vault-wide (#132)', () => {
         'b.md': { 'a.md': 1 },
       },
     });
-    const t = new GraphSearchTool({} as ObsidianAPI, app);
+    const t = new GraphSearchTool({ getIgnoreManager: () => undefined } as unknown as ObsidianAPI, app);
 
     const result = t.search({ operation: 'statistics' });
     expect(result.vaultStatistics).toMatchObject({

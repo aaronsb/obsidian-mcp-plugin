@@ -95,7 +95,15 @@ export class GraphSearchTool {
   private graphTraversal: GraphTraversal;
   
   constructor(private api: ObsidianAPI, private app: App) {
-    this.graphTraversal = new GraphTraversal(app);
+    this.graphTraversal = new GraphTraversal(app, api.getIgnoreManager());
+  }
+
+  /** Throw "File not found" for an ignored query root ('/' and '' are the virtual root). */
+  private assertNotExcluded(path?: string): void {
+    if (!path || path === '/') return;
+    if (this.graphTraversal.isExcluded(path)) {
+      throw new Error(`File not found: ${path}`);
+    }
   }
 
   /**
@@ -103,7 +111,14 @@ export class GraphSearchTool {
    */
   search(params: GraphSearchParams): GraphSearchResult {
     const { operation } = params;
-    
+
+    // Reject excluded query roots so directly targeting an ignored note does
+    // not disclose its relationships. Excluded paths are treated as not found,
+    // matching ObsidianAPI's read-path behavior. The '/' and '' sentinels are
+    // the virtual vault root, not real paths.
+    this.assertNotExcluded(params.sourcePath);
+    this.assertNotExcluded(params.targetPath);
+
     switch (operation) {
       case 'traverse':
         return this.performTraversal(params);

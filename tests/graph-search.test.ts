@@ -34,7 +34,7 @@ describe('GraphSearchTool', () => {
       path === 'resolved.md' ? resolvedTarget : null
     );
 
-    tool = new GraphSearchTool({} as ObsidianAPI, app);
+    tool = new GraphSearchTool({ getIgnoreManager: () => undefined } as unknown as ObsidianAPI, app);
   });
 
   it('omits unresolved forward links by default', () => {
