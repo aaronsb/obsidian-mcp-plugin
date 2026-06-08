@@ -17,18 +17,14 @@ This plugin connects your Obsidian vault to AI assistants through MCP (Model Con
 - Claude Code/Continue.dev (VS Code)
 - Any platform that supports local MCP servers
 
-## Why Semantic MCP?
-
-Traditional file access gives AI a narrow view - one document at a time. This plugin transforms that into **semantic agency**:
-
-- **Graph Navigation**: AI follows links between notes, understanding relationships and context
-- **Concept Discovery**: Semantic search finds related ideas across your vault
-- **Contextual Awareness**: AI understands where information lives in your knowledge structure
-- **Intelligent Synthesis**: Combine fragments from multiple notes to answer complex questions
-
 ## Quick Start
 
-**Prerequisites:** You need an MCP-compatible AI client like Claude Desktop, Claude Code, or Continue.dev.
+**Prerequisites:** an MCP-compatible AI client like Claude Desktop, Claude Code, or Continue.dev.
+
+> ## 📦 ──drag──▶ 🤖💬
+> **Download the `.mcpb` bundle from the plugin's config page → drag it onto Claude Desktop → paste your key. Done.**
+
+For most people that's the entire setup. The numbered steps below spell it out, then cover other MCP clients.
 
 ### 1. Install the Plugin
 
@@ -45,9 +41,9 @@ Traditional file access gives AI a narrow view - one document at a time. This pl
 
 Three onboarding paths, ordered by audience. All three are also shown in the plugin's Settings tab with copy-ready values.
 
-**Claude Desktop — one-click `.mcpb` install (recommended)**
+**📦 → 🤖 Claude Desktop — one-click `.mcpb` install (recommended)**
 
-Download `obsidian-mcp-<version>.mcpb` from the [latest release](https://github.com/aaronsb/obsidian-mcp-plugin/releases/latest), then either drag it onto the Claude Desktop window or double-click it. Claude Desktop opens an install dialog with two fields — paste the URL and API key shown in the plugin's Settings tab, hit Save, and you're done.
+Download `obsidian-mcp-<version>.mcpb` — either from the plugin's **Settings** tab (button right on the config page) or the [latest release](https://github.com/aaronsb/obsidian-mcp-plugin/releases/latest) — then either drag it onto the Claude Desktop window or double-click it. Claude Desktop opens an install dialog with two fields — paste the URL and API key shown in the plugin's Settings tab, hit Save, and you're done.
 
 > *Cross-platform note:* `.mcpb` files install via Claude Desktop's bundled handler. If double-click doesn't trigger Claude on your system, drag the file onto Claude Desktop's window instead, or right-click → "Open with…" and pick Claude Desktop (then "always open with" if your OS asks). Behavior varies by platform: macOS usually auto-associates, Windows may need a one-time association, Linux varies by desktop environment.
 
@@ -133,6 +129,15 @@ Your AI assistant now has these capabilities:
 - Analyze your knowledge graph
 - Work with Dataview queries (if installed)
 - Manage Obsidian Bases (database views)
+
+## Why Semantic MCP?
+
+Traditional file access gives AI a narrow view - one document at a time. This plugin transforms that into **semantic agency**:
+
+- **Graph Navigation**: AI follows links between notes, understanding relationships and context
+- **Concept Discovery**: Semantic search finds related ideas across your vault
+- **Contextual Awareness**: AI understands where information lives in your knowledge structure
+- **Intelligent Synthesis**: Combine fragments from multiple notes to answer complex questions
 
 ## Core Tools
 
