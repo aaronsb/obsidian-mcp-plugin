@@ -286,8 +286,7 @@ export class SemanticRouter implements RouterContext {
         // Add timeout to prevent hanging when no file is active
         try {
           const timeoutPromise = new Promise((_, reject) =>
-            // eslint-disable-next-line obsidianmd/prefer-window-timers
-            setTimeout(() => reject(new Error('Timeout: No active file in Obsidian. Please open a file first.')), 5000)
+            window.setTimeout(() => reject(new Error('Timeout: No active file in Obsidian. Please open a file first.')), 5000)
           );
           const activeResult = await Promise.race([
             this.api.getActiveFile(),

@@ -10,11 +10,10 @@ export interface DebugLogger {
     info(message: string, ...args: unknown[]): void;
 }
 
-// Indirect console reference — this is a debug utility that legitimately needs
-// console access. Picking the host at runtime keeps this safe in both the
-// Obsidian renderer (window) and the Jest/Node test environment (globalThis).
-// eslint-disable-next-line obsidianmd/no-global-this
-const _console: Console = (typeof window !== 'undefined' ? window : globalThis).console;
+// Indirect console reference — this debug utility legitimately needs console
+// access. Obsidian's renderer provides window; the Jest node env aliases
+// window to globalThis in tests/setup.ts, so window.console resolves in both.
+const _console: Console = window.console;
 
 export class Debug {
     private static debugEnabled = false;
