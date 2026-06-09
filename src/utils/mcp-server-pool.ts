@@ -1,4 +1,4 @@
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
@@ -35,7 +35,7 @@ interface PluginWithSettings {
 }
 
 interface PooledServer {
-  server: Server;
+  server: McpServer;
   sessionId: string;
   createdAt: number;
   lastActivityAt: number;
@@ -80,7 +80,7 @@ export class MCPServerPool extends EventEmitter {
   /**
    * Get or create an MCP server for a session
    */
-  getOrCreateServer(sessionId: string): Server {
+  getOrCreateServer(sessionId: string): McpServer {
     // Check if server exists
     let pooledServer = this.servers.get(sessionId);
     
@@ -118,8 +118,12 @@ export class MCPServerPool extends EventEmitter {
   /**
    * Create a new MCP server instance with handlers
    */
-  private createNewServer(sessionId: string): Server {
-      const server = new Server(
+  private createNewServer(sessionId: string): McpServer {
+      // Construct via McpServer (the non-deprecated class) and register our
+      // raw JSON-Schema handlers on its underlying .server — the advanced
+      // low-level handle it deliberately exposes — so the deprecated Server
+      // symbol never appears in our source. We don't use registerTool/Zod.
+      const mcpServer = new McpServer(
       {
         name: 'Semantic Notes Vault MCP',
         version: getVersion()
@@ -133,6 +137,7 @@ export class MCPServerPool extends EventEmitter {
         ...(this.initializeInstructions ? { instructions: this.initializeInstructions } : {})
       }
     );
+    const server = mcpServer.server;
 
     // Create session-specific API instance
     // Always create SecureObsidianAPI if the main API has security settings
@@ -372,7 +377,7 @@ export class MCPServerPool extends EventEmitter {
       throw new Error(`Unknown resource: ${uri}`);
     });
 
-    return server;
+    return mcpServer;
   }
 
   /**
