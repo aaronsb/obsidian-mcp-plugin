@@ -1030,12 +1030,11 @@ class MCPSettingTab extends PluginSettingTab {
 			.addButton(button => button
 				.setButtonText('Regenerate')
 				.setTooltip('Generate a new API key')
-				// setDestructive() (the non-deprecated replacement) requires Obsidian
-				// 1.13.0, but our manifest minAppVersion is 1.6.6, so it's not available
-				// to all supported users. Keep setWarning() until minAppVersion is raised
-				// (tracked with the 1.13.0 API adoption in #224).
-				// eslint-disable-next-line @typescript-eslint/no-deprecated
-				.setWarning()
+				// Apply the destructive-button style directly. setWarning() is
+				// deprecated (1.13.0) and setDestructive() requires 1.13.0 > our
+				// minAppVersion 1.6.6; 'mod-warning' is the class both apply and is
+				// available on all supported versions. Full 1.13.0 adoption: #224.
+				.setClass('mod-warning')
 				.onClick(() => {
 					new ConfirmationModal(
 						this.app,
