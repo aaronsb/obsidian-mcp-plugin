@@ -3,7 +3,7 @@ import cors from 'cors';
 import { App, Notice } from 'obsidian';
 import { createServer as createHttpServer, Server } from 'http';
 import { Server as HttpsServer } from 'https';
-import { Server as MCPServer } from '@modelcontextprotocol/sdk/server/index.js';
+import { McpServer as MCPServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   isInitializeRequest
