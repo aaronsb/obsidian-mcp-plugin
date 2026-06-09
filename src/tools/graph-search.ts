@@ -189,7 +189,7 @@ export class GraphSearchTool {
       edges: result.edges,
       graphStats: result.stats,
       message: params.sourcePath === '/' || params.sourcePath === ''
-        ? `Traversed from ${Math.min(10, this.app.vault.getFiles().length)} most recent files: Found ${result.stats.totalNodes} connected nodes within ${params.maxDepth} degrees`
+        ? `Traversed from ${Math.min(10, this.app.vault.getFiles().filter(f => !this.graphTraversal.isExcluded(f.path)).length)} most recent files: Found ${result.stats.totalNodes} connected nodes within ${params.maxDepth} degrees`
         : `Found ${result.stats.totalNodes} connected nodes within ${params.maxDepth} degrees of separation`,
       workflow: {
         message: 'Graph traversal complete. You can explore individual nodes or find paths between them.',
