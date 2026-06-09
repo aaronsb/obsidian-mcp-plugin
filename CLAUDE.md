@@ -495,6 +495,46 @@ shipped), #171/#173 (build-dep + CSS, shipped), #174 (js-yaml, shipped),
 #180 (sandboxed Bases evaluator, PR #185/#186), #176 (this doc). Scorecard
 CI-gate idea: #165.
 
+### Passing the source-code review — fix, never suppress
+
+The portal's **Source code** check *forbids disabling* a specific set of lint
+rules. An inline `eslint-disable` for **`@typescript-eslint/no-deprecated`**,
+**`obsidianmd/prefer-window-timers`**, or **`obsidianmd/no-global-this`** is
+itself a **gating Error** ("Disabling 'X' is not allowed"). It also errors on
+any directive comment with no inline description ("Unexpected undescribed
+directive comment"). So the reflex "just `eslint-disable` it" *fails* the
+review — louder than the warning it was hiding. **Fix the code or use a
+non-deprecated path; never suppress these.**
+
+Nuance: our *local* eslint config disabling a rule for a whole file surfaces
+as a non-gating **Warning** in the review (tolerated). It's the inline
+**directive comment** that's banned. And the review is **fail-fast** — it halts
+at the first Error, so clearing one can reveal the next.
+
+Patterns that worked (the 0.11.32 → 0.11.33 cleanup):
+
+- **`PluginSettingTab.display()` deprecated (1.13.0)** → keep `display()` as the
+  supported cross-version fallback, move its body to a non-deprecated
+  `render()`, and call `render()` from internal re-renders (#227).
+- **`ButtonComponent.setWarning()` deprecated; `setDestructive()` needs 1.13.0 >
+  our `minAppVersion` 1.6.6** → apply the style class directly:
+  `setClass('mod-warning')` (#229).
+- **Global `setTimeout`/`setInterval` and `globalThis`** → `window.*` /
+  `window.console`, and alias `window` → `globalThis` in `tests/setup.ts` so the
+  node test env resolves them (#227).
+- **Low-level `Server` deprecated; `McpServer.registerTool` wants Zod** →
+  construct `McpServer` (non-deprecated) and register our raw JSON-Schema
+  handlers on its `.server` accessor (a non-deprecated property); the `Server`
+  symbol then never appears in source (#230). Verified `McpServer` registers its
+  own tool handlers *lazily* (only via `registerTool`, which we never call), so
+  it can't shadow ours — no empty-`tools/list` regression (cf. #221).
+
+Allowed: a *described* disable of a non-forbidden rule (e.g.
+`no-require-imports`, `no-control-regex` with `-- reason`) passes review — the
+ban is that specific rule set, not all directives. To raise `minAppVersion` and
+adopt the 1.13.0 APIs outright (`getSettingDefinitions`, `setDestructive`), see
+#224.
+
 ## Important Notes
 
 - **Critical Path**: The ObsidianAPI abstraction layer is the cornerstone of this architecture
