@@ -22,7 +22,7 @@ export class SessionManager extends EventEmitter {
   private sessions: Map<string, SessionInfo> = new Map();
   private sessionOrder: string[] = []; // Track session order for LRU eviction
   private options: SessionManagerOptions;
-  private cleanupInterval?: ReturnType<typeof setInterval>;
+  private cleanupInterval?: number;
 
   constructor(options: Partial<SessionManagerOptions> = {}) {
     super();
@@ -37,10 +37,9 @@ export class SessionManager extends EventEmitter {
    * Start the session manager
    */
   start(): void {
-    // Background cleanup; not tied to any popout window, and must also work
-    // in the Jest Node test env where `window` is undefined.
-    // eslint-disable-next-line obsidianmd/prefer-window-timers
-    this.cleanupInterval = setInterval(() => {
+    // Background cleanup; not tied to any popout window. The Jest node env
+    // aliases window to globalThis (tests/setup.ts) so window.setInterval works.
+    this.cleanupInterval = window.setInterval(() => {
       this.cleanupExpiredSessions();
     }, this.options.checkInterval);
 
@@ -52,8 +51,7 @@ export class SessionManager extends EventEmitter {
    */
   stop(): void {
     if (this.cleanupInterval) {
-      // eslint-disable-next-line obsidianmd/prefer-window-timers
-      clearInterval(this.cleanupInterval);
+      window.clearInterval(this.cleanupInterval);
       this.cleanupInterval = undefined;
     }
     this.sessions.clear();

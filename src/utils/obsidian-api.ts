@@ -960,9 +960,8 @@ export class ObsidianAPI {
           // Exponential backoff: allow time for sync processes to stabilize
           const delay = Math.pow(2, attempt) * baseDelayMs;
           Debug.log(`${operationType} failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delay}ms... Error: ${errorMessage}`);
-          // Backoff delay; must also work in the Jest Node test env.
-          // eslint-disable-next-line obsidianmd/prefer-window-timers
-          await new Promise(resolve => setTimeout(resolve, delay));
+          // Backoff delay; window is aliased to globalThis in the Jest node env.
+          await new Promise(resolve => window.setTimeout(resolve, delay));
           continue;
         }
 
