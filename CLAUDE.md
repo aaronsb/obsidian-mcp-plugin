@@ -209,17 +209,18 @@ npm run build && npm run lint && npm test && echo "✅ All checks passed!"
 
 Note: Even for "simple" changes like updating descriptions or documentation, running these checks ensures no accidental syntax errors or regressions are introduced.
 
-### Supply Chain — 7-Day Hold on Upgrades
+### Supply Chain — 7-Day Hold on Routine Upgrades (security fixes exempt)
 
 npm supply-chain attacks have been ticking up — malicious package versions get published, ingested by automation, then discovered/yanked days later. To buy time for community discovery:
 
-**Only land upgrades to versions published more than 7 days ago.**
+**Land routine upgrades only to versions published more than 7 days ago — but security fixes are exempt and land immediately.**
+
+The exemption exists because the hold otherwise fights our own freshness goal: it delays exactly the vuln patches that Obsidian's plugin review (and `npm audit`) flag, leaving us knowingly exposed to a *named, real* CVE to guard against a *hypothetical* malicious republish. For a security fix the known exposure wins.
 
 Practical application:
-- Before merging a dependabot PR, check its open date. If it's ≥7 days old, the target version has aged enough — proceed.
-- For PRs younger than 7 days, hold them (don't close — they'll age into eligibility on their own).
-- If a fresh PR fixes a high-severity vuln we're actively exposed to, the trade-off is real but the answer is usually still "wait." The hypothetical "malicious 3.1.2" risk is broader than the specific CVE in 3.1.1.
-- The same rule applies to manual `npm install` / `npm update` invocations — pin to versions older than 7 days, or wait.
+- **Security fix → land it now.** If a dependabot/manual upgrade resolves a flagged vulnerability (dependabot security PR, `npm audit` advisory, or an Obsidian-review dependency warning), merge as soon as it's green regardless of version age.
+- **Routine bump → 7-day hold.** For non-security version bumps, check the PR's open date. If it's ≥7 days old, proceed; if younger, hold (don't close — it ages into eligibility on its own).
+- The same split applies to manual `npm install` / `npm update`: security fixes immediately, routine pins to versions older than 7 days.
 
 Re-run `npm audit` after each merge batch to see what residual exposure remains.
 
