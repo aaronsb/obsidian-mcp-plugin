@@ -436,7 +436,8 @@ export class BasesAPI {
     if (value == null) return '';
     if (typeof value === 'object') return JSON.stringify(value);
     // At this point value is a primitive (string, number, boolean, bigint, symbol)
-    return String(value as string | number | boolean | bigint | symbol);
+    const primitive = value as string | number | boolean | bigint | symbol;
+    return String(primitive);
   }
 
   private escapeCSV(value: unknown): string {

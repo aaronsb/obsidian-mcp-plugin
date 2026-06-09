@@ -87,7 +87,7 @@ export class ConnectionPool extends EventEmitter {
           } else if (typeof response.error === 'string') {
             reject(new Error(response.error));
           } else if (response.error && typeof response.error === 'object' && 'message' in response.error) {
-            reject(new Error(String((response.error as { message: unknown }).message)));
+            reject(new Error(String((response.error).message)));
           } else {
             reject(new Error(JSON.stringify(response.error)));
           }

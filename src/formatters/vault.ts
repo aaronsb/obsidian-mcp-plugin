@@ -226,7 +226,8 @@ export function formatFileRead(response: FileReadResponse): string {
         displayValue = JSON.stringify(value).substring(0, 50);
       } else {
         // Primitives (string, number, boolean, bigint, symbol) are safe to stringify
-        displayValue = String(value as string | number | boolean | bigint | symbol).substring(0, 50);
+        const primitive = value as string | number | boolean | bigint | symbol;
+        displayValue = String(primitive).substring(0, 50);
       }
       lines.push(property(key, displayValue, 0));
     });

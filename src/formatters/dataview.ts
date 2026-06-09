@@ -87,9 +87,15 @@ function formatDataviewTable(headers: string[], rows: DataviewValue[]): string {
       } else if (row !== null && typeof row === 'object') {
         val = row[headers[i]];
       }
-      const display = val === null || val === undefined
-        ? ''
-        : typeof val === 'object' ? JSON.stringify(val) : String(val as string | number | boolean);
+      let display: string;
+      if (val === null || val === undefined) {
+        display = '';
+      } else if (typeof val === 'object') {
+        display = JSON.stringify(val);
+      } else {
+        const primitive = val as string | number | boolean | bigint | symbol;
+        display = String(primitive);
+      }
       return truncate(display, 30);
     });
     lines.push('| ' + cells.join(' | ') + (hasMore ? ' | ...' : '') + ' |');
@@ -327,7 +333,8 @@ export function formatBasesRead(response: BasesReadResponse): string {
       } else if (typeof value === 'object') {
         displayValue = JSON.stringify(value);
       } else {
-        displayValue = String(value as string | number | boolean);
+        const primitive = value as string | number | boolean | bigint | symbol;
+        displayValue = String(primitive);
       }
       lines.push(property(key, truncate(displayValue, 50), 0));
     });

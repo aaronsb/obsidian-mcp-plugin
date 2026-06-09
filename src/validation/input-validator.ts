@@ -187,7 +187,8 @@ export class FileSizeValidator implements Validator {
       contentStr = JSON.stringify(content);
     } else {
       // Primitives (number, boolean, bigint, symbol) are safe to stringify
-      contentStr = String(content as number | boolean | bigint | symbol);
+      const primitive = content as string | number | boolean | bigint | symbol;
+      contentStr = String(primitive);
     }
     const sizeInBytes = Buffer.byteLength(contentStr, 'utf8');
 

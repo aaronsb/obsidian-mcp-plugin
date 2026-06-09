@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { App, Notice } from 'obsidian';
-import { createServer as createHttpServer, Server, IncomingMessage, ServerResponse } from 'http';
+import { createServer as createHttpServer, Server } from 'http';
 import { Server as HttpsServer } from 'https';
 import { Server as MCPServer } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -571,9 +571,9 @@ export class MCPHttpServer {
 
       // Handle the request using the transport
       await transport.handleRequest(
-        req as unknown as IncomingMessage,
-        res as unknown as ServerResponse,
-        request as unknown
+        req,
+        res,
+        request
       );
       
       Debug.log('📤 MCP Response sent via transport');
