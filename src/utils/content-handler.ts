@@ -81,7 +81,8 @@ export function ensureStringContent(content: unknown, context?: string): string 
     }
 
     // Fallback: convert primitives (number, boolean, bigint, symbol) to string
-    return String(content as string | number | boolean | bigint | symbol);
+    const primitive = content as string | number | boolean | bigint | symbol;
+    return String(primitive);
     
   } catch (error) {
     Debug.warn(`Content conversion failed${context ? ` in ${context}` : ''}:`, {

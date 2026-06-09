@@ -115,7 +115,7 @@ export async function readFileWithFragments(
 
   // Image / binary: passthrough unchanged
   if (isImageFile(fileResponse)) {
-    return fileResponse as FileReadResult;
+    return fileResponse;
   }
 
   // Extract verbatim content + metadata (metadata WITHOUT a copy of the body)
@@ -129,7 +129,7 @@ export async function readFileWithFragments(
   } else if (fileResponse && typeof fileResponse === 'object' && 'content' in fileResponse) {
     const fc = (fileResponse as { content: unknown }).content;
     if (typeof fc !== 'string') {
-      return fileResponse as FileReadResult; // image/binary structured
+      return fileResponse; // image/binary structured
     }
     fileContent = fc;
     // Strip the body so it is not embedded twice in the envelope (ADR-203 §3)
@@ -140,7 +140,7 @@ export async function readFileWithFragments(
     frontmatter = fm;
     tags = tg;
   } else {
-    return fileResponse as FileReadResult;
+    return fileResponse;
   }
 
   const totalChars = fileContent.length;

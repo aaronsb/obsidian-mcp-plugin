@@ -112,7 +112,7 @@ async function resizeImageWithCanvas(
           // Check if resizing is needed
           if (originalWidth <= maxDimension && originalHeight <= maxDimension) {
             // No resizing needed, but convert to JPEG with quality
-            const canvas = document.createElement('canvas');
+            const canvas = activeDocument.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
             if (!ctx) {
@@ -165,7 +165,7 @@ async function resizeImageWithCanvas(
           }
           
           // Create canvas for resizing
-          const canvas = document.createElement('canvas');
+          const canvas = activeDocument.createElement('canvas');
           const ctx = canvas.getContext('2d');
           
           if (!ctx) {

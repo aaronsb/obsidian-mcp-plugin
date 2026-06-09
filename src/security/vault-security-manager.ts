@@ -143,10 +143,10 @@ export class VaultSecurityManager {
 				};
 
 				if (operation.path) {
-					result.path = operation.path as ValidatedPath;
+					result.path = operation.path;
 				}
 				if (operation.targetPath) {
-					result.targetPath = operation.targetPath as ValidatedPath;
+					result.targetPath = operation.targetPath;
 				}
 
 				return result as ValidatedOperation;

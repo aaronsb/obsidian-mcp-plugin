@@ -582,7 +582,17 @@ class MCPSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
+	// Obsidian's settings entry point. PluginSettingTab.display() is deprecated
+	// since 1.13.0 in favor of the declarative getSettingDefinitions() API, but
+	// display() remains the supported fallback for plugins that still target
+	// older Obsidian versions. Keep it as a thin wrapper; the imperative render
+	// lives in render(), which internal refreshes call directly so they don't
+	// reference the deprecated method. Declarative migration tracked in #224.
 	display(): void {
+		this.render();
+	}
+
+	private render(): void {
 		const {containerEl} = this;
 
 		containerEl.empty();
@@ -692,7 +702,7 @@ class MCPSettingTab extends PluginSettingTab {
 					}
 					
 					// Update the status display
-					this.display();
+					this.render();
 				}));
 
 		const portSetting = new Setting(containerEl)
@@ -805,7 +815,7 @@ class MCPSettingTab extends PluginSettingTab {
 						this.plugin.settings.customBindHost = '';
 					}
 					await this.plugin.saveSettings();
-					this.display();
+					this.render();
 					await this.restartIfRunning('bind address');
 				}));
 
@@ -839,7 +849,7 @@ class MCPSettingTab extends PluginSettingTab {
 							this.plugin.settings.bindMode = normalized.mode;
 							this.plugin.settings.customBindHost = normalized.customHost;
 							await this.plugin.saveSettings();
-							this.display();
+							this.render();
 							await this.restartIfRunning('bind address');
 						})();
 					}));
@@ -876,7 +886,7 @@ class MCPSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 					
 					// Show/hide HTTPS settings and update HTTP toggle state
-					this.display();
+					this.render();
 					
 					// Restart server if running
 					if (this.plugin.mcpServer?.isServerRunning()) {
@@ -919,7 +929,7 @@ class MCPSettingTab extends PluginSettingTab {
 						this.plugin.settings.certificateConfig.autoGenerate = value;
 						await this.plugin.saveSettings();
 						// Refresh the display to update the description
-						this.display();
+						this.render();
 					}));
 			
 			new Setting(containerEl)
@@ -932,7 +942,7 @@ class MCPSettingTab extends PluginSettingTab {
 						this.plugin.settings.certificateConfig.certPath = value || undefined;
 						await this.plugin.saveSettings();
 						// Refresh display to update configuration examples
-						this.display();
+						this.render();
 					}));
 			
 			new Setting(containerEl)
@@ -1020,6 +1030,11 @@ class MCPSettingTab extends PluginSettingTab {
 			.addButton(button => button
 				.setButtonText('Regenerate')
 				.setTooltip('Generate a new API key')
+				// setDestructive() (the non-deprecated replacement) requires Obsidian
+				// 1.13.0, but our manifest minAppVersion is 1.6.6, so it's not available
+				// to all supported users. Keep setWarning() until minAppVersion is raised
+				// (tracked with the 1.13.0 API adoption in #224).
+				// eslint-disable-next-line @typescript-eslint/no-deprecated
 				.setWarning()
 				.onClick(() => {
 					new ConfirmationModal(
@@ -1029,7 +1044,7 @@ class MCPSettingTab extends PluginSettingTab {
 							this.plugin.settings.apiKey = this.plugin.generateApiKey();
 							await this.plugin.saveSettings();
 							new Notice('API key regenerated. Update your mcp clients with the new key.');
-							this.display();
+							this.render();
 						}
 					).open();
 				}));
@@ -1064,7 +1079,7 @@ class MCPSettingTab extends PluginSettingTab {
 					}
 					
 					// Refresh display to update examples
-					this.display();
+					this.render();
 				}));
 	}
 
@@ -1090,7 +1105,7 @@ class MCPSettingTab extends PluginSettingTab {
 					}
 					
 					// Refresh display to update examples
-					this.display();
+					this.render();
 				}));
 
 		// Path Exclusions Setting
@@ -1116,7 +1131,7 @@ class MCPSettingTab extends PluginSettingTab {
 					}
 					
 					// Refresh display to show/hide file management options
-					this.display();
+					this.render();
 				}));
 
 		// Show context menu toggle if path exclusions are enabled
@@ -1290,7 +1305,7 @@ class MCPSettingTab extends PluginSettingTab {
 						// Force reload to ensure fresh state
 						await this.plugin.ignoreManager!.forceReload();
 						new Notice('📄 Default .mcpignore template created');
-						this.display(); // Refresh to update status
+						this.render(); // Refresh to update status
 					} catch (error) {
 						Debug.log('Failed to create .mcpignore template:', error);
 						new Notice('❌ Failed to create template');
@@ -1307,7 +1322,7 @@ class MCPSettingTab extends PluginSettingTab {
 					try {
 						await this.plugin.ignoreManager!.forceReload();
 						new Notice('🔄 Exclusion patterns reloaded');
-						this.display(); // Refresh to update status
+						this.render(); // Refresh to update status
 					} catch (error) {
 						Debug.log('Failed to reload patterns:', error);
 						new Notice('❌ Failed to reload patterns');
@@ -1412,7 +1427,7 @@ class MCPSettingTab extends PluginSettingTab {
 							visibility[`${operation}.${action}`] = value;
 						}
 						await this.plugin.saveSettings();
-						this.display(); // Re-render for updated states
+						this.render(); // Re-render for updated states
 					});
 				});
 
@@ -1448,7 +1463,7 @@ class MCPSettingTab extends PluginSettingTab {
 							}
 
 							await this.plugin.saveSettings();
-							this.display(); // Re-render for parent state update
+							this.render(); // Re-render for parent state update
 						}));
 			}
 		}
@@ -1763,7 +1778,7 @@ class MCPSettingTab extends PluginSettingTab {
 	refreshConnectionStatus(): void {
 		// Simply refresh the entire settings display to ensure accurate data
 		// This is more reliable than trying to manually update DOM elements
-		this.display();
+		this.render();
 	}
 
 	private updatePortApplyButton(setting: Setting, hasChanges: boolean, pendingPort: number): void {
@@ -1784,7 +1799,7 @@ class MCPSettingTab extends PluginSettingTab {
 		const info = this.plugin.getMCPServerInfo();
 		
 		// Update connection status grid
-		const connectionEl = document.querySelector('.mcp-status-grid');
+		const connectionEl = activeDocument.querySelector('.mcp-status-grid');
 		if (connectionEl) {
 			const connectionItems = connectionEl.querySelectorAll('div');
 			for (let i = 0; i < connectionItems.length; i++) {
@@ -1807,7 +1822,7 @@ class MCPSettingTab extends PluginSettingTab {
 		// Update Claude Code connection section with proper auth handling.
 		// Rebuild via the shared renderer so the live view matches the initial
 		// render exactly (including the JSON-config + warning auth path).
-		const protocolSection = document.querySelector('.protocol-command-example');
+		const protocolSection = activeDocument.querySelector('.protocol-command-example');
 		if (protocolSection instanceof HTMLElement && info) {
 			// Get correct protocol and port based on HTTPS setting
 			const protocol = this.plugin.settings.httpsEnabled ? 'https' : 'http';
@@ -1818,7 +1833,7 @@ class MCPSettingTab extends PluginSettingTab {
 		}
 		
 		// Update any other dynamic content areas that need live updates
-		const statusElements = document.querySelectorAll('[data-live-update]');
+		const statusElements = activeDocument.querySelectorAll('[data-live-update]');
 		for (let i = 0; i < statusElements.length; i++) {
 			const el = statusElements[i];
 			const updateType = el.getAttribute('data-live-update');
