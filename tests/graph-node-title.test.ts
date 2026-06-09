@@ -47,7 +47,7 @@ describe('graph node titles', () => {
     app.vault.getAbstractFileByPath = jest.fn((path: string) => filesByPath.get(path) ?? null);
 
     traversal = new GraphTraversal(app);
-    search = new GraphSearchTool({} as ObsidianAPI, app);
+    search = new GraphSearchTool({ getIgnoreManager: () => undefined } as unknown as ObsidianAPI, app);
   });
 
   it('uses the parent folder as the graph title for index files', () => {

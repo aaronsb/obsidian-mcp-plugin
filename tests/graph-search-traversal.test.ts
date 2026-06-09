@@ -17,7 +17,7 @@ const mockApp = {
     }
 } as unknown as App;
 
-const mockAPI = {} as ObsidianAPI;
+const mockAPI = { getIgnoreManager: () => undefined } as unknown as ObsidianAPI;
 const mockSearchCore = new SearchCore(mockApp);
 
 describe('GraphSearchTraversal', () => {

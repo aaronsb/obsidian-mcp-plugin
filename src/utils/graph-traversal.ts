@@ -1,4 +1,5 @@
 import { App, TFile, CachedMetadata, getAllTags } from 'obsidian';
+import { MCPIgnoreManager } from '../security/mcp-ignore-manager';
 
 /**
  * Represents a node in the Obsidian vault graph
@@ -53,7 +54,23 @@ export interface GraphTraversalResult {
  * Utility class for traversing the Obsidian vault graph
  */
 export class GraphTraversal {
-  constructor(private app: App) {}
+  constructor(private app: App, private ignoreManager?: MCPIgnoreManager) {}
+
+  /**
+   * Whether a path is excluded by the MCP ignore configuration.
+   *
+   * Graph traversal reads directly from metadataCache.resolvedLinks and
+   * vault.getFiles(), both unaware of .mcpignore. Excluded paths must be kept
+   * out of results on two fronts: the link primitives filter the far endpoint
+   * (so an ignored note never appears as a neighbor/edge of a visible query),
+   * and the file enumerations (getAllNodes, tag connections, root traversal,
+   * vault statistics) skip ignored files. The query root itself is rejected at
+   * the GraphSearchTool boundary, so directly querying an ignored note does not
+   * disclose its relationships. Public so that boundary can reuse this check.
+   */
+  isExcluded(path: string): boolean {
+    return !!this.ignoreManager && this.ignoreManager.isExcluded(path);
+  }
 
   /**
    * Get a human-friendly graph node title for a file.
@@ -84,7 +101,7 @@ export class GraphTraversal {
    * Get all nodes (files) in the vault
    */
   getAllNodes(): GraphNode[] {
-    const files = this.app.vault.getFiles();
+    const files = this.app.vault.getFiles().filter(f => !this.isExcluded(f.path));
     return files.map(file => ({
       file,
       path: file.path,
@@ -102,6 +119,7 @@ export class GraphTraversal {
 
     // Search through all files for links to this file
     for (const sourcePath in resolvedLinks) {
+      if (this.isExcluded(sourcePath)) continue;
       const links = resolvedLinks[sourcePath];
       if (links[filePath]) {
         edges.push({
@@ -125,6 +143,7 @@ export class GraphTraversal {
 
     if (links) {
       for (const targetPath in links) {
+        if (this.isExcluded(targetPath)) continue;
         edges.push({
           source: filePath,
           target: targetPath,
@@ -167,7 +186,7 @@ export class GraphTraversal {
     const edges: GraphEdge[] = [];
     const file = this.app.vault.getAbstractFileByPath(filePath);
 
-    if (!(file instanceof TFile)) return edges;
+    if (!(file instanceof TFile) || this.isExcluded(filePath)) return edges;
 
     const cache = this.app.metadataCache.getFileCache(file);
     const fileTags = new Set(cache ? getAllTags(cache) || [] : []);
@@ -177,6 +196,7 @@ export class GraphTraversal {
     const files = this.app.vault.getFiles();
     for (const otherFile of files) {
       if (otherFile.path === filePath) continue;
+      if (this.isExcluded(otherFile.path)) continue;
 
       const otherCache = this.app.metadataCache.getFileCache(otherFile);
       const otherTags = otherCache ? getAllTags(otherCache) || [] : [];
@@ -224,7 +244,9 @@ export class GraphTraversal {
       const allFiles = this.app.vault.getFiles();
 
       // Sort by modification time to get most relevant files first
-      const sortedFiles = allFiles.sort((a, b) => b.stat.mtime - a.stat.mtime);
+      const sortedFiles = allFiles
+        .filter(file => !this.isExcluded(file.path))
+        .sort((a, b) => b.stat.mtime - a.stat.mtime);
 
       // Take up to 10 most recently modified files as starting points
       const startingFiles = sortedFiles.slice(0, Math.min(10, sortedFiles.length));
@@ -256,7 +278,8 @@ export class GraphTraversal {
       const { path, depth } = queue.shift()!;
       
       if (visited.has(path) || depth > maxDepth) continue;
-      
+      if (this.isExcluded(path)) continue;
+
       const file = this.app.vault.getAbstractFileByPath(path);
       if (!(file instanceof TFile)) continue;
 
@@ -411,7 +434,7 @@ export class GraphTraversal {
     // Handle root path "/" specially
     if (filePath === '/' || filePath === '') {
       // For root, return a virtual node representing the vault with recent files as neighbors
-      const allFiles = this.app.vault.getFiles();
+      const allFiles = this.app.vault.getFiles().filter(f => !this.isExcluded(f.path));
       const sortedFiles = allFiles.sort((a, b) => b.stat.mtime - a.stat.mtime);
       const recentFiles = sortedFiles.slice(0, Math.min(20, sortedFiles.length));
 
@@ -502,7 +525,7 @@ export class GraphTraversal {
     largestComponentSize: number;
     isolatedClusters: number;
   } {
-    const mdFiles = this.app.vault.getFiles().filter(f => f.extension === 'md');
+    const mdFiles = this.app.vault.getFiles().filter(f => f.extension === 'md' && !this.isExcluded(f.path));
     const totalNotes = mdFiles.length;
 
     const resolved = this.app.metadataCache.resolvedLinks ?? {};

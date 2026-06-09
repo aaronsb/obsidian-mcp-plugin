@@ -100,6 +100,11 @@ export class ObsidianAPI {
     return this.app;
   }
 
+  // Getter to access the ignore manager so graph traversal can honor exclusions
+  getIgnoreManager(): MCPIgnoreManager | undefined {
+    return this.ignoreManager;
+  }
+
   // Server info
   getServerInfo() {
     const baseInfo = {
