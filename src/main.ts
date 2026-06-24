@@ -597,11 +597,14 @@ class MCPSettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		;
+		// Connect / Getting Started Section — the first thing a user needs:
+		// what this does plus the one-click bundle and client config. Kept at the
+		// top so connection details aren't buried beneath the config sections.
+		this.createProtocolInfoSection(containerEl);
 
 		// Connection Status Section
 		this.createConnectionStatusSection(containerEl);
-		
+
 		// Server Configuration Section
 		this.createServerConfigSection(containerEl);
 
@@ -610,21 +613,18 @@ class MCPSettingTab extends PluginSettingTab {
 
 		// HTTPS Configuration Section
 		this.createHTTPSConfigSection(containerEl);
-		
+
 		// Authentication Section
 		this.createAuthenticationSection(containerEl);
-		
+
 		// Security Section
 		this.createSecuritySection(containerEl);
-		
+
 		// Tool Visibility Section
 		this.createToolVisibilitySection(containerEl);
 
 		// UI Options Section
 		this.createUIOptionsSection(containerEl);
-
-		// Protocol Information Section (always show)
-		this.createProtocolInfoSection(containerEl);
 	}
 
 	private createConnectionStatusSection(containerEl: HTMLElement): void {
@@ -1496,7 +1496,7 @@ class MCPSettingTab extends PluginSettingTab {
 	}
 
 	private createProtocolInfoSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName("Mcp protocol information").setHeading();
+		new Setting(containerEl).setName("Getting started — connect a client").setHeading();
 		
 		const info = containerEl.createDiv('mcp-protocol-info');
 		
