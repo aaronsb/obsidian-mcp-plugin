@@ -21,7 +21,7 @@ process.env.MCP_API_KEY = 'test-key';
 const bridge = require('../mcpb/server.js') as {
   dispatch: (msg: unknown, isReplay?: boolean) => Promise<void>;
   __reset: () => void;
-  __state: () => { sessionId: string | null; cachedInitialize: unknown };
+  __state: () => { sessionId: string | null; cachedInitialize: unknown; initializing: unknown };
 };
 
 interface FakeResponse {
@@ -144,6 +144,36 @@ describe('mcpb bridge self-heal on session expiry (#238)', () => {
     // The original tool call was attempted once; the failed heal means no
     // successful replay, and the cap prevents a reinit loop.
     expect(calls.filter(c => c.rpc === 'tools/call')).toHaveLength(1);
+  });
+
+  test('concurrent 404s coalesce onto a single reinit; each call replays under the fresh session', async () => {
+    let sidSeq = 0;
+    installFetch((rec) => {
+      if (rec.rpc === 'initialize') {
+        sidSeq += 1;
+        return res(200, { sid: `sess-${sidSeq}`, json: { jsonrpc: '2.0', id: rec.id, result: {} } });
+      }
+      if (rec.rpc === 'notifications/initialized') return res(202);
+      if (rec.session === 'sess-1') return res(404, { sid: 'sess-1', json: { jsonrpc: '2.0', id: rec.id, error: { code: -32001, message: 'expired' } } });
+      return res(200, { json: { jsonrpc: '2.0', id: rec.id, result: { ok: true } } });
+    });
+
+    await bridge.dispatch(INIT);
+    // Two tool calls in flight together: both 404 on sess-1 and must coalesce
+    // onto one re-init rather than each kicking off its own handshake.
+    const A = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'vault', arguments: { action: 'list' } } };
+    const B = { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'vault', arguments: { action: 'read' } } };
+    await Promise.all([bridge.dispatch(A), bridge.dispatch(B)]);
+
+    // Both clients get genuine results, neither sees the expiry error.
+    expect((emitted.find(m => m.id === 1) as { result?: { ok?: boolean } } | undefined)?.result?.ok).toBe(true);
+    expect((emitted.find(m => m.id === 2) as { result?: { ok?: boolean } } | undefined)?.result?.ok).toBe(true);
+    expect(emitted.some(m => (m as { error?: { code?: number } }).error?.code === -32000)).toBe(false);
+    // Exactly one self-heal despite two concurrent 404s: 1 initial + 1 reinit.
+    expect(calls.filter(c => c.rpc === 'initialize')).toHaveLength(2);
+    // Each tool call was attempted on the dead session and replayed on the new.
+    expect(calls.filter(c => c.rpc === 'tools/call' && c.session === 'sess-1')).toHaveLength(2);
+    expect(calls.filter(c => c.rpc === 'tools/call' && c.session === 'sess-2')).toHaveLength(2);
   });
 
   test('initialize handshake is cached so a later session loss can be replayed', async () => {

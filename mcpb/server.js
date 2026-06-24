@@ -122,13 +122,23 @@ async function reinitialize() {
   }
   sessionId = sid;
 
-  // Best-effort: a stateful server expects `notifications/initialized` before
-  // it will service tool calls. It's a notification (202, no body to emit).
+  // Complete the handshake. If the server gates tool calls on
+  // `notifications/initialized` this is load-bearing; if not, it's harmless.
+  // Either way it's best-effort — a lost notification just means the replay
+  // 404s again and recovery terminates cleanly via the single-attempt cap in
+  // dispatch. Log a non-2xx (or a throw) so a required-but-failing
+  // notification is diagnosable from stderr instead of silently swallowed.
   try {
     const note = await postOnce({ jsonrpc: '2.0', method: 'notifications/initialized' });
+    if (note.status !== 200 && note.status !== 202) {
+      process.stderr.write(`[obsidian-mcp-bridge] reinit: notifications/initialized → HTTP ${note.status}\n`);
+    }
     await note.body?.cancel().catch(() => {});
-  } catch { /* server may not require it; the replay will reveal the truth */ }
+  } catch (e) {
+    process.stderr.write(`[obsidian-mcp-bridge] reinit: notifications/initialized failed: ${e.message}\n`);
+  }
 
+  // Fire-and-forget; startNotifyStream self-handles its own errors internally.
   startNotifyStream();
   return true;
 }
@@ -161,13 +171,21 @@ async function dispatch(message, isReplay = false) {
     }
   }
 
-  if (response.status === 404 && sessionId) {
-    // The server evicted/lost our session (idle GC, or a server restart). Per
-    // MCP spec the 404 means "re-initialize," but some clients (e.g. Claude
-    // Desktop) don't act on it and the connection dead-ends. Self-heal once:
-    // re-establish a session and replay this exact message so recovery is
-    // invisible to the client (#238). `isReplay` caps it at a single attempt
-    // so a session that dies again instantly can't spin a reinit loop.
+  if (response.status === 404) {
+    // A 404 on /mcp means the server terminated/lost our session (idle GC or a
+    // server restart); per MCP spec the bridge should re-initialize, but some
+    // clients (e.g. Claude Desktop) don't act on the signal and the connection
+    // dead-ends. We deliberately do NOT gate on the bridge's current
+    // `sessionId`: a concurrent sibling's reinit may have already nulled it,
+    // and the 404 itself proves a session id was presented on this request
+    // (the server answers 400, handled below, when none is). So any 404 on a
+    // non-initialize call is a self-heal trigger.
+    //
+    // Self-heal once: re-establish a session and replay this exact message so
+    // recovery is invisible to the client (#238). Concurrent 404s coalesce
+    // onto a single reinit via the `initializing` gate and each replays under
+    // the fresh session. `isReplay` caps it at one attempt, so a session that
+    // dies again instantly terminates with -32000 rather than looping.
     if (!isReplay && message.method !== 'initialize' && cachedInitialize) {
       if (!initializing) {
         initializing = reinitialize().finally(() => { initializing = null; });
