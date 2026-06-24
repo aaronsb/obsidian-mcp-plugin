@@ -229,9 +229,9 @@ async function dispatch(message, isReplay = false) {
   }
 }
 
-// Stdio bootstrap. Guarded so the module can be `require`d in tests (which
-// drive `dispatch` directly) without validating env, claiming stdin, or
-// exiting the process. When launched as the bridge, `require.main === module`.
+// Stdio bootstrap. Invoked unless the Jest test suite is importing this module
+// to drive `dispatch` directly (see the JEST_WORKER_ID guard at the bottom), so
+// tests don't validate env, claim stdin, or exit the process.
 function main() {
   if (!MCP_URL) {
     process.stderr.write('[obsidian-mcp-bridge] MCP_URL not set\n');
@@ -283,7 +283,24 @@ function main() {
   });
 }
 
-if (require.main === module) {
+// Autostart contract: the bridge starts in every real launch unless a caller
+// explicitly opts out by setting MCP_BRIDGE_NO_AUTOSTART (the in-process tests
+// that `require()` this module do). Default-on is the whole point.
+//
+// We intentionally do NOT gate on `require.main === module`. Although the .mcpb
+// manifest launches `node ${__dirname}/server.js` (where that check would be
+// true), Claude Desktop actually runs the bundle through its built-in Node
+// ("Using built-in Node.js for MCP server" in its logs) via a loader that does
+// NOT make server.js the main module — so the check is false in production:
+// main() never runs, stdin is never read, the client's `initialize` goes
+// unanswered, and Desktop times out after 60s ("Request timed out", -32001).
+// That regression shipped in 0.11.34.
+//
+// We also avoid gating on Jest's own env (JEST_WORKER_ID): it isn't reliably
+// set under `--runInBand`, so a future in-band run would let the test's
+// require() fire main() and process.exit(1) — the same boot-trap class. A
+// bridge-owned opt-out keeps the boot contract declared here, not inferred.
+if (!process.env.MCP_BRIDGE_NO_AUTOSTART) {
   main();
 }
 

@@ -14,6 +14,9 @@
  */
 
 // Must be set before the bridge module is required (it reads env at load).
+// MCP_BRIDGE_NO_AUTOSTART keeps the bootstrap inert so requiring the module
+// only exposes dispatch/state — it does not claim stdin or exit the process.
+process.env.MCP_BRIDGE_NO_AUTOSTART = '1';
 process.env.MCP_URL = 'http://localhost:3001/mcp';
 process.env.MCP_API_KEY = 'test-key';
 
