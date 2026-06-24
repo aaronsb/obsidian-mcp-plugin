@@ -283,18 +283,24 @@ function main() {
   });
 }
 
-// Start the bridge unless we're being imported by the Jest test suite.
+// Autostart contract: the bridge starts in every real launch unless a caller
+// explicitly opts out by setting MCP_BRIDGE_NO_AUTOSTART (the in-process tests
+// that `require()` this module do). Default-on is the whole point.
 //
-// We intentionally do NOT gate on `require.main === module`. Claude Desktop
-// runs the bundle with its built-in Node ("Using built-in Node.js for MCP
-// server" in its logs) via a loader that does NOT make server.js the main
-// module, so that check is false in production: main() never runs, stdin is
-// never read, the client's `initialize` goes unanswered, and Desktop times out
-// after 60s ("Request timed out", -32001). That regression shipped in 0.11.34.
-// Gating on the absence of Jest's worker env runs main() in every real launch
-// — system `node server.js` and Desktop's built-in Node alike — while keeping
-// the require()-based test seam below inert.
-if (!process.env.JEST_WORKER_ID) {
+// We intentionally do NOT gate on `require.main === module`. Although the .mcpb
+// manifest launches `node ${__dirname}/server.js` (where that check would be
+// true), Claude Desktop actually runs the bundle through its built-in Node
+// ("Using built-in Node.js for MCP server" in its logs) via a loader that does
+// NOT make server.js the main module — so the check is false in production:
+// main() never runs, stdin is never read, the client's `initialize` goes
+// unanswered, and Desktop times out after 60s ("Request timed out", -32001).
+// That regression shipped in 0.11.34.
+//
+// We also avoid gating on Jest's own env (JEST_WORKER_ID): it isn't reliably
+// set under `--runInBand`, so a future in-band run would let the test's
+// require() fire main() and process.exit(1) — the same boot-trap class. A
+// bridge-owned opt-out keeps the boot contract declared here, not inferred.
+if (!process.env.MCP_BRIDGE_NO_AUTOSTART) {
   main();
 }
 

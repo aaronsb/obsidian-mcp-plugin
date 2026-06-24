@@ -60,26 +60,29 @@ function startStub(): Promise<{ url: string; close: () => Promise<void> }> {
 // with the first JSON object it writes to stdout (the initialize result).
 function bootAndInitialize(nodeArgs: string[], mcpUrl: string): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
-    // Strip JEST_WORKER_ID: the child IS a real bridge launch, and the bootstrap
-    // guard deliberately skips main() when that var is present (test seam).
+    // The child IS a real bridge launch, so it must autostart. Strip the
+    // opt-out in case a sibling test set it in this worker's process.env.
     const env: NodeJS.ProcessEnv = { ...process.env, MCP_URL: mcpUrl, MCP_API_KEY: 'k' };
-    delete env.JEST_WORKER_ID;
+    delete env.MCP_BRIDGE_NO_AUTOSTART;
 
     const child = spawn(process.execPath, nodeArgs, { env, stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '';
-    const timer = setTimeout(() => { child.kill(); reject(new Error(`no initialize response (bridge hung). stderr: ${err}`)); }, 8000);
     let err = '';
+    const finish = (fn: () => void) => { clearTimeout(timer); child.kill(); fn(); };
+    const timer = setTimeout(() => finish(() => reject(new Error(`no initialize response (bridge hung). stderr: ${err}`))), 8000);
     child.stderr.on('data', (c) => { err += c; });
     child.stdout.on('data', (c) => {
       out += c;
-      const line = out.split('\n').find((l) => l.trim());
-      if (line) {
-        clearTimeout(timer);
-        child.kill();
+      // Only parse a complete, newline-terminated line — a chunk split mid-line
+      // would otherwise throw on partial JSON and flake the test.
+      const nl = out.indexOf('\n');
+      if (nl === -1) return;
+      const line = out.slice(0, nl);
+      finish(() => {
         try { resolve(JSON.parse(line)); } catch (e) { reject(e as Error); }
-      }
+      });
     });
-    child.on('error', (e) => { clearTimeout(timer); reject(e); });
+    child.on('error', (e) => finish(() => reject(e)));
     child.stdin.write(INIT + '\n');
   });
 }
