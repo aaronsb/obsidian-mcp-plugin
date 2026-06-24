@@ -68,6 +68,14 @@ describe('SSE notification-stream socket timeout exemption (#221)', () => {
     server = new MCPHttpServer(mockApp, 3001);
   });
 
+  afterEach(async () => {
+    // The constructor arms the SessionManager + connection-pool intervals;
+    // server.stop() short-circuits when never started, so dispose them directly
+    // to avoid leaking timers across tests.
+    (server as any).sessionManager?.stop?.();
+    await (server as any).connectionPool?.shutdown?.();
+  });
+
   test('GET /mcp (SSE stream) disables its socket idle timeout', async () => {
     const { req, socket } = makeReq('GET', undefined, 'some-session');
     await (server as any).handleMCPRequest(req, makeRes());
@@ -80,9 +88,12 @@ describe('SSE notification-stream socket timeout exemption (#221)', () => {
     expect(socket.setTimeout).not.toHaveBeenCalled();
   });
 
-  test('exemption tolerates a missing socket (no throw)', async () => {
+  test('exemption tolerates a missing socket and still routes the request', async () => {
     const req = { method: 'GET', body: undefined, headers: {} as Record<string, string> };
     const res = makeRes();
-    await expect((server as any).handleMCPRequest(req, res)).resolves.toBeUndefined();
+    await (server as any).handleMCPRequest(req, res);
+    // No socket to exempt → optional chaining no-ops; the GET (no session, not
+    // an initialize) still routes to the spec §2 "session required" 400.
+    expect(res.statusCode).toBe(400);
   });
 });

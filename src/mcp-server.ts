@@ -443,8 +443,19 @@ export class MCPHttpServer {
       // idle by design (this server pushes no server-initiated notifications).
       // The global 120s socket timeout set in start() would otherwise reap it
       // every ~2 min, surfacing as a "stream terminated" reconnect churn in
-      // bridges and noisy logs (#221). Exempt only this socket from the idle
-      // timeout; POST request sockets keep the server-wide default.
+      // bridges and noisy logs (#221). Disable the idle timeout on this GET
+      // socket; POST request sockets keep the server-wide default. (A non-SSE
+      // GET is short-lived — its response is sent immediately — so the
+      // exemption is a harmless no-op for those.)
+      //
+      // Trade-off: with no socket-layer idle reap, a truly-dead SSE socket
+      // (client vanished without a FIN) is no longer dropped at ~2 min. The
+      // backstop is the SessionManager's 1h idle eviction, which calls
+      // transport.close() and thereby closes the socket — so abandoned streams
+      // are bounded by that timeout and the 32-session cap, not leaked
+      // unbounded. A long finite timeout was weighed against 0; the choice is
+      // deferred to the live-instance validation, since a finite value would
+      // reintroduce some (less frequent) reconnect churn.
       if (req.method === 'GET') {
         req.socket?.setTimeout(0);
       }
