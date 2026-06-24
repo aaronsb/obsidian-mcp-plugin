@@ -229,9 +229,9 @@ async function dispatch(message, isReplay = false) {
   }
 }
 
-// Stdio bootstrap. Guarded so the module can be `require`d in tests (which
-// drive `dispatch` directly) without validating env, claiming stdin, or
-// exiting the process. When launched as the bridge, `require.main === module`.
+// Stdio bootstrap. Invoked unless the Jest test suite is importing this module
+// to drive `dispatch` directly (see the JEST_WORKER_ID guard at the bottom), so
+// tests don't validate env, claim stdin, or exit the process.
 function main() {
   if (!MCP_URL) {
     process.stderr.write('[obsidian-mcp-bridge] MCP_URL not set\n');
@@ -283,7 +283,18 @@ function main() {
   });
 }
 
-if (require.main === module) {
+// Start the bridge unless we're being imported by the Jest test suite.
+//
+// We intentionally do NOT gate on `require.main === module`. Claude Desktop
+// runs the bundle with its built-in Node ("Using built-in Node.js for MCP
+// server" in its logs) via a loader that does NOT make server.js the main
+// module, so that check is false in production: main() never runs, stdin is
+// never read, the client's `initialize` goes unanswered, and Desktop times out
+// after 60s ("Request timed out", -32001). That regression shipped in 0.11.34.
+// Gating on the absence of Jest's worker env runs main() in every real launch
+// — system `node server.js` and Desktop's built-in Node alike — while keeping
+// the require()-based test seam below inert.
+if (!process.env.JEST_WORKER_ID) {
   main();
 }
 
