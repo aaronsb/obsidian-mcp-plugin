@@ -438,6 +438,16 @@ export class MCPHttpServer {
       // Get or create session ID
       const sessionId = req.headers['mcp-session-id'] as string | undefined;
       Debug.log(`📨 MCP Request: ${request?.method ?? 'unknown'}${sessionId ? ` [Session: ${sessionId}]` : ''}`, request?.params);
+
+      // `GET /mcp` opens the standalone SSE notification stream — long-lived and
+      // idle by design (this server pushes no server-initiated notifications).
+      // The global 120s socket timeout set in start() would otherwise reap it
+      // every ~2 min, surfacing as a "stream terminated" reconnect churn in
+      // bridges and noisy logs (#221). Exempt only this socket from the idle
+      // timeout; POST request sockets keep the server-wide default.
+      if (req.method === 'GET') {
+        req.socket?.setTimeout(0);
+      }
       // Quick path: lightweight ping to keep session alive
       if (request?.method === 'session/ping' || request?.method === 'status/ping') {
         if (sessionId && this.sessionManager) {
@@ -456,31 +466,17 @@ export class MCPHttpServer {
       }
           let mcpServer: MCPServer;
 
-      // Helper: register transport with lifecycle hooks
-      const attachTransportHandlers = (sessId: string, tr: StreamableHTTPServerTransport) => {
-        try {
-          // Transport may optionally support EventEmitter API
-          const emitter = tr as unknown as { on?: (event: string, handler: (...args: unknown[]) => void) => void };
-          if (typeof emitter.on === 'function') {
-            emitter.on('close', () => {
-              if (this.transports.has(sessId)) {
-                this.transports.delete(sessId);
-                this.connectionCount = Math.max(0, this.connectionCount - 1);
-                Debug.log(`🔌 Transport closed for session ${sessId}. Connections: ${this.connectionCount}`);
-              }
-            });
-            emitter.on('error', (e: unknown) => {
-              Debug.error(`Transport error for session ${sessId}:`, e);
-              if (this.transports.has(sessId)) {
-                this.transports.delete(sessId);
-                this.connectionCount = Math.max(0, this.connectionCount - 1);
-              }
-            });
-          }
-        } catch {
-          // Transport may not support event emitters, which is fine
-        }
-      };
+      // Transport cleanup is handled by two existing paths, so there is no
+      // per-transport close hook here:
+      //   • idle eviction — the SessionManager emits `session-evicted`, whose
+      //     handler (see constructor) calls `transport.close()` and drops the
+      //     map entry; every transport maps to a manager-tracked session that
+      //     is eventually idle-evicted, so none leaks permanently.
+      //   • explicit teardown — the DELETE /mcp handler closes + removes it.
+      // A prior `transport.on('close'|'error')` helper here was dead code:
+      // SDK 1.29's StreamableHTTPServerTransport is not an EventEmitter and has
+      // no `.on`, so it never fired. Its only correct hook would be the
+      // `onclose` callback, which would merely duplicate the two paths above.
 
       // Determine which server to use from the pool
       if (sessionId && this.transports.has(sessionId)) {
@@ -506,7 +502,6 @@ export class MCPHttpServer {
             });
             await mcpServer.connect(transport);
             this.transports.set(effectiveSessionId, transport);
-            attachTransportHandlers(effectiveSessionId, transport);
             this.connectionCount++;
             Debug.log(`♻️ Recreated transport for session ${sessionId} (requests: ${session.requestCount})`);
           } else {
@@ -539,7 +534,6 @@ export class MCPHttpServer {
           
           // Store the transport for future requests
           this.transports.set(effectiveSessionId, transport);
-          attachTransportHandlers(effectiveSessionId, transport);
           this.connectionCount++;
           
           // Register session with manager if enabled
