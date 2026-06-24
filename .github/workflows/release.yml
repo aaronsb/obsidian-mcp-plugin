@@ -85,7 +85,7 @@ jobs:
           # (backticks, $vars, etc. in the notes must NOT be evaluated).
           RELEASE_NOTES_INPUT: ${{ inputs.release_notes }}
         run: |
-          NOTES=$(printf '## %s %s\n\n%s\n\n### Installation via BRAT\n1. Install the BRAT plugin if you haven'\''t already\n2. Command palette → "BRAT: Add a beta plugin for testing"\n3. Enter: `aaronsb/obsidian-mcp-plugin`\n4. Enable the plugin in Community Plugins\n' "$RELEASE_NAME" "$RELEASE_VERSION" "$RELEASE_NOTES_INPUT")
+          NOTES=$(printf '## %s %s\n\n%s\n\n### Claude Desktop (.mcpb connector)\nIf you connect Claude Desktop via the `.mcpb` bundle, re-import `obsidian-mcp.mcpb` from this release to update the connector — BRAT updates only the Obsidian plugin, not the Desktop bridge.\n\n### Installation via BRAT (Obsidian plugin)\n1. Install the BRAT plugin if you haven'\''t already\n2. Command palette → "BRAT: Add a beta plugin for testing"\n3. Enter: `aaronsb/obsidian-mcp-plugin`\n4. Enable the plugin in Community Plugins\n' "$RELEASE_NAME" "$RELEASE_VERSION" "$RELEASE_NOTES_INPUT")
 
           gh release create "$RELEASE_VERSION" \
             --title "$RELEASE_NAME $RELEASE_VERSION" \
