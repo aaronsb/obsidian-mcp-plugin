@@ -7,20 +7,18 @@ const MCP_URL = process.env.MCP_URL;
 const API_KEY = process.env.MCP_API_KEY || '';
 const FETCH_TIMEOUT_MS = 30_000;
 
-if (!MCP_URL) {
-  process.stderr.write('[obsidian-mcp-bridge] MCP_URL not set\n');
-  process.exit(1);
-}
-try { new URL(MCP_URL); } catch {
-  process.stderr.write(`[obsidian-mcp-bridge] invalid MCP_URL: ${MCP_URL}\n`);
-  process.exit(1);
-}
-
 let sessionId = null;
 let notifyAbort = null;
 // Serializes dispatch until initialize lands a session id. Subsequent
 // messages chain off this promise so they don't race past the handshake.
+// Also gates an in-flight self-heal re-initialize so concurrent 404s don't
+// each kick off their own handshake.
 let initializing = null;
+// The last `initialize` we forwarded, kept so the bridge can transparently
+// re-establish a session if the server evicts/loses it (issue #238). Replayed
+// with a synthetic id and its result suppressed — the client never sees it.
+let cachedInitialize = null;
+let reinitCounter = 0;
 
 function headers(extra = {}) {
   const h = {
@@ -96,9 +94,58 @@ async function postOnce(message) {
   });
 }
 
-async function dispatch(message) {
+// Transparently re-establish a session the server has evicted (#238). Replays
+// the cached `initialize` (with a fresh synthetic id, result discarded), then
+// completes the handshake with `notifications/initialized` so the new session
+// is ready for tool calls. Returns true once a fresh session id is in hand.
+// Never emits to the client — the caller replays the original message and emits
+// that result, so recovery is invisible.
+async function reinitialize() {
+  if (!cachedInitialize) return false;
+  // Drop the dead session so postOnce sends the initialize with no session id.
+  sessionId = null;
+  if (notifyAbort) { notifyAbort.abort(); notifyAbort = null; }
+
+  let response;
+  try {
+    response = await postOnce({ ...cachedInitialize, id: `reinit-${reinitCounter++}` });
+  } catch (e) {
+    process.stderr.write(`[obsidian-mcp-bridge] reinit fetch failed: ${e.message}\n`);
+    return false;
+  }
+  const sid = response.headers.get('mcp-session-id');
+  // We only need the session id from the headers; discard the body unread.
+  await response.body?.cancel().catch(() => {});
+  if (!response.ok || !sid) {
+    process.stderr.write(`[obsidian-mcp-bridge] reinit failed: HTTP ${response.status}${sid ? '' : ', no session id'}\n`);
+    return false;
+  }
+  sessionId = sid;
+
+  // Complete the handshake. If the server gates tool calls on
+  // `notifications/initialized` this is load-bearing; if not, it's harmless.
+  // Either way it's best-effort — a lost notification just means the replay
+  // 404s again and recovery terminates cleanly via the single-attempt cap in
+  // dispatch. Log a non-2xx (or a throw) so a required-but-failing
+  // notification is diagnosable from stderr instead of silently swallowed.
+  try {
+    const note = await postOnce({ jsonrpc: '2.0', method: 'notifications/initialized' });
+    if (note.status !== 200 && note.status !== 202) {
+      process.stderr.write(`[obsidian-mcp-bridge] reinit: notifications/initialized → HTTP ${note.status}\n`);
+    }
+    await note.body?.cancel().catch(() => {});
+  } catch (e) {
+    process.stderr.write(`[obsidian-mcp-bridge] reinit: notifications/initialized failed: ${e.message}\n`);
+  }
+
+  // Fire-and-forget; startNotifyStream self-handles its own errors internally.
+  startNotifyStream();
+  return true;
+}
+
+async function dispatch(message, isReplay = false) {
   // If we haven't established a session yet and this isn't the initialize,
-  // wait for the in-flight initialize to land first.
+  // wait for the in-flight initialize (or self-heal re-init) to land first.
   if (!sessionId && initializing && message.method !== 'initialize') {
     try { await initializing; } catch { /* let dispatch surface its own error below */ }
   }
@@ -115,6 +162,8 @@ async function dispatch(message) {
   }
 
   if (message.method === 'initialize') {
+    // Cache the handshake so we can transparently replay it on session loss.
+    cachedInitialize = message;
     const sid = response.headers.get('mcp-session-id');
     if (sid) {
       sessionId = sid;
@@ -122,11 +171,35 @@ async function dispatch(message) {
     }
   }
 
-  if (response.status === 404 && sessionId) {
+  if (response.status === 404) {
+    // A 404 on /mcp means the server terminated/lost our session (idle GC or a
+    // server restart); per MCP spec the bridge should re-initialize, but some
+    // clients (e.g. Claude Desktop) don't act on the signal and the connection
+    // dead-ends. We deliberately do NOT gate on the bridge's current
+    // `sessionId`: a concurrent sibling's reinit may have already nulled it,
+    // and the 404 itself proves a session id was presented on this request
+    // (the server answers 400, handled below, when none is). So any 404 on a
+    // non-initialize call is a self-heal trigger.
+    //
+    // Self-heal once: re-establish a session and replay this exact message so
+    // recovery is invisible to the client (#238). Concurrent 404s coalesce
+    // onto a single reinit via the `initializing` gate and each replays under
+    // the fresh session. `isReplay` caps it at one attempt, so a session that
+    // dies again instantly terminates with -32000 rather than looping.
+    if (!isReplay && message.method !== 'initialize' && cachedInitialize) {
+      if (!initializing) {
+        initializing = reinitialize().finally(() => { initializing = null; });
+      }
+      let healed = false;
+      try { healed = await initializing; } catch { healed = false; }
+      if (healed) {
+        return await dispatch(message, true);
+      }
+    }
     sessionId = null;
     if (notifyAbort) { notifyAbort.abort(); notifyAbort = null; }
     if (message.id != null) {
-      emit({ jsonrpc: '2.0', id: message.id, error: { code: -32000, message: 'Session expired; please reinitialize' } });
+      emit({ jsonrpc: '2.0', id: message.id, error: { code: -32000, message: 'Session expired and automatic reinitialize failed; please retry.' } });
     }
     return;
   }
@@ -156,42 +229,77 @@ async function dispatch(message) {
   }
 }
 
-const rl = createInterface({ input: process.stdin });
-rl.on('line', (line) => {
-  const trimmed = line.trim();
-  if (!trimmed) return;
-  let msg;
-  try { msg = JSON.parse(trimmed); }
-  catch (e) {
-    process.stderr.write(`[obsidian-mcp-bridge] stdin parse: ${e.message}\n`);
-    return;
+// Stdio bootstrap. Guarded so the module can be `require`d in tests (which
+// drive `dispatch` directly) without validating env, claiming stdin, or
+// exiting the process. When launched as the bridge, `require.main === module`.
+function main() {
+  if (!MCP_URL) {
+    process.stderr.write('[obsidian-mcp-bridge] MCP_URL not set\n');
+    process.exit(1);
   }
-  // Capture the initialize promise so concurrent messages can wait for the
-  // session id before posting.
-  if (msg.method === 'initialize') {
-    initializing = dispatch(msg).finally(() => { initializing = null; });
-    initializing.catch(err => {
-      process.stderr.write(`[obsidian-mcp-bridge] dispatch: ${err.message}\n`);
-    });
-  } else {
-    dispatch(msg).catch(err => {
-      process.stderr.write(`[obsidian-mcp-bridge] dispatch: ${err.message}\n`);
-    });
+  try { new URL(MCP_URL); } catch {
+    process.stderr.write(`[obsidian-mcp-bridge] invalid MCP_URL: ${MCP_URL}\n`);
+    process.exit(1);
   }
-});
 
-process.stdin.on('end', async () => {
-  if (notifyAbort) notifyAbort.abort();
-  // Best-effort: tell the server to retire the session so it doesn't linger
-  // in the pool until idle GC.
-  if (sessionId) {
-    try {
-      await fetch(MCP_URL, {
-        method: 'DELETE',
-        headers: headers(),
-        signal: AbortSignal.timeout(5_000),
+  const rl = createInterface({ input: process.stdin });
+  rl.on('line', (line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    let msg;
+    try { msg = JSON.parse(trimmed); }
+    catch (e) {
+      process.stderr.write(`[obsidian-mcp-bridge] stdin parse: ${e.message}\n`);
+      return;
+    }
+    // Capture the initialize promise so concurrent messages can wait for the
+    // session id before posting.
+    if (msg.method === 'initialize') {
+      initializing = dispatch(msg).finally(() => { initializing = null; });
+      initializing.catch(err => {
+        process.stderr.write(`[obsidian-mcp-bridge] dispatch: ${err.message}\n`);
       });
-    } catch { /* server may have already gone; ignore */ }
-  }
-  process.exit(0);
-});
+    } else {
+      dispatch(msg).catch(err => {
+        process.stderr.write(`[obsidian-mcp-bridge] dispatch: ${err.message}\n`);
+      });
+    }
+  });
+
+  process.stdin.on('end', async () => {
+    if (notifyAbort) notifyAbort.abort();
+    // Best-effort: tell the server to retire the session so it doesn't linger
+    // in the pool until idle GC.
+    if (sessionId) {
+      try {
+        await fetch(MCP_URL, {
+          method: 'DELETE',
+          headers: headers(),
+          signal: AbortSignal.timeout(5_000),
+        });
+      } catch { /* server may have already gone; ignore */ }
+    }
+    process.exit(0);
+  });
+}
+
+if (require.main === module) {
+  main();
+}
+
+// Test seam (inert when run as the bridge): expose dispatch and a state reset
+// so the self-heal path can be exercised without spawning a process.
+module.exports = {
+  dispatch,
+  reinitialize,
+  __reset() {
+    sessionId = null;
+    notifyAbort = null;
+    initializing = null;
+    cachedInitialize = null;
+    reinitCounter = 0;
+  },
+  __state() {
+    return { sessionId, cachedInitialize, initializing };
+  },
+};
