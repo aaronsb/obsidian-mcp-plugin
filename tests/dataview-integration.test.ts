@@ -41,6 +41,45 @@ class MockDataviewAPI {
     // monad — { successful, value, error } — where value.values is a PLAIN
     // array (not a wrapped DataArray). The previous mock used the wrong flat +
     // wrapped shape, which is why CI stayed green while real Dataview broke (#216).
+
+    // GROUP BY: Dataview nests rows under group wrappers, and the collections
+    // are DataArrays (`.array()`), not plain arrays. Mocked faithfully so the
+    // producer's group-unwrap + flatten is actually exercised (#220).
+    if (query.includes('GROUP BY') && query.includes('TASK')) {
+      return {
+        successful: true,
+        value: {
+          type: 'task',
+          values: {
+            array: () => [
+              { key: 'open', rows: { array: () => [
+                { text: 'task one', completed: false, path: 'Note1.md' },
+                { text: 'task two', completed: true, path: 'Note2.md' }
+              ] } },
+              { key: null, rows: { array: () => [
+                { text: 'ungrouped task', completed: false, path: 'Note3.md' }
+              ] } }
+            ]
+          }
+        }
+      };
+    }
+
+    if (query.includes('GROUP BY')) {
+      return {
+        successful: true,
+        value: {
+          type: 'list',
+          values: {
+            array: () => [
+              { $widget: 'dataview:list-pair', key: 'groupA', value: { array: () => ['Note 1', 'Note 2'] } },
+              { $widget: 'dataview:list-pair', key: null, value: { array: () => ['Note 3'] } }
+            ]
+          }
+        }
+      };
+    }
+
     if (query.includes('LIST')) {
       return {
         successful: true,
@@ -483,6 +522,48 @@ describe('Dataview Integration', () => {
       expect(output).toContain('Dataview: Metadata');
       expect(output).toContain('Missing.md');
       expect(output).toContain('Page not found');
+    });
+  });
+
+  // #220 (folded in): GROUP BY queries nest rows under group wrappers; the
+  // list/task branches rendered the wrappers (or, for tasks, mangled them into
+  // empty tasks) instead of the grouped rows. Driven end-to-end through
+  // executeQuery → formatResponse with DataArray-wrapped fixtures.
+  describe('GROUP BY formatted output (#220)', () => {
+    test('LIST ... GROUP BY renders group keys and rows, not the list-pair wrapper', async () => {
+      const app = new MockApp(true, true);
+      const api = new MockObsidianAPI(app);
+      const tool = new DataviewTool(api as any);
+
+      const result = await tool.executeQuery('LIST rows.file.name FROM #tag GROUP BY group');
+      const output = formatResponse('dataview', 'query', result, false);
+
+      expect(output).toContain('Dataview: LIST');
+      expect(output).not.toContain('No results found');
+      expect(output).not.toContain('list-pair'); // wrapper not leaked
+      expect(output).not.toContain('$widget');
+      expect(output).toContain('groupA');
+      expect(output).toContain('Note 1');
+      expect(output).toContain('Note 2');
+      expect(output).toContain('(no group)'); // null group key
+      expect(output).toContain('Note 3');
+    });
+
+    test('TASK ... GROUP BY renders group keys and their tasks', async () => {
+      const app = new MockApp(true, true);
+      const api = new MockObsidianAPI(app);
+      const tool = new DataviewTool(api as any);
+
+      const result = await tool.executeQuery('TASK FROM #tag GROUP BY status');
+      const output = formatResponse('dataview', 'query', result, false);
+
+      expect(output).toContain('Dataview: TASK');
+      expect(output).not.toContain('No results found');
+      expect(output).toContain('open'); // group key
+      expect(output).toContain('task one');
+      expect(output).toContain('[x] task two'); // completed checkbox preserved
+      expect(output).toContain('(no group)');
+      expect(output).toContain('ungrouped task');
     });
   });
 

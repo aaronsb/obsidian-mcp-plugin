@@ -108,19 +108,80 @@ function formatDataviewTable(headers: string[], rows: DataviewValue[]): string {
   return lines.join('\n');
 }
 
+/** A GROUP BY result element. Dataview wraps each group as a list-pair
+ *  (`{ $widget: 'dataview:list-pair', key, value }` for LIST) or `{ key, rows }`
+ *  for table-style groups. Without unwrapping, the row formatters rendered the
+ *  wrapper object itself instead of its members (#220). */
+interface DataviewGroup {
+  key: unknown;
+  rows: DataviewValue[];
+}
+
+function asGroup(item: DataviewValue): DataviewGroup | null {
+  if (item === null || typeof item !== 'object' || Array.isArray(item)) {
+    return null;
+  }
+  const obj = item;
+  const rows = obj.rows ?? obj.value;
+  if (Array.isArray(rows) && ('key' in obj || obj.$widget === 'dataview:list-pair')) {
+    return { key: obj.key, rows: rows as DataviewValue[] };
+  }
+  return null;
+}
+
+function groupKeyLabel(key: unknown): string {
+  if (key === null || key === undefined || key === '') {
+    return '(no group)';
+  }
+  if (typeof key === 'string') {
+    return key;
+  }
+  if (typeof key === 'number' || typeof key === 'bigint' || typeof key === 'boolean') {
+    return String(key);
+  }
+  if (typeof key === 'object') {
+    const obj = key as Record<string, unknown>;
+    const filePath = obj.path ?? (obj.file as Record<string, unknown> | undefined)?.path;
+    return typeof filePath === 'string' ? filePath : JSON.stringify(key);
+  }
+  return JSON.stringify(key);
+}
+
+function renderListItem(item: DataviewValue): string {
+  if (item && typeof item === 'object') {
+    const obj = item as Record<string, unknown>;
+    const filePath = obj.path ?? (obj.file as Record<string, unknown> | undefined)?.path;
+    return typeof filePath === 'string' ? filePath : JSON.stringify(item);
+  }
+  return String(item);
+}
+
 function formatDataviewList(items: DataviewValue[]): string {
+  // GROUP BY: every element is a list-pair group — render each group's key and
+  // its rows, not the wrapper object (#220).
+  const groups = items.map(asGroup);
+  if (items.length > 0 && groups.every(g => g !== null)) {
+    const lines: string[] = [];
+    groups.slice(0, 20).forEach(group => {
+      lines.push(`**${truncate(groupKeyLabel(group.key), 60)}** (${group.rows.length})`);
+      group.rows.slice(0, 30).forEach(row => {
+        lines.push(`- ${truncate(renderListItem(row), 60)}`);
+      });
+      if (group.rows.length > 30) {
+        lines.push(`  ... and ${group.rows.length - 30} more`);
+      }
+      lines.push('');
+    });
+    if (groups.length > 20) {
+      lines.push(`... and ${groups.length - 20} more groups`);
+    }
+    return lines.join('\n').trimEnd();
+  }
+
   const lines: string[] = [];
 
   items.slice(0, 30).forEach((item, i) => {
-    let text: string;
-    if (item && typeof item === 'object') {
-      const obj = item as Record<string, unknown>;
-      const filePath = obj.path ?? (obj.file as Record<string, unknown> | undefined)?.path;
-      text = typeof filePath === 'string' ? filePath : JSON.stringify(item);
-    } else {
-      text = String(item);
-    }
-    lines.push(`${i + 1}. ${truncate(text, 60)}`);
+    lines.push(`${i + 1}. ${truncate(renderListItem(item), 60)}`);
   });
 
   if (items.length > 30) {
@@ -137,22 +198,45 @@ interface DataviewTask {
   path?: string;
 }
 
+function renderTask(taskItem: DataviewValue): string {
+  const task = (taskItem !== null && typeof taskItem === 'object' && !Array.isArray(taskItem)
+    ? taskItem
+    : {}) as DataviewTask;
+  const checkbox = task.completed ? '[x]' : '[ ]';
+  const taskString = taskItem !== null && typeof taskItem === 'object'
+    ? JSON.stringify(taskItem)
+    : String(taskItem);
+  const text = task.text || task.task || taskString;
+  let line = `- ${checkbox} ${truncate(text, 60)}`;
+  if (task.path) {
+    line += `\n      from: ${task.path}`;
+  }
+  return line;
+}
+
 function formatDataviewTasks(tasks: DataviewValue[]): string {
+  // GROUP BY: every element is a group — render its key then its tasks (#220).
+  const groups = tasks.map(asGroup);
+  if (tasks.length > 0 && groups.every(g => g !== null)) {
+    const lines: string[] = [];
+    groups.slice(0, 20).forEach(group => {
+      lines.push(`**${truncate(groupKeyLabel(group.key), 60)}** (${group.rows.length})`);
+      group.rows.slice(0, 30).forEach(taskItem => lines.push(renderTask(taskItem)));
+      if (group.rows.length > 30) {
+        lines.push(`  ... and ${group.rows.length - 30} more`);
+      }
+      lines.push('');
+    });
+    if (groups.length > 20) {
+      lines.push(`... and ${groups.length - 20} more groups`);
+    }
+    return lines.join('\n').trimEnd();
+  }
+
   const lines: string[] = [];
 
   tasks.slice(0, 30).forEach(taskItem => {
-    const task = (taskItem !== null && typeof taskItem === 'object' && !Array.isArray(taskItem)
-      ? taskItem
-      : {}) as DataviewTask;
-    const checkbox = task.completed ? '[x]' : '[ ]';
-    const taskString = taskItem !== null && typeof taskItem === 'object'
-      ? JSON.stringify(taskItem)
-      : String(taskItem);
-    const text = task.text || task.task || taskString;
-    lines.push(`- ${checkbox} ${truncate(text, 60)}`);
-    if (task.path) {
-      lines.push(`      from: ${task.path}`);
-    }
+    lines.push(renderTask(taskItem));
   });
 
   if (tasks.length > 30) {

@@ -58,6 +58,25 @@ function toPlainArray(value: unknown): unknown[] {
   return [];
 }
 
+/**
+ * GROUP BY results nest rows under a group wrapper — `{ key, rows }`, or a
+ * list-pair `{ $widget: 'dataview:list-pair', key, value }` for LIST. The inner
+ * collection may itself be a Dataview DataArray, so it's run through
+ * toPlainArray. Returns null when the element is a plain row, not a group.
+ */
+function unwrapGroup(el: unknown): { key: unknown; rows: unknown[] } | null {
+  if (!el || typeof el !== 'object' || Array.isArray(el)) return null;
+  const obj = el as Record<string, unknown>;
+  const inner = obj.rows ?? obj.value;
+  const isGroup = 'key' in obj || obj.$widget === 'dataview:list-pair';
+  if (!isGroup) return null;
+  if (!Array.isArray(inner) && !(inner && typeof (inner as { array?: () => unknown[] }).array === 'function')) {
+    return null;
+  }
+  return { key: obj.key, rows: toPlainArray(inner) };
+}
+
+
 /** Dataview link value */
 interface DataviewLink {
   path: string;
@@ -373,9 +392,14 @@ export class DataviewTool {
     // Handle different result types
     switch (payload.type) {
       case 'list':
+        // GROUP BY: keep each group as {key, rows} (rows flattened to a plain
+        // array) instead of leaking the list-pair wrapper downstream (#220).
         return {
           type: 'list',
-          values: toPlainArray(payload.values)
+          values: toPlainArray(payload.values).map((el: unknown) => {
+            const group = unwrapGroup(el);
+            return group ? { key: group.key, rows: group.rows } : el;
+          })
         };
       case 'table':
         return {
@@ -386,19 +410,26 @@ export class DataviewTool {
             return typeof tableRow?.array === 'function' ? tableRow.array() : row;
           })
         };
-      case 'task':
+      case 'task': {
+        const mapTask = (task: unknown) => {
+          const dvTask = task as DataviewTask;
+          return {
+            text: dvTask.text,
+            completed: dvTask.completed,
+            line: dvTask.line,
+            path: dvTask.path
+          };
+        };
+        // GROUP BY: preserve the group wrapper and map its inner rows as tasks,
+        // rather than mangling each group into an empty task (#220).
         return {
           type: 'task',
-          values: toPlainArray(payload.values).map((task: unknown) => {
-            const dvTask = task as DataviewTask;
-            return {
-              text: dvTask.text,
-              completed: dvTask.completed,
-              line: dvTask.line,
-              path: dvTask.path
-            };
+          values: toPlainArray(payload.values).map((el: unknown) => {
+            const group = unwrapGroup(el);
+            return group ? { key: group.key, rows: group.rows.map(mapTask) } : mapTask(el);
           })
         };
+      }
       case 'calendar':
         return {
           type: 'calendar',
