@@ -67,6 +67,40 @@ export function formatDataviewQuery(response: DataviewQueryResponse): string {
   return joinLines(lines);
 }
 
+/**
+ * Render a single table cell value. Dataview hands back rich objects — `Link`
+ * (`{ path, display }`) and Luxon `DateTime` (`toISO()`) — not primitives.
+ * Without coercion they dumped as raw JSON (`{"path":…}`) and quoted ISO
+ * strings (#220). Collapse a Link to its display/path, a DateTime to ISO, and
+ * leave primitives as-is.
+ */
+function coerceCell(val: unknown): string {
+  if (val === null || val === undefined) {
+    return '';
+  }
+  if (typeof val === 'string') {
+    return val;
+  }
+  if (typeof val === 'number' || typeof val === 'boolean' || typeof val === 'bigint') {
+    return String(val);
+  }
+  if (typeof val === 'object') {
+    const obj = val as Record<string, unknown>;
+    if (typeof obj.path === 'string') {
+      return typeof obj.display === 'string' && obj.display ? obj.display : obj.path;
+    }
+    if (typeof obj.toISO === 'function') {
+      const iso = (obj.toISO as () => string | null)();
+      if (iso) return iso;
+    }
+    if (val instanceof Date) {
+      return val.toISOString();
+    }
+    return JSON.stringify(val);
+  }
+  return JSON.stringify(val);
+}
+
 function formatDataviewTable(headers: string[], rows: DataviewValue[]): string {
   const lines: string[] = [];
 
@@ -87,16 +121,7 @@ function formatDataviewTable(headers: string[], rows: DataviewValue[]): string {
       } else if (row !== null && typeof row === 'object') {
         val = row[headers[i]];
       }
-      let display: string;
-      if (val === null || val === undefined) {
-        display = '';
-      } else if (typeof val === 'object') {
-        display = JSON.stringify(val);
-      } else {
-        const primitive = val as string | number | boolean | bigint | symbol;
-        display = String(primitive);
-      }
-      return truncate(display, 30);
+      return truncate(coerceCell(val), 30);
     });
     lines.push('| ' + cells.join(' | ') + (hasMore ? ' | ...' : '') + ' |');
   });

@@ -90,6 +90,28 @@ class MockDataviewAPI {
       };
     }
 
+    if (query.includes('TABLE') && query.includes('mtime')) {
+      // Rich TABLE: rows are DataArrays of cells; cells are a Link object and a
+      // Luxon-style DateTime (toISO), not primitives (#220 cell rendering).
+      return {
+        successful: true,
+        value: {
+          type: 'table',
+          headers: ['File', 'file.mtime'],
+          values: [
+            { array: () => [
+              { path: 'Note1.md', display: 'Note1', type: 'file' },
+              { toISO: () => '2026-01-02T03:04:05.000Z' }
+            ] },
+            { array: () => [
+              { path: 'Note2.md' },
+              { toISO: () => '2026-01-03T00:00:00.000Z' }
+            ] }
+          ]
+        }
+      };
+    }
+
     if (query.includes('TABLE')) {
       return {
         successful: true,
@@ -564,6 +586,28 @@ describe('Dataview Integration', () => {
       expect(output).toContain('[x] task two'); // completed checkbox preserved
       expect(output).toContain('(no group)');
       expect(output).toContain('ungrouped task');
+    });
+  });
+
+  // #220 (folded in, from the maintainer's comment): TABLE cells that are
+  // Dataview Link / DateTime objects rendered as raw JSON / quoted ISO strings.
+  describe('TABLE cell rendering (#220)', () => {
+    test('Link cells collapse to display/path and dates render unquoted', async () => {
+      const app = new MockApp(true, true);
+      const api = new MockObsidianAPI(app);
+      const tool = new DataviewTool(api as any);
+
+      const result = await tool.executeQuery('TABLE file.mtime FROM ""');
+      const output = formatResponse('dataview', 'query', result, false);
+
+      expect(output).toContain('Dataview: TABLE');
+      // Link → display (first row) / path (second row), not raw JSON
+      expect(output).not.toContain('{"path"');
+      expect(output).toContain('Note1'); // display
+      expect(output).toContain('Note2.md'); // path fallback
+      // DateTime → bare ISO, no surrounding quotes
+      expect(output).toContain('2026-01-02T03:04:05.000Z');
+      expect(output).not.toContain('"2026-01-02T03:04:05.000Z"');
     });
   });
 
