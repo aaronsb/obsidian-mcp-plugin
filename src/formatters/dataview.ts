@@ -193,6 +193,150 @@ export function formatDataviewStatus(response: DataviewStatusResponse): string {
 }
 
 /**
+ * Format dataview.list response
+ *
+ * `listPages()` returns `{ success, source, count, pages: [...] }`, not the
+ * `{ values }` shape `formatDataviewQuery` reads — routing it through the query
+ * formatter always hit the `!values` branch and rendered "No results found"
+ * regardless of data (#220). A page list isn't really a query result, so it
+ * gets its own formatter.
+ */
+export interface DataviewPagesResponse {
+  success: boolean;
+  source?: string;
+  count?: number;
+  pages?: Array<Record<string, unknown>>;
+  error?: string;
+}
+
+export function formatDataviewPages(response: DataviewPagesResponse): string {
+  const lines: string[] = [];
+
+  lines.push(header(1, 'Dataview: Pages'));
+  lines.push('');
+  lines.push(property('Source', response.source ?? 'all', 0));
+
+  if (response.success === false) {
+    lines.push('');
+    lines.push(`❌ Query failed: ${response.error || 'Unknown error'}`);
+    lines.push(summaryFooter());
+    return joinLines(lines);
+  }
+
+  const pages = response.pages ?? [];
+  const total = response.count ?? pages.length;
+  lines.push(property('Count', String(total), 0));
+  lines.push('');
+
+  if (pages.length === 0) {
+    lines.push('No pages found.');
+    lines.push(summaryFooter());
+    return joinLines(lines);
+  }
+
+  pages.slice(0, 30).forEach((page, i) => {
+    const path = typeof page.path === 'string' ? page.path : JSON.stringify(page);
+    lines.push(`${i + 1}. ${truncate(path, 60)}`);
+  });
+
+  if (total > 30) {
+    lines.push(`\n... and ${total - 30} more pages`);
+  }
+
+  lines.push(divider());
+  lines.push(tip('Use `dataview.metadata(path)` for one page, or `vault.read(path)` to open it'));
+  lines.push(summaryFooter());
+
+  return joinLines(lines);
+}
+
+/**
+ * Format dataview.metadata response
+ *
+ * `getPageMetadata()` returns `{ success, path, metadata: {...} }` — same #220
+ * shape mismatch as the page list. A single page's metadata is not a query
+ * result either, so it gets a dedicated formatter rather than the `{ values }`
+ * query path.
+ */
+export interface DataviewMetadataResponse {
+  success: boolean;
+  path: string;
+  metadata?: {
+    file?: Record<string, unknown>;
+    tags?: unknown[];
+    aliases?: unknown[];
+    outlinks?: unknown[];
+    inlinks?: unknown[];
+    tasks?: number;
+    lists?: number;
+    custom?: Record<string, unknown>;
+  };
+  error?: string;
+}
+
+export function formatDataviewMetadata(response: DataviewMetadataResponse): string {
+  const lines: string[] = [];
+
+  lines.push(header(1, 'Dataview: Metadata'));
+  lines.push('');
+  lines.push(property('Path', response.path, 0));
+
+  if (response.success === false || !response.metadata) {
+    lines.push('');
+    lines.push(`❌ ${response.error || 'No metadata available'}`);
+    lines.push(summaryFooter());
+    return joinLines(lines);
+  }
+
+  const m = response.metadata;
+  const tags = Array.isArray(m.tags) ? m.tags : [];
+  const aliases = Array.isArray(m.aliases) ? m.aliases : [];
+  const outlinks = Array.isArray(m.outlinks) ? m.outlinks : [];
+  const inlinks = Array.isArray(m.inlinks) ? m.inlinks : [];
+
+  lines.push('');
+  if (tags.length > 0) {
+    lines.push(property('Tags', tags.map(t => String(t)).join(', '), 0));
+  }
+  if (aliases.length > 0) {
+    lines.push(property('Aliases', aliases.map(a => String(a)).join(', '), 0));
+  }
+  lines.push(property('Outlinks', String(outlinks.length), 0));
+  lines.push(property('Inlinks', String(inlinks.length), 0));
+  lines.push(property('Tasks', String(m.tasks ?? 0), 0));
+  lines.push(property('Lists', String(m.lists ?? 0), 0));
+
+  const custom = (m.custom && typeof m.custom === 'object') ? m.custom : {};
+  const customKeys = Object.keys(custom);
+  if (customKeys.length > 0) {
+    lines.push('');
+    lines.push(header(2, 'Frontmatter'));
+    customKeys.slice(0, 15).forEach(key => {
+      const value = custom[key];
+      let display: string;
+      if (value === null || value === undefined) {
+        display = String(value);
+      } else if (typeof value === 'object') {
+        display = JSON.stringify(value);
+      } else {
+        const primitive = value as string | number | boolean | bigint | symbol;
+        display = String(primitive);
+      }
+      lines.push(property(key, truncate(display, 50), 0));
+    });
+    if (customKeys.length > 15) {
+      lines.push(`... and ${customKeys.length - 15} more fields`);
+    }
+  }
+
+  lines.push(divider());
+  lines.push(tip('Use `vault.read(path)` to view the full note'));
+  lines.push(summaryFooter());
+
+  return joinLines(lines);
+}
+
+/**
  * Format bases.query response
  */
 interface BasesQueryResult {

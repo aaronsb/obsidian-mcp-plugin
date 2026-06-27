@@ -67,6 +67,8 @@ import {
 import {
   formatDataviewQuery,
   formatDataviewStatus,
+  formatDataviewPages,
+  formatDataviewMetadata,
   formatBasesQuery,
   formatBasesList,
   formatBasesRead,
@@ -74,6 +76,8 @@ import {
   formatBasesExport,
   DataviewQueryResponse,
   DataviewStatusResponse,
+  DataviewPagesResponse,
+  DataviewMetadataResponse,
   BasesQueryResponse,
   BasesListResponse,
   BasesReadResponse,
@@ -167,6 +171,8 @@ export {
   // Dataview
   formatDataviewQuery,
   formatDataviewStatus,
+  formatDataviewPages,
+  formatDataviewMetadata,
   formatBasesQuery,
   formatBasesList,
   formatBasesRead,
@@ -174,6 +180,8 @@ export {
   formatBasesExport,
   DataviewQueryResponse,
   DataviewStatusResponse,
+  DataviewPagesResponse,
+  DataviewMetadataResponse,
   BasesQueryResponse,
   BasesListResponse,
   BasesReadResponse,
@@ -623,8 +631,9 @@ export function formatResponse(
       case 'dataview.status':
         return formatDataviewStatus(normalized as DataviewStatusResponse);
       case 'dataview.list':
+        return formatDataviewPages(normalized as DataviewPagesResponse);
       case 'dataview.metadata':
-        return formatDataviewQuery({ ...(normalized as Record<string, unknown>), type: 'list', successful: true } as DataviewQueryResponse);
+        return formatDataviewMetadata(normalized as DataviewMetadataResponse);
 
       // Bases operations
       case 'bases.list':

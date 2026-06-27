@@ -423,6 +423,69 @@ describe('Dataview Integration', () => {
     });
   });
 
+  // #220: dataview.list / dataview.metadata non-raw output always rendered
+  // "No results found" because their {count,pages} / {metadata} producer shapes
+  // were force-cast into the {values} query formatter. These exercise the full
+  // producer → formatResponse() path with the real Dataview producer shapes.
+  describe('Formatted output (#220)', () => {
+    test('dataview.list renders page paths and count, not "No results found"', () => {
+      const app = new MockApp(true, true);
+      const api = new MockObsidianAPI(app);
+      const tool = new DataviewTool(api as any);
+
+      const output = formatResponse('dataview', 'list', tool.listPages('#tag'), false);
+
+      expect(output).toContain('Dataview: Pages');
+      expect(output).not.toContain('No results found');
+      expect(output).toContain('Count');
+      expect(output).toContain('Note1.md');
+      expect(output).toContain('Note2.md');
+    });
+
+    test('dataview.metadata renders page metadata and frontmatter, not "No results found"', () => {
+      const app = new MockApp(true, true);
+      const api = new MockObsidianAPI(app);
+      const tool = new DataviewTool(api as any);
+
+      const output = formatResponse('dataview', 'metadata', tool.getPageMetadata('Note1.md'), false);
+
+      expect(output).toContain('Dataview: Metadata');
+      expect(output).not.toContain('No results found');
+      expect(output).toContain('Note1.md');
+      // custom frontmatter fields surfaced
+      expect(output).toContain('priority');
+      expect(output).toContain('high');
+    });
+
+    test('dataview.list surfaces a producer failure instead of a false "No results found"', () => {
+      const app = new MockApp(true, true);
+      const api = new MockObsidianAPI(app);
+      const tool = new DataviewTool(api as any);
+
+      const dvApi = (app.plugins.plugins['dataview'] as any).api as MockDataviewAPI;
+      dvApi.pages = (() => { throw new Error('bad source'); }) as any;
+
+      const output = formatResponse('dataview', 'list', tool.listPages('nonsense'), false);
+
+      expect(output).toContain('Query failed');
+      expect(output).toContain('bad source');
+      expect(output).not.toContain('No results found');
+    });
+
+    test('dataview.metadata surfaces a page-not-found failure', () => {
+      const app = new MockApp(true, true);
+      const api = new MockObsidianAPI(app);
+      const tool = new DataviewTool(api as any);
+
+      // page() returns null for an unknown path → producer returns {success:false, error}
+      const output = formatResponse('dataview', 'metadata', tool.getPageMetadata('Missing.md'), false);
+
+      expect(output).toContain('Dataview: Metadata');
+      expect(output).toContain('Missing.md');
+      expect(output).toContain('Page not found');
+    });
+  });
+
   describe('Tool Availability Detection', () => {
     test('should detect when Dataview tool is not available', () => {
       const app = new MockApp(false);
