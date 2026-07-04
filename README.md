@@ -8,14 +8,15 @@
 
 📦 **[Available in the Obsidian Community Plugin directory →](https://community.obsidian.md/plugins/semantic-vault-mcp)**
 
-**Give AI semantic agency over your knowledge graph**
+**Read, write, search, and traverse your Obsidian vault from any AI assistant — through an MCP server that runs _inside_ Obsidian.**
 
-This plugin connects your Obsidian vault to AI assistants through MCP (Model Context Protocol), giving them the ability to understand and navigate your notes as a connected knowledge graph, not just isolated files. Through semantic hints and graph traversal, AI gains the agency to explore concepts, follow connections, and synthesize information across your entire vault.
+No external Node process to launch, no separate REST-API plugin to bridge through: the server *is* the plugin. Setup is a drag-and-drop — drop the `.mcpb` bundle onto Claude Desktop, paste your key, done.
 
-**MCP (Model Context Protocol)** is the open standard that lets AI assistants interact with external tools and data sources. This plugin works with any MCP-compatible client including:
-- Claude Desktop (Anthropic)
-- Claude Code/Continue.dev (VS Code)
-- Any platform that supports local MCP servers
+It exposes **8 semantic tools** — each one a family of operations rather than a single call (the `vault` tool alone handles 13: list, read, create, search, move, split, combine, and more) — plus Dataview queries, Bases, and graph traversal. So the AI can follow links, tags, and backlinks and synthesize across your whole vault as a connected knowledge graph, not one open file at a time.
+
+**Works with any MCP-compatible client** — Claude Desktop, Claude Code, Cline, Continue.dev, and anything that speaks local MCP.
+
+> **New to MCP?** The [Model Context Protocol](https://modelcontextprotocol.io) is the open standard that lets AI assistants interact with external tools and data. You don't need to understand it to use this — the [Quick Start](#quick-start) is three steps.
 
 ## Quick Start
 
