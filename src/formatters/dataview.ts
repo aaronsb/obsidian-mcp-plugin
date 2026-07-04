@@ -166,7 +166,10 @@ function asGroup(item: DataviewValue): DataviewGroup | null {
 }
 
 function groupKeyLabel(key: unknown): string {
-  if (key === null || key === undefined || key === '') {
+  // Empty or whitespace-only keys (e.g. `TASK ... GROUP BY status` puts
+  // incomplete tasks under the space-character status) render as an empty bold
+  // header otherwise. Collapse them to a stable label.
+  if (key === null || key === undefined || (typeof key === 'string' && key.trim() === '')) {
     return '(no group)';
   }
   if (typeof key === 'string') {
