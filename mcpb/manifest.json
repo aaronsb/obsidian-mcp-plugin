@@ -3,7 +3,7 @@
   "name": "obsidian-mcp",
   "display_name": "Obsidian MCP",
   "version": "0.11.38",
-  "description": "Connect Claude Desktop to your Obsidian vault via the Obsidian MCP plugin.",
+  "description": "Read, write, search, and traverse your Obsidian vault from Claude Desktop — bridges to the MCP server built into the Obsidian plugin.",
   "long_description": "Bridges Claude Desktop to the HTTP MCP server exposed by the Obsidian MCP plugin running inside Obsidian. Open Obsidian first, enable the MCP plugin in Settings, copy the URL and API key from the plugin's Settings tab, then paste them into the install prompt below.",
   "author": {
     "name": "Aaron Bockelie",
