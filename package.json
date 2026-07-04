@@ -1,6 +1,6 @@
 {
   "name": "obsidian-mcp-plugin",
-  "version": "0.11.37",
+  "version": "0.11.38",
   "description": "Read, write, search, and traverse your vault from Claude Desktop and any AI assistant — via an MCP server built into Obsidian, no external server to run.",
   "main": "main.js",
   "scripts": {
