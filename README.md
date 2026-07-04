@@ -125,24 +125,24 @@ Once connected, simply chat with your AI assistant about your notes! For example
 
 Your AI assistant now has these capabilities:
 - Navigate your vault's link structure
-- Search across all notes semantically
+- Search and rank across all notes
 - Read, edit, and create notes
 - Analyze your knowledge graph
 - Work with Dataview queries (if installed)
 - Manage Obsidian Bases (database views)
 
-## Why Semantic MCP?
+## Why It's Different
 
-Traditional file access gives AI a narrow view - one document at a time. This plugin transforms that into **semantic agency**:
+Traditional file access gives AI a narrow view — one document at a time. This plugin gives it the whole connected picture:
 
 - **Graph Navigation**: AI follows links between notes, understanding relationships and context
-- **Concept Discovery**: Semantic search finds related ideas across your vault
+- **Concept Discovery**: Search and graph traversal surface related ideas across your vault
 - **Contextual Awareness**: AI understands where information lives in your knowledge structure
 - **Intelligent Synthesis**: Combine fragments from multiple notes to answer complex questions
 
 ## Core Tools
 
-The plugin provides 8 semantic tool groups that give AI comprehensive vault access:
+The plugin provides 8 powerful tools that give AI comprehensive vault access — each one a family of related operations, all subject to the permissions you set:
 
 | Tool | Purpose | Key Actions |
 |------|---------|-------------|
@@ -167,15 +167,15 @@ Detailed documentation for each tool and feature:
 - [🔧 Configuration](docs/configuration.md) - Server settings and options
 - [❓ Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
 
-## The Semantic Advantage
+## In Practice
 
-This plugin doesn't just give AI access to files - it provides **semantic understanding**:
+This plugin doesn't just give AI access to files — it lets AI work across your vault as a connected whole:
 
 ### Example: Research Assistant
 ```
 User: "Summarize my research on machine learning optimization"
 
-AI uses semantic tools to:
+AI uses these tools to:
 1. Search for notes with ML optimization concepts
 2. Traverse graph to find related papers and techniques  
 3. Follow backlinks to discover applications
@@ -195,7 +195,7 @@ AI uses graph tools to:
 
 ## Features
 
-### Semantic Search
+### Full-Text Search
 - Advanced query operators: `tag:`, `path:`, `content:`
 - Regular expressions and phrase matching
 - Relevance ranking and snippet extraction
@@ -220,7 +220,7 @@ AI uses graph tools to:
 
 ## Plugin Settings
 
-Access settings via: Settings → Community plugins → Semantic MCP
+Access settings via: Settings → Community plugins → Semantic Notes Vault MCP
 
 Key configuration options:
 - **Server Ports**: HTTP (3001) and HTTPS (3443)
