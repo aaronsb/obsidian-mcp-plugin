@@ -90,8 +90,8 @@ function coerceCell(val: unknown): string {
       return typeof obj.display === 'string' && obj.display ? obj.display : obj.path;
     }
     if (typeof obj.toISO === 'function') {
-      const iso = (obj.toISO as () => string | null)();
-      if (iso) return iso;
+      const iso = (obj.toISO as () => unknown)();
+      if (typeof iso === 'string' && iso) return iso;
     }
     if (val instanceof Date) {
       return val.toISOString();
@@ -147,9 +147,20 @@ function asGroup(item: DataviewValue): DataviewGroup | null {
     return null;
   }
   const obj = item;
-  const rows = obj.rows ?? obj.value;
-  if (Array.isArray(rows) && ('key' in obj || obj.$widget === 'dataview:list-pair')) {
-    return { key: obj.key, rows: rows as DataviewValue[] };
+  if (!('key' in obj || obj.$widget === 'dataview:list-pair')) {
+    return null;
+  }
+  const inner = obj.rows ?? obj.value;
+  // The producer (`unwrapGroup`) normally flattens the inner DataArray to a
+  // plain array before a group reaches here. Accept a raw DataArray (`.array()`)
+  // too, so the formatter stays in agreement with the producer's group
+  // predicate rather than silently leaking a wrapper if an unflattened group
+  // ever reaches it (PR #249 review, F2).
+  if (Array.isArray(inner)) {
+    return { key: obj.key, rows: inner as DataviewValue[] };
+  }
+  if (inner && typeof (inner as { array?: () => unknown[] }).array === 'function') {
+    return { key: obj.key, rows: (inner as { array: () => DataviewValue[] }).array() };
   }
   return null;
 }
@@ -182,23 +193,31 @@ function renderListItem(item: DataviewValue): string {
 }
 
 function formatDataviewList(items: DataviewValue[]): string {
-  // GROUP BY: every element is a list-pair group — render each group's key and
-  // its rows, not the wrapper object (#220).
+  // GROUP BY: elements arrive as list-pair group wrappers — render each group's
+  // key and its rows, not the wrapper object (#220). Switch to grouped
+  // rendering if *any* element is a group (not all), and render a stray
+  // non-group element as a plain top-level row, so one unrecognized group can't
+  // collapse the whole result back to raw wrappers (PR #249 review, F1).
   const groups = items.map(asGroup);
-  if (items.length > 0 && groups.every(g => g !== null)) {
+  if (items.length > 0 && groups.some(g => g !== null)) {
     const lines: string[] = [];
-    groups.slice(0, 20).forEach(group => {
-      lines.push(`**${truncate(groupKeyLabel(group.key), 60)}** (${group.rows.length})`);
-      group.rows.slice(0, 30).forEach(row => {
-        lines.push(`- ${truncate(renderListItem(row), 60)}`);
-      });
-      if (group.rows.length > 30) {
-        lines.push(`  ... and ${group.rows.length - 30} more`);
+    items.slice(0, 20).forEach((item, i) => {
+      const group = groups[i];
+      if (group) {
+        lines.push(`**${truncate(groupKeyLabel(group.key), 60)}** (${group.rows.length})`);
+        group.rows.slice(0, 30).forEach(row => {
+          lines.push(`- ${truncate(renderListItem(row), 60)}`);
+        });
+        if (group.rows.length > 30) {
+          lines.push(`  ... and ${group.rows.length - 30} more`);
+        }
+      } else {
+        lines.push(`- ${truncate(renderListItem(item), 60)}`);
       }
       lines.push('');
     });
-    if (groups.length > 20) {
-      lines.push(`... and ${groups.length - 20} more groups`);
+    if (items.length > 20) {
+      lines.push(`... and ${items.length - 20} more groups`);
     }
     return lines.join('\n').trimEnd();
   }
@@ -240,20 +259,28 @@ function renderTask(taskItem: DataviewValue): string {
 }
 
 function formatDataviewTasks(tasks: DataviewValue[]): string {
-  // GROUP BY: every element is a group — render its key then its tasks (#220).
+  // GROUP BY: elements arrive as group wrappers — render each group's key then
+  // its tasks (#220). Switch to grouped rendering if *any* element is a group
+  // (not all), and render a stray non-group element as a plain task, so one
+  // unrecognized group can't collapse the whole result (PR #249 review, F1).
   const groups = tasks.map(asGroup);
-  if (tasks.length > 0 && groups.every(g => g !== null)) {
+  if (tasks.length > 0 && groups.some(g => g !== null)) {
     const lines: string[] = [];
-    groups.slice(0, 20).forEach(group => {
-      lines.push(`**${truncate(groupKeyLabel(group.key), 60)}** (${group.rows.length})`);
-      group.rows.slice(0, 30).forEach(taskItem => lines.push(renderTask(taskItem)));
-      if (group.rows.length > 30) {
-        lines.push(`  ... and ${group.rows.length - 30} more`);
+    tasks.slice(0, 20).forEach((taskItem, i) => {
+      const group = groups[i];
+      if (group) {
+        lines.push(`**${truncate(groupKeyLabel(group.key), 60)}** (${group.rows.length})`);
+        group.rows.slice(0, 30).forEach(row => lines.push(renderTask(row)));
+        if (group.rows.length > 30) {
+          lines.push(`  ... and ${group.rows.length - 30} more`);
+        }
+      } else {
+        lines.push(renderTask(taskItem));
       }
       lines.push('');
     });
-    if (groups.length > 20) {
-      lines.push(`... and ${groups.length - 20} more groups`);
+    if (tasks.length > 20) {
+      lines.push(`... and ${tasks.length - 20} more groups`);
     }
     return lines.join('\n').trimEnd();
   }
