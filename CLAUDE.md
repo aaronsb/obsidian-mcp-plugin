@@ -419,10 +419,20 @@ matching stable release tag's assets, not from a scanned branch.
   `package.json`; `sync-version.mjs` propagates it to `manifest.json`; use
   `make set-description DESC='...'` (never hand-edit the JSON). The portal's
   one-liner refreshes on the next scan after release.
-- **Long "About"** — *not* in the repo. Obsidian seeded this portal-side
-  during the community.obsidian.md migration; it is decoupled from
-  `package.json`/`manifest.json` and only editable in the authenticated
-  developer portal. Repo edits will **not** change it — update it there.
+- **Long "About"** — **repo-extracted from the README on scan.** Verified on
+  the 0.11.39 portal scan (2026-07-04): the About rendered the README's
+  top-of-file content — from the "Available in the directory" line through the
+  "New to MCP?" aside — verbatim. This **supersedes** the earlier belief that
+  the About was portal-only and decoupled from the repo: editing the README
+  opening **does** change the About on the next scan. Consequence: the README
+  opening now doubles as the directory About, so author it to read well in
+  *both* places — README-only chrome (the "Available in the directory"
+  self-link, which is circular on the portal; "Quick Start is three steps",
+  which points at a section the About doesn't render) reads awkwardly there.
+  (Historical note: Obsidian *did* seed a decoupled portal-side About during
+  the community.obsidian.md migration; at some point the portal switched to
+  extracting from the README. Trust a fresh scan over this doc if they diverge
+  again.)
 
 ### Reading the scorecard as free signal — `make scorecard`
 
