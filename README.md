@@ -12,7 +12,7 @@
 
 No external Node process to launch, no separate REST-API plugin to bridge through: the server *is* the plugin. Setup is a drag-and-drop — drop the `.mcpb` bundle onto Claude Desktop, paste your key, done.
 
-It exposes **8 semantic tools** — each one a family of operations rather than a single call (the `vault` tool alone handles 13: list, read, create, search, move, split, combine, and more) — plus Dataview queries, Bases, and graph traversal. So the AI can follow links, tags, and backlinks and synthesize across your whole vault as a connected knowledge graph, not one open file at a time.
+It exposes **8 powerful tools** — each a whole family of operations, not a single call (the `vault` tool alone handles 13: list, read, create, search, move, split, combine, and more) — with first-class **Dataview** and **Bases** support plus graph traversal across links, tags, and backlinks. And every operation respects the permissions *you* set — a read-only mode, per-operation controls, and path allow/block lists — so the AI only ever does what you've allowed, not unrestricted run of your vault.
 
 **Works with any MCP-compatible client** — Claude Desktop, Claude Code, Cline, Continue.dev, and anything that speaks local MCP.
 
