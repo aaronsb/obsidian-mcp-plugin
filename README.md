@@ -8,14 +8,15 @@
 
 📦 **[Available in the Obsidian Community Plugin directory →](https://community.obsidian.md/plugins/semantic-vault-mcp)**
 
-**Give AI semantic agency over your knowledge graph**
+**Read, write, search, and traverse your Obsidian vault from any AI assistant — through an MCP server that runs _inside_ Obsidian.**
 
-This plugin connects your Obsidian vault to AI assistants through MCP (Model Context Protocol), giving them the ability to understand and navigate your notes as a connected knowledge graph, not just isolated files. Through semantic hints and graph traversal, AI gains the agency to explore concepts, follow connections, and synthesize information across your entire vault.
+No external Node process to launch, no separate REST-API plugin to bridge through: the server *is* the plugin. Setup is a drag-and-drop — drop the `.mcpb` bundle onto Claude Desktop, paste your key, done.
 
-**MCP (Model Context Protocol)** is the open standard that lets AI assistants interact with external tools and data sources. This plugin works with any MCP-compatible client including:
-- Claude Desktop (Anthropic)
-- Claude Code/Continue.dev (VS Code)
-- Any platform that supports local MCP servers
+It exposes **8 powerful tools** — each a whole family of operations, not a single call (the `vault` tool alone handles 13: list, read, create, search, move, split, combine, and more) — with first-class **Dataview** and **Bases** support plus graph traversal across links, tags, and backlinks. And every operation respects the permissions *you* set — a read-only mode, per-operation controls, and path allow/block lists — so the AI only ever does what you've allowed, not unrestricted run of your vault.
+
+**Works with any MCP-compatible client** — Claude Desktop, Claude Code, Cline, Continue.dev, and anything that speaks local MCP.
+
+> **New to MCP?** The [Model Context Protocol](https://modelcontextprotocol.io) is the open standard that lets AI assistants interact with external tools and data. You don't need to understand it to use this — the [Quick Start](#quick-start) is three steps.
 
 ## Quick Start
 
@@ -124,24 +125,24 @@ Once connected, simply chat with your AI assistant about your notes! For example
 
 Your AI assistant now has these capabilities:
 - Navigate your vault's link structure
-- Search across all notes semantically
+- Search and rank across all notes
 - Read, edit, and create notes
 - Analyze your knowledge graph
 - Work with Dataview queries (if installed)
 - Manage Obsidian Bases (database views)
 
-## Why Semantic MCP?
+## Why It's Different
 
-Traditional file access gives AI a narrow view - one document at a time. This plugin transforms that into **semantic agency**:
+Traditional file access gives AI a narrow view — one document at a time. This plugin gives it the whole connected picture:
 
 - **Graph Navigation**: AI follows links between notes, understanding relationships and context
-- **Concept Discovery**: Semantic search finds related ideas across your vault
+- **Concept Discovery**: Search and graph traversal surface related ideas across your vault
 - **Contextual Awareness**: AI understands where information lives in your knowledge structure
 - **Intelligent Synthesis**: Combine fragments from multiple notes to answer complex questions
 
 ## Core Tools
 
-The plugin provides 8 semantic tool groups that give AI comprehensive vault access:
+The plugin provides 8 powerful tools that give AI comprehensive vault access — each one a family of related operations, all subject to the permissions you set:
 
 | Tool | Purpose | Key Actions |
 |------|---------|-------------|
@@ -166,15 +167,15 @@ Detailed documentation for each tool and feature:
 - [🔧 Configuration](docs/configuration.md) - Server settings and options
 - [❓ Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
 
-## The Semantic Advantage
+## In Practice
 
-This plugin doesn't just give AI access to files - it provides **semantic understanding**:
+This plugin doesn't just give AI access to files — it lets AI work across your vault as a connected whole:
 
 ### Example: Research Assistant
 ```
 User: "Summarize my research on machine learning optimization"
 
-AI uses semantic tools to:
+AI uses these tools to:
 1. Search for notes with ML optimization concepts
 2. Traverse graph to find related papers and techniques  
 3. Follow backlinks to discover applications
@@ -194,7 +195,7 @@ AI uses graph tools to:
 
 ## Features
 
-### Semantic Search
+### Full-Text Search
 - Advanced query operators: `tag:`, `path:`, `content:`
 - Regular expressions and phrase matching
 - Relevance ranking and snippet extraction
@@ -219,7 +220,7 @@ AI uses graph tools to:
 
 ## Plugin Settings
 
-Access settings via: Settings → Community plugins → Semantic MCP
+Access settings via: Settings → Community plugins → Semantic Notes Vault MCP
 
 Key configuration options:
 - **Server Ports**: HTTP (3001) and HTTPS (3443)
