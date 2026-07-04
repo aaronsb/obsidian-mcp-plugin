@@ -76,6 +76,29 @@ function unwrapGroup(el: unknown): { key: unknown; rows: unknown[] } | null {
   return { key: obj.key, rows: toPlainArray(inner) };
 }
 
+/**
+ * Dataview's programmatic `query()` API collapses a grouped LIST to bare group
+ * keys when nothing in the query references `rows` — the grouped items are
+ * dropped from the payload entirely (unlike rendered markdown, which shows
+ * them). So `LIST FROM "x" GROUP BY file.folder` comes back as just the folder
+ * names, with no files. Inject a default `rows.file.link` output expression for
+ * exactly that shape — a LIST with GROUP BY and no explicit output expression —
+ * so the API returns proper `{ key, rows }` groups instead. Queries that already
+ * name an output expression, and non-LIST / non-grouped queries, pass through
+ * unchanged.
+ */
+export function normalizeListGroupByQuery(query: string): string {
+  const trimmed = query.trimStart();
+  if (!/^LIST\b/i.test(trimmed)) return query;
+  if (!/\bGROUP\s+BY\b/i.test(trimmed)) return query;
+  // There's no explicit output expression when a clause keyword (or the end of
+  // the string) immediately follows the LIST keyword.
+  const noOutputExpr = /^LIST\s+(FROM|WHERE|SORT|GROUP|FLATTEN|LIMIT)\b/i.test(trimmed)
+    || /^LIST\s*$/i.test(trimmed);
+  if (!noOutputExpr) return query;
+  return trimmed.replace(/^LIST\b/i, 'LIST rows.file.link');
+}
+
 
 /** Dataview link value */
 interface DataviewLink {
@@ -224,7 +247,11 @@ export class DataviewTool {
         // Execute DQL query. Dataview returns {successful: false, error}
         // for syntax/runtime errors rather than throwing — propagate that
         // status to the outer envelope so the formatter can render it.
-        const result: DataviewQueryResult = await dataviewAPI.query(query);
+        // Recover grouped rows for an implicit `LIST ... GROUP BY` — see
+        // normalizeListGroupByQuery. The user-facing `query` echoed below stays
+        // the original input; only the executed query is augmented.
+        const effectiveQuery = normalizeListGroupByQuery(query);
+        const result: DataviewQueryResult = await dataviewAPI.query(effectiveQuery);
         const innerSuccess = result.successful !== false;
         return {
           success: innerSuccess,

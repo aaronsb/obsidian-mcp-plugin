@@ -1,4 +1,4 @@
-import { DataviewTool, isDataviewToolAvailable } from '../src/tools/dataview-tool';
+import { DataviewTool, isDataviewToolAvailable, normalizeListGroupByQuery } from '../src/tools/dataview-tool';
 import { PluginDetector } from '../src/utils/plugin-detector';
 import { formatResponse } from '../src/formatters';
 
@@ -66,6 +66,19 @@ class MockDataviewAPI {
     }
 
     if (query.includes('GROUP BY')) {
+      // Faithful to real Dataview: a grouped LIST that references `rows` returns
+      // list-pair group wrappers; one that does NOT collapses to bare group keys
+      // (the rows are dropped from the query() payload). This is what makes the
+      // normalizeListGroupByQuery injection observable (#220 live follow-up).
+      if (!query.includes('rows')) {
+        return {
+          successful: true,
+          value: {
+            type: 'list',
+            values: ['groupA', 'groupB']
+          }
+        };
+      }
       return {
         successful: true,
         value: {
@@ -608,6 +621,76 @@ describe('Dataview Integration', () => {
       // DateTime → bare ISO, no surrounding quotes
       expect(output).toContain('2026-01-02T03:04:05.000Z');
       expect(output).not.toContain('"2026-01-02T03:04:05.000Z"');
+    });
+  });
+
+  // Live follow-up to #220 (found running 0.11.37 against Dataview 0.5.68):
+  // Dataview's query() API drops grouped rows for an implicit `LIST ... GROUP BY`
+  // (no `rows` reference), returning bare group keys. normalizeListGroupByQuery
+  // injects a default `rows.file.link` output so proper groups come back.
+  describe('implicit LIST ... GROUP BY row recovery', () => {
+    test('injects rows.file.link only for a grouped LIST with no output expression', () => {
+      // Implicit grouped LIST → augmented
+      expect(normalizeListGroupByQuery('LIST FROM "x" GROUP BY file.folder'))
+        .toBe('LIST rows.file.link FROM "x" GROUP BY file.folder');
+      expect(normalizeListGroupByQuery('LIST GROUP BY status'))
+        .toBe('LIST rows.file.link GROUP BY status');
+      expect(normalizeListGroupByQuery('list from "x" group by y'))
+        .toBe('LIST rows.file.link from "x" group by y');
+
+      // Already has an output expression → unchanged
+      expect(normalizeListGroupByQuery('LIST rows.file.name FROM "x" GROUP BY file.folder'))
+        .toBe('LIST rows.file.name FROM "x" GROUP BY file.folder');
+      // Not grouped → unchanged
+      expect(normalizeListGroupByQuery('LIST FROM "x"'))
+        .toBe('LIST FROM "x"');
+      // Not a LIST → unchanged
+      expect(normalizeListGroupByQuery('TABLE file.mtime FROM "x" GROUP BY file.folder'))
+        .toBe('TABLE file.mtime FROM "x" GROUP BY file.folder');
+      expect(normalizeListGroupByQuery('TASK FROM "x" GROUP BY status'))
+        .toBe('TASK FROM "x" GROUP BY status');
+    });
+
+    test('an implicit grouped LIST renders grouped rows end-to-end, not bare keys', async () => {
+      const app = new MockApp(true, true);
+      const api = new MockObsidianAPI(app);
+      const tool = new DataviewTool(api as any);
+
+      // No `rows` in the user query; the faithful mock would return bare keys
+      // without the injection. With it, proper {key, rows} groups come back.
+      const result = await tool.executeQuery('LIST FROM #tag GROUP BY group');
+      const output = formatResponse('dataview', 'query', result, false);
+
+      expect(output).toContain('Dataview: LIST');
+      expect(output).toContain('groupA');
+      expect(output).toContain('Note 1'); // grouped row recovered
+      expect(output).toContain('Note 2');
+      expect(output).not.toContain('$widget');
+    });
+  });
+
+  // Live follow-up: `TASK ... GROUP BY status` groups incomplete tasks under a
+  // space-character key, which rendered as an empty bold header (`**** (n)`).
+  describe('whitespace group key label', () => {
+    test('a whitespace-only group key renders as (no group), not empty bold', () => {
+      const result = {
+        success: true,
+        query: 'TASK FROM "x" GROUP BY status',
+        format: 'dql',
+        result: {
+          type: 'task',
+          values: [
+            { key: ' ', rows: [{ text: 'incomplete task', completed: false, path: 'Note1.md' }] }
+          ]
+        },
+        type: 'task'
+      };
+
+      const output = formatResponse('dataview', 'query', result, false);
+
+      expect(output).toContain('(no group)');
+      expect(output).toContain('incomplete task');
+      expect(output).not.toContain('**** '); // no empty bold header
     });
   });
 
