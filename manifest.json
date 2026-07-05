@@ -2,7 +2,7 @@
   "id": "semantic-vault-mcp",
   "name": "Semantic Notes Vault MCP",
   "minAppVersion": "1.6.6",
-  "description": "Read, write, search, and traverse your vault from Claude Desktop and any AI assistant — via an MCP server built into Obsidian, no external server to run.",
+  "description": "Read, write, search, and traverse your vault from Claude Desktop and any AI assistant — via a built-in MCP server, no external server to run.",
   "author": "Aaron Bockelie",
   "authorUrl": "https://github.com/aaronsb",
   "fundingUrl": "https://github.com/sponsors/aaronsb",
