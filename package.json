@@ -33,7 +33,7 @@
     "@typescript-eslint/utils": "^8.62.0",
     "esbuild": "^0.28.1",
     "eslint": "^10.5.0",
-    "eslint-plugin-obsidianmd": "^0.3.0",
+    "eslint-plugin-obsidianmd": "^0.4.1",
     "globals": "^17.7.0",
     "jest": "^30.4.2",
     "jiti": "^2.7.0",
