@@ -29,7 +29,7 @@
     "@eslint/js": "^10.0.1",
     "@types/jest": "^30.0.0",
     "@types/minimatch": "^5.1.2",
-    "@types/node": "^25.9.2",
+    "@types/node": "^26.1.0",
     "@typescript-eslint/utils": "^8.62.0",
     "esbuild": "^0.28.1",
     "eslint": "^10.5.0",
