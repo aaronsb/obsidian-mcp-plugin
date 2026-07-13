@@ -112,7 +112,6 @@ export {
   tip,
   summaryFooter,
   joinLines,
-  formatPath,
   formatTree
 } from './utils';
 

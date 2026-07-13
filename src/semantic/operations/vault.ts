@@ -12,6 +12,23 @@ import { ValidationException } from '../../validation/input-validator';
 import { RouterContext } from './router-context';
 import { Params, paramStr, paramNum, paramBool, requireParamStr } from './shared';
 
+type FragmentStrategy = 'auto' | 'adaptive' | 'proximity' | 'semantic';
+
+/**
+ * Resolve the caller-facing fragment strategy onto the internal one.
+ *
+ * 'structure' is the honest name for what the index does — it cuts on the document's own
+ * headings and paragraphs. It is exposed instead of 'semantic', which reads as
+ * embedding/vector similarity to anything trained on the last decade of retrieval
+ * literature and led callers to expect matching this index does not do. 'semantic' stays
+ * accepted so existing callers keep working.
+ */
+function resolveFragmentStrategy(strategy: string | undefined): FragmentStrategy {
+  if (strategy === 'structure' || strategy === 'semantic') return 'semantic';
+  if (strategy === 'adaptive' || strategy === 'proximity') return strategy;
+  return 'auto';
+}
+
 /**
  * Extension of a vault path, including the leading dot ('' when there is none).
  * A leading dot is not an extension: '.gitignore' has none.
@@ -52,7 +69,9 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
       }
       case 'read': {
         const path = paramStr(params, 'path') ?? '';
-        const strategy = paramStr(params, 'strategy') as 'auto' | 'adaptive' | 'proximity' | 'semantic' | undefined;
+        const strategy = paramStr(params, 'strategy') !== undefined
+          ? resolveFragmentStrategy(paramStr(params, 'strategy'))
+          : undefined;
         return await readFileWithFragments(ctx.api, ctx.fragmentRetriever, {
           path,
           returnFullFile: paramBool(params, 'returnFullFile'),
@@ -63,8 +82,12 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
         });
       }
       case 'fragments': {
-        // Dedicated fragment search across multiple files
-        const fragmentQuery = paramStr(params, 'query') ?? paramStr(params, 'path') ?? '';
+        // Dedicated fragment search. When `path` is supplied it scopes the search to that
+        // one file; previously it was only ever read as a fallback *query* string, so
+        // naming a file returned passages from other files that the caller could easily
+        // attribute to the file it asked about.
+        const fragmentPath = paramStr(params, 'path');
+        const fragmentQuery = paramStr(params, 'query') ?? fragmentPath ?? '';
 
         // Skip indexing if no query provided
         if (!fragmentQuery || fragmentQuery.trim().length === 0) {
@@ -79,41 +102,48 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
         }
 
         try {
-          // Only index files that match the query to avoid indexing entire vault
-          // This is a lazy indexing approach - index on demand
-          const searchResults = await ctx.api.searchPaginated(fragmentQuery, 1, 20, 'combined', false);
+          const indexFile = async (filePath: string): Promise<void> => {
+            if (!filePath || !filePath.endsWith('.md')) return;
+            try {
+              const fileResponse = await ctx.api.getFile(filePath);
+              let content: string;
 
-          // Index only the files that match the search
-          if (searchResults && searchResults.results && searchResults.results.length > 0) {
-            for (const result of searchResults.results.slice(0, 20)) { // Limit to first 20 files
-              try {
-                const filePath = result.path;
-                if (filePath && filePath.endsWith('.md')) {
-                  const fileResponse = await ctx.api.getFile(filePath);
-                  let content: string;
+              if (typeof fileResponse === 'string') {
+                content = fileResponse;
+              } else if (fileResponse && typeof fileResponse === 'object' && 'content' in fileResponse) {
+                content = fileResponse.content;
+              } else {
+                return;
+              }
 
-                  if (typeof fileResponse === 'string') {
-                    content = fileResponse;
-                  } else if (fileResponse && typeof fileResponse === 'object' && 'content' in fileResponse) {
-                    content = fileResponse.content;
-                  } else {
-                    continue;
-                  }
+              ctx.fragmentRetriever.indexDocument(`file:${filePath}`, filePath, content);
+            } catch (e) {
+              // Skip files that can't be indexed
+              Debug.log(`Skipping file during fragment indexing:`, e);
+            }
+          };
 
-                  const docId = `file:${filePath}`;
-                  ctx.fragmentRetriever.indexDocument(docId, filePath, content);
-                }
-              } catch (e) {
-                // Skip files that can't be indexed
-                Debug.log(`Skipping file during fragment indexing:`, e);
+          if (fragmentPath) {
+            // Scoped to one file: index just that file. Searching the vault to decide what
+            // to index would be wasted work, and could fail to index the very file named.
+            await indexFile(fragmentPath);
+          } else {
+            // Only index files that match the query to avoid indexing entire vault
+            // This is a lazy indexing approach - index on demand
+            const searchResults = await ctx.api.searchPaginated(fragmentQuery, 1, 20, 'combined', false);
+
+            if (searchResults && searchResults.results && searchResults.results.length > 0) {
+              for (const result of searchResults.results.slice(0, 20)) { // Limit to first 20 files
+                await indexFile(result.path);
               }
             }
           }
 
           // Search for fragments in indexed documents
           const fragmentResponse = ctx.fragmentRetriever.retrieveFragments(fragmentQuery, {
-            strategy: (paramStr(params, 'strategy') as 'auto' | 'adaptive' | 'proximity' | 'semantic') || 'auto',
-            maxFragments: paramNum(params, 'maxFragments') || 5
+            strategy: resolveFragmentStrategy(paramStr(params, 'strategy')),
+            maxFragments: paramNum(params, 'maxFragments') || 5,
+            scopePath: fragmentPath
           });
 
           return fragmentResponse;

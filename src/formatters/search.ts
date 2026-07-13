@@ -10,8 +10,7 @@ import {
   divider,
   tip,
   summaryFooter,
-  joinLines,
-  formatPath
+  joinLines
 } from './utils';
 
 export interface SearchResult {
@@ -80,7 +79,9 @@ export function formatSearchResults(response: SearchResponse): string {
     const scoreText = result.score > 0 ? ` (${interpretScore(result.score)})` : '';
 
     lines.push(`${num}. **${result.title}**${scoreText}`);
-    lines.push(property('Path', formatPath(result.path)));
+    // Verbatim: the agent's next call feeds this straight to vault.read /
+    // graph.neighbors. An elided path is not a shorter path, it is a wrong one.
+    lines.push(property('Path', result.path));
 
     if (result.snippet?.content) {
       const snippetText = truncate(result.snippet.content, 100);
@@ -98,6 +99,15 @@ export function formatSearchResults(response: SearchResponse): string {
   }
 
   lines.push(tip('Use `vault.read(path)` or `view.file(path)` to see full content'));
+
+  // Point at the graph, with the top hit's path already filled in. Search ranks by term
+  // frequency, so it finds an anchor but not the notes that discuss the topic in other
+  // words. Expanding from an anchor along real links is what reaches those; without this
+  // hint the only next move on offer is another search, which re-runs the same ranking.
+  if (results.length > 0) {
+    lines.push(tip(`Related notes are often reached better by following links than by searching again — try \`graph.neighbors(path: "${results[0].path}")\` to expand from the top hit`));
+  }
+
   lines.push(summaryFooter());
 
   return joinLines(lines);

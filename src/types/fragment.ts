@@ -125,4 +125,10 @@ export interface FragmentRef {
 export interface RetrievalOptions {
   strategy?: 'auto' | 'adaptive' | 'proximity' | 'semantic';
   maxFragments?: number;
+  /**
+   * Restrict results to fragments from this document. Without it, retrieval spans every
+   * indexed document, so a caller naming a file would receive passages from other files
+   * and could attribute them to the file it asked about.
+   */
+  scopePath?: string;
 }

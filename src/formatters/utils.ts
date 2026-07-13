@@ -117,16 +117,6 @@ export function escapeMarkdown(text: string): string {
 }
 
 /**
- * Format a path for display (shorten if too long)
- */
-export function formatPath(path: string, maxLen: number = 60): string {
-  if (path.length <= maxLen) return path;
-  const parts = path.split('/');
-  if (parts.length <= 2) return truncate(path, maxLen);
-  return `${parts[0]}/.../${parts[parts.length - 1]}`;
-}
-
-/**
  * Create a simple ASCII tree structure
  */
 export function formatTree(items: string[], prefix: string = ''): string[] {
