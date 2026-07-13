@@ -15,14 +15,28 @@ export function truncate(text: string, maxLen: number = 120): string {
 }
 
 /**
- * Interpret a relevance score as a human-readable label
+ * Render a search score.
+ *
+ * Deliberately carries NO quality adjective. The score is TF-IDF — how often the query's
+ * words occur, weighted by how rare they are — and it has no absolute scale: it means
+ * different things for different queries and corpora. The old bands ("Good" ≥1.0, "Low"
+ * >0) asserted a relevance judgement the number cannot support, and the failure was not
+ * cosmetic. On a corpus where most notes mention the query term, every score compresses
+ * into a narrow band: measured on a real vault, the single best-answering note scored
+ * 1.42 while five other load-bearing notes scored 0.36-0.45 and were all labelled "Low".
+ * An agent pruning at "Low" would have discarded the entire answer except the anchor.
+ *
+ * Showing the score as a share of the top hit makes that compression visible instead of
+ * hiding it behind a word.
  */
-export function interpretScore(score: number): string {
-  if (score >= 2.0) return `Excellent (${score.toFixed(2)})`;
-  if (score >= 1.0) return `Good (${score.toFixed(2)})`;
-  if (score >= 0.5) return `Moderate (${score.toFixed(2)})`;
-  if (score > 0) return `Low (${score.toFixed(2)})`;
-  return `Match`;
+export function interpretScore(score: number, topScore?: number): string {
+  if (score <= 0) return 'match';
+
+  const value = score.toFixed(2);
+  if (topScore && topScore > 0 && score < topScore) {
+    return `${value}, ${Math.round((score / topScore) * 100)}% of top hit`;
+  }
+  return value;
 }
 
 /**
@@ -92,7 +106,12 @@ export function joinLines(...lines: (string | string[])[]): string {
  * Add the standard footer hint about raw mode
  */
 export function summaryFooter(): string {
-  return '\n_Summary view. For all metadata fields, use `raw: true`._';
+  // "Summary view" read as a truncation warning on tools whose job is faithful retrieval,
+  // and callers spent real attention deciding whether the content they had been given was
+  // lossy. Only metadata is abbreviated here; when content is actually truncated the
+  // response says so in its own right (a Pagination section, or an explicit "N more"
+  // line). Name the thing that is abbreviated instead of implying it might be the content.
+  return '\n_Metadata fields are abbreviated; use `raw: true` for the full structured payload._';
 }
 
 /**
