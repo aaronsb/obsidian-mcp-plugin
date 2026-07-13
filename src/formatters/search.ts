@@ -74,9 +74,13 @@ export function formatSearchResults(response: SearchResponse): string {
   lines.push(header(2, 'Results'));
   lines.push('');
 
+  // Scores are only comparable within one result set, so every score is rendered against
+  // this run's top hit rather than against fixed global bands.
+  const topScore = results.reduce((max, r) => Math.max(max, r.score ?? 0), 0);
+
   results.forEach((result, i) => {
     const num = start + i;
-    const scoreText = result.score > 0 ? ` (${interpretScore(result.score)})` : '';
+    const scoreText = result.score > 0 ? ` (${interpretScore(result.score, topScore)})` : '';
 
     lines.push(`${num}. **${result.title}**${scoreText}`);
     // Verbatim: the agent's next call feeds this straight to vault.read /
@@ -99,6 +103,14 @@ export function formatSearchResults(response: SearchResponse): string {
   }
 
   lines.push(tip('Use `vault.read(path)` or `view.file(path)` to see full content'));
+
+  // Say plainly what the score is and is not. Without this an agent reasonably treats the
+  // ordering as a relevance ranking and prunes the tail — which, on a corpus where most
+  // notes share the query term, discards the notes that answer the question in their own
+  // vocabulary while keeping the ones that merely repeat the query word.
+  if (results.length > 1) {
+    lines.push(tip('Scores are term frequency, not an answer to your question. Where many notes share the query words the scores bunch up, so a low score does NOT mean a note is unimportant — judge by the snippet, and do not prune on score alone.'));
+  }
 
   // Point at the graph, with the top hit's path already filled in. Search ranks by term
   // frequency, so it finds an anchor but not the notes that discuss the topic in other
