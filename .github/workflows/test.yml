@@ -29,14 +29,15 @@ jobs:
     - name: Build
       run: npm run build
     
-    - name: Run tests
-      run: npm test
-    
+    # Runs the suite and enforces the coverage floors in jest.config.js.
+    # Fails the build on backslide; raise a floor when real coverage clears it.
+    - name: Run tests + coverage gate
+      run: npm run test:coverage
+
+    - name: Coverage map
+      if: always()
+      run: node scripts/coverage-map.mjs
+
     - name: Run linter
       run: npm run lint
       continue-on-error: true  # Don't fail on lint warnings for now
-    
-    # Optional: Add code coverage
-    # - name: Upload coverage reports
-    #   uses: codecov/codecov-action@v3
-    #   if: matrix.node-version == '20.x'

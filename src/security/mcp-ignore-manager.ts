@@ -3,8 +3,18 @@ import { Minimatch } from 'minimatch';
 import { Debug } from '../utils/debug';
 
 /**
+ * One .mcpignore line, compiled. `matchers` are the globs that together implement the
+ * source pattern's gitignore semantics (see expandPattern); the rule matches a path if
+ * any of them does.
+ */
+interface IgnoreRule {
+  negate: boolean;
+  matchers: Minimatch[];
+}
+
+/**
  * MCPIgnoreManager - Handles .mcpignore file-based path exclusions
- * 
+ *
  * Uses .gitignore-style patterns to exclude files and directories from MCP operations.
  * Patterns are stored in .mcpignore at the vault root (like .gitignore)
  */
@@ -12,7 +22,7 @@ export class MCPIgnoreManager {
   private app: App;
   private ignorePath: string;
   private patterns: string[] = [];
-  private matchers: Minimatch[] = [];
+  private rules: IgnoreRule[] = [];
   private isEnabled: boolean = false;
   private lastModified: number = 0;
 
@@ -61,49 +71,85 @@ export class MCPIgnoreManager {
     } catch {
       // File doesn't exist or can't be read - no exclusions
       this.patterns = [];
-      this.matchers = [];
+      this.rules = [];
       this.lastModified = 0;
       Debug.log('MCPIgnore: No .mcpignore file found, no exclusions active');
     }
   }
 
   /**
+   * Translate one .gitignore pattern into the minimatch globs that implement it.
+   *
+   * Minimatch is a glob matcher, not a gitignore matcher, so handing it a raw pattern
+   * silently under-blocks. Two gitignore rules have to be expanded explicitly:
+   *
+   *  - A pattern with no internal '/' matches at ANY depth ('*.secret' hides
+   *    'a/b/creds.secret'), whereas the bare glob only matches the top level.
+   *  - A directory match also covers everything beneath it ('private/' hides
+   *    'private/notes.md'). Nothing downstream re-checks ancestors — every caller of
+   *    isExcluded() passes a full file path — so the contents must be matched here or
+   *    they are not excluded at all.
+   *
+   * Returns the globs for the pattern; a path matches the pattern if it matches any.
+   */
+  private expandPattern(pattern: string): string[] {
+    let p = pattern;
+
+    // 'dir/' is directory-only in gitignore. We cannot stat here, so we treat the name
+    // as matching whether it is a file or a folder; the contents glob below is what
+    // actually does the work for directories.
+    if (p.endsWith('/')) {
+      p = p.slice(0, -1);
+    }
+
+    // A leading '/' anchors to the vault root; an internal '/' anchors too. Only a
+    // pattern with no separator at all is depth-agnostic.
+    const rootAnchored = p.startsWith('/');
+    if (rootAnchored) {
+      p = p.replace(/^\/+/, '');
+    }
+
+    const base = rootAnchored || p.includes('/') ? p : `**/${p}`;
+
+    // The second glob excludes the contents when `base` names a directory. It is inert
+    // for a plain file, since no path can be nested under one.
+    return [base, `${base}/**`];
+  }
+
+  /**
    * Parse .gitignore-style content into patterns
    */
   private parseIgnoreContent(content: string): void {
-    const lines = content.split('\n');
     const validPatterns: string[] = [];
-    const matchers: Minimatch[] = [];
+    const rules: IgnoreRule[] = [];
 
-    for (const line of lines) {
+    for (const line of content.split('\n')) {
       const trimmed = line.trim();
-      
+
       // Skip empty lines and comments
       if (!trimmed || trimmed.startsWith('#')) {
         continue;
       }
 
-      // Handle negation patterns (!)
-      let pattern = trimmed;
-      let negate = false;
-      if (pattern.startsWith('!')) {
-        negate = true;
-        pattern = pattern.substring(1);
+      // Negation is handled here rather than by Minimatch: the pattern is rewritten
+      // below, so the '!' would not survive to reach it anyway.
+      const negate = trimmed.startsWith('!');
+      const body = negate ? trimmed.slice(1) : trimmed;
+      if (!body) {
+        continue;
       }
 
       try {
-        // Create minimatch instance with gitignore-compatible options
-        const matcher = new Minimatch(pattern, {
+        const matchers = this.expandPattern(body).map(glob => new Minimatch(glob, {
           dot: true,           // Match files starting with .
           nobrace: false,      // Enable {a,b} expansion
           noglobstar: false,   // Enable ** patterns
           noext: false,        // Enable extended matching
-          nonegate: false,     // Allow negation
-          flipNegate: negate   // Handle ! prefix
-        });
+          nonegate: true       // '!' is ours to interpret, not Minimatch's
+        }));
 
         validPatterns.push(trimmed);
-        matchers.push(matcher);
+        rules.push({ negate, matchers });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         Debug.log(`MCPIgnore: Invalid pattern "${trimmed}": ${message}`);
@@ -111,7 +157,7 @@ export class MCPIgnoreManager {
     }
 
     this.patterns = validPatterns;
-    this.matchers = matchers;
+    this.rules = rules;
   }
 
   /**
@@ -120,52 +166,23 @@ export class MCPIgnoreManager {
    * @returns true if path should be excluded
    */
   isExcluded(path: string): boolean {
-    Debug.log(`🔍 MCPIgnore.isExcluded called with path: "${path}"`);
-    
-    if (!this.isEnabled || this.matchers.length === 0) {
-      Debug.log(`🔍 MCPIgnore: disabled or no matchers (enabled: ${this.isEnabled}, matchers: ${this.matchers.length})`);
+    if (!this.isEnabled || this.rules.length === 0) {
       return false;
     }
 
     // Normalize path (remove leading slash, use forward slashes)
     const normalizedPath = path.replace(/^\/+/, '').replace(/\\/g, '/');
-    Debug.log(`🔍 MCPIgnore: normalized path "${path}" -> "${normalizedPath}"`);
-    
+
+    // Last matching rule wins, so a later negation can re-include an earlier exclusion.
     let excluded = false;
-    
-    // Process patterns in order - later patterns can override earlier ones
-    Debug.log(`🔍 MCPIgnore: checking ${this.matchers.length} patterns against "${normalizedPath}"`);
-    for (let i = 0; i < this.matchers.length; i++) {
-      const matcher = this.matchers[i];
-      let isMatch = matcher.match(normalizedPath);
-      
-      // .gitignore directory patterns: "dir/" should match "dir" and "dir/anything"
-      if (!isMatch && matcher.pattern.endsWith('/')) {
-        // Try matching without the trailing slash for the directory itself
-        const dirPattern = matcher.pattern.slice(0, -1);
-        const dirMatcher = new Minimatch(dirPattern, matcher.options);
-        isMatch = dirMatcher.match(normalizedPath);
-        Debug.log(`🔍 MCPIgnore: directory pattern fallback "${dirPattern}" -> match: ${isMatch}`);
-      }
-      
-      Debug.log(`🔍 MCPIgnore: pattern ${i+1}: "${matcher.pattern}" (negate: ${matcher.negate}) -> match: ${isMatch}`);
-      
-      if (matcher.negate) {
-        // Negation pattern - include if it matches
-        if (isMatch) {
-          excluded = false;
-          Debug.log(`🔍 MCPIgnore: negation pattern matched, setting excluded = false`);
-        }
-      } else {
-        // Normal pattern - exclude if it matches
-        if (isMatch) {
-          excluded = true;
-          Debug.log(`🔍 MCPIgnore: normal pattern matched, setting excluded = true`);
-        }
+
+    for (const rule of this.rules) {
+      if (rule.matchers.some(matcher => matcher.match(normalizedPath))) {
+        excluded = !rule.negate;
       }
     }
 
-    Debug.log(`🔍 MCPIgnore: final result for "${normalizedPath}": excluded = ${excluded}`);
+    Debug.log(`🔍 MCPIgnore: "${normalizedPath}" excluded = ${excluded}`);
     return excluded;
   }
 

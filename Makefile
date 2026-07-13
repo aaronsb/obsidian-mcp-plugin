@@ -1,4 +1,4 @@
-.PHONY: help build dev test lint lint-fix check clean install \
+.PHONY: help build dev test coverage coverage-map coverage-gate lint lint-fix check clean install \
        release-patch release-minor release-major release publish promote sync-version mcpb scorecard set-description
 
 MIN_OBSIDIAN := 1.6.6
@@ -29,7 +29,17 @@ lint-fix: ## Run ESLint with auto-fix
 test: ## Run test suite
 	npm test
 
-check: build lint test ## Run all quality gates (build + lint + test)
+coverage: ## Run tests with coverage + print the per-file map (html report in coverage/)
+	npm run test:coverage
+	@node scripts/coverage-map.mjs
+
+coverage-map: ## Print the per-file coverage map from the last run (no re-run)
+	@node scripts/coverage-map.mjs
+
+coverage-gate: ## Enforce the coverage floors in jest.config.js (exit 1 on backslide)
+	npm run test:coverage
+
+check: build lint coverage-gate ## Run all quality gates (build + lint + tests + coverage floors)
 
 # --- Release ---
 # Full cycle: bump → sync → update versions.json → commit → push → trigger workflow
