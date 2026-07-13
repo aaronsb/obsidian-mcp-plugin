@@ -335,7 +335,18 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
         // Extract directory from current path
         const lastSlash = path.lastIndexOf('/');
         const dir = lastSlash >= 0 ? path.substring(0, lastSlash) : '';
-        const newPath = dir ? `${dir}/${newName}` : newName;
+
+        // Preserve the source file's extension when newName omits one
+        let resolvedName = newName;
+        if (!newName.includes('.')) {
+          const dotIdx = path.lastIndexOf('.');
+          if (dotIdx >= 0) {
+            const sourceExt = path.substring(dotIdx);
+            resolvedName = newName + sourceExt;
+          }
+        }
+
+        const newPath = dir ? `${dir}/${resolvedName}` : resolvedName;
 
         // Check if destination already exists
         try {
