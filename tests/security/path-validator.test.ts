@@ -1,4 +1,4 @@
-import { SecurePathValidator, SecurityError } from '../../src/security/path-validator';
+import { SecurePathValidator, TypeSafePathValidator, SecurityError } from '../../src/security/path-validator';
 import { App, normalizePath } from 'obsidian';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -259,10 +259,35 @@ describe('SecurePathValidator', () => {
 });
 
 describe('TypeSafePathValidator', () => {
-  // TypeScript compile-time tests would go here
-  // These mainly test that the branded types work correctly
-  test('exists for type safety', () => {
-    // This is mainly a compile-time feature
-    expect(true).toBe(true);
+  // The branded ValidatedPath return type is compile-time only, but the class is a real
+  // SecurePathValidator subclass and must still enforce the boundary at runtime — that
+  // part is testable, and is what actually protects the vault.
+  let validator: TypeSafePathValidator;
+  const mockBaseDir = '/home/user/vault';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    (fs.existsSync as jest.Mock).mockReturnValue(false);
+    (path.normalize as jest.Mock).mockImplementation((p: string) => p);
+    (path.resolve as jest.Mock).mockImplementation((base: string, userPath: string) => `${base}/${userPath}`);
+    (path.relative as jest.Mock).mockImplementation((from: string, to: string) =>
+      to.startsWith(from) ? to.substring(from.length + 1) : to
+    );
+
+    const mockApp = { vault: { adapter: { basePath: mockBaseDir } } };
+    validator = new TypeSafePathValidator(mockApp as unknown as App);
+  });
+
+  test('returns the validated path for a legitimate input', () => {
+    expect(validator.validatePath('notes/daily.md')).toBe('notes/daily.md');
+  });
+
+  test('still rejects directory traversal inherited from SecurePathValidator', () => {
+    expect(() => validator.validatePath('../../etc/passwd')).toThrow(SecurityError);
+  });
+
+  test('still rejects empty paths', () => {
+    expect(() => validator.validatePath('')).toThrow(SecurityError);
   });
 });

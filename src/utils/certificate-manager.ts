@@ -299,7 +299,10 @@ export class CertificateManager {
       ca,
       passphrase: config.passphrase,
       rejectUnauthorized: config.rejectUnauthorized !== false,
-      secureProtocol: config.minTLSVersion === 'TLSv1.3' ? 'TLSv1_3_method' : 'TLSv1_2_method'
+      // minVersion sets a floor. The legacy `secureProtocol` method-string API pins one
+      // exact version, and OpenSSL never shipped a TLSv1_3_method, so selecting TLS 1.3
+      // through it threw "Unknown method: TLSv1_3_method" at context creation.
+      minVersion: config.minTLSVersion ?? 'TLSv1.2'
     };
     
     Debug.log('🔒 Creating HTTPS server with certificate');

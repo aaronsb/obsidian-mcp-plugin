@@ -12,6 +12,16 @@ import { ValidationException } from '../../validation/input-validator';
 import { RouterContext } from './router-context';
 import { Params, paramStr, paramNum, paramBool, requireParamStr } from './shared';
 
+/**
+ * Extension of a vault path, including the leading dot ('' when there is none).
+ * A leading dot is not an extension: '.gitignore' has none.
+ */
+function extensionOf(path: string): string {
+  const base = path.substring(path.lastIndexOf('/') + 1);
+  const dot = base.lastIndexOf('.');
+  return dot > 0 ? base.substring(dot) : '';
+}
+
 export async function executeVaultOperation(ctx: RouterContext, action: string, params: Params): Promise<unknown> {
     switch (action) {
       case 'list': {
@@ -335,7 +345,13 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
         // Extract directory from current path
         const lastSlash = path.lastIndexOf('/');
         const dir = lastSlash >= 0 ? path.substring(0, lastSlash) : '';
-        const newPath = dir ? `${dir}/${newName}` : newName;
+
+        // Carry the source extension over when newName omits one, so renaming
+        // 'note.md' to 'renamed' yields 'renamed.md' rather than an extension-less
+        // file that drops out of markdown views (#253). An explicit extension in
+        // newName is honoured as-is, so no double extension is appended.
+        const resolvedName = extensionOf(newName) ? newName : `${newName}${extensionOf(path)}`;
+        const newPath = dir ? `${dir}/${resolvedName}` : resolvedName;
 
         // Check if destination already exists
         try {

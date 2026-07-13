@@ -9,6 +9,7 @@
     "sync-version": "node sync-version.mjs",
     "version": "node sync-version.mjs && git add manifest.json",
     "test": "node --no-warnings node_modules/.bin/jest",
+    "test:coverage": "node --no-warnings node_modules/.bin/jest --coverage",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },

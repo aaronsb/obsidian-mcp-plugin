@@ -462,7 +462,7 @@ function getParametersForOperation(operation: string): Record<string, unknown> {
       },
       newName: {
         type: 'string',
-        description: 'New filename for rename operation (without path)'
+        description: 'New filename for rename operation (without path). If the extension is omitted, the source file\'s extension is preserved (renaming "note.md" to "renamed" yields "renamed.md")'
       },
       overwrite: {
         type: 'boolean',

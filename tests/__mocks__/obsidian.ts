@@ -25,6 +25,9 @@ export class App {
 }
 
 export class Vault {
+  adapter: any = new DataAdapter();
+  configDir: string = '.obsidian';
+
   getName(): string {
     return 'test-vault';
   }
@@ -46,6 +49,18 @@ export class Vault {
   readBinary(file: any): Promise<ArrayBuffer> {
     return Promise.resolve(new ArrayBuffer(0));
   }
+}
+
+export class DataAdapter {}
+
+export class FileSystemAdapter extends DataAdapter {
+  getBasePath(): string {
+    return '/test-vault';
+  }
+}
+
+export class Notice {
+  constructor(public message?: string) {}
 }
 
 export class Workspace {
