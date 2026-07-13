@@ -225,7 +225,8 @@ export function formatGraphPath(response: GraphPathResponse): string {
  * Actual response: { operation, sourcePath, statistics: {...}, message, workflow }
  */
 export interface GraphStatsResponse {
-  sourcePath: string;
+  // Absent for the vault-wide call (graph.statistics with no sourcePath).
+  sourcePath?: string;
   // Flat format (legacy)
   inDegree?: number;
   outDegree?: number;
@@ -239,13 +240,29 @@ export interface GraphStatsResponse {
     unresolvedCount?: number;
     tagCount?: number;
   };
+  // Vault-wide format — a different shape entirely, returned when no sourcePath is given.
+  vaultStatistics?: {
+    totalNotes: number;
+    totalLinks: number;
+    orphanCount: number;
+    averageDegree: number;
+    largestComponentSize?: number;
+    isolatedClusters?: number;
+  };
   message?: string;
 }
 
 export function formatGraphStats(response: GraphStatsResponse): string {
   const lines: string[] = [];
 
-  const fileName = response.sourcePath.split('/').pop() || response.sourcePath;
+  // Vault-wide statistics carry no sourcePath. Reading one unconditionally threw and
+  // dropped the caller into the raw-JSON fallback.
+  if (response.vaultStatistics) {
+    return formatVaultGraphStats(response.vaultStatistics);
+  }
+
+  const sourcePath = response.sourcePath ?? '';
+  const fileName = sourcePath.split('/').pop() || sourcePath || 'vault';
   lines.push(header(1, `Stats: ${fileName}`));
   lines.push('');
 
@@ -279,6 +296,45 @@ export function formatGraphStats(response: GraphStatsResponse): string {
 
   lines.push(divider());
   lines.push(tip('Use `graph.neighbors(path)` to see the actual connections'));
+  lines.push(summaryFooter());
+
+  return joinLines(lines);
+}
+
+/**
+ * Format the vault-wide graph statistics (graph.statistics with no sourcePath).
+ *
+ * Average degree is the headline number because it tells the caller which retrieval
+ * strategy will actually pay here: in a densely linked vault, following links from a
+ * couple of anchor notes beats issuing more searches.
+ */
+function formatVaultGraphStats(stats: NonNullable<GraphStatsResponse['vaultStatistics']>): string {
+  const lines: string[] = [];
+
+  lines.push(header(1, 'Vault graph'));
+  lines.push('');
+  lines.push(property('Notes', stats.totalNotes.toString(), 0));
+  lines.push(property('Links', stats.totalLinks.toString(), 0));
+  lines.push(property('Average connections per note', stats.averageDegree.toFixed(1), 0));
+  lines.push(property('Orphans', stats.orphanCount.toString(), 0));
+
+  if (stats.largestComponentSize !== undefined) {
+    lines.push(property('Largest connected component', `${stats.largestComponentSize} notes`, 0));
+  }
+  if (stats.isolatedClusters !== undefined) {
+    lines.push(property('Separate clusters', stats.isolatedClusters.toString(), 0));
+  }
+
+  lines.push('');
+  lines.push(divider());
+
+  if (stats.averageDegree >= 3) {
+    lines.push(`This vault is densely linked (${stats.averageDegree.toFixed(1)} links per note on average). Its link structure is a stronger signal than keyword frequency:`);
+    lines.push(tip('Find one or two anchor notes with `vault.search`, then expand with `graph.neighbors(path)` / `graph.traverse(path)` rather than issuing more searches'));
+  } else {
+    lines.push(tip('Sparsely linked vault — `vault.search` will usually outperform graph traversal here'));
+  }
+
   lines.push(summaryFooter());
 
   return joinLines(lines);

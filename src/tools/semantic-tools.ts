@@ -360,12 +360,12 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility): Sem
 
 export function getOperationDescription(operation: string): string {
   const descriptions: Record<string, string> = {
-    vault: '📁 File operations - list, read, create, update, delete, search, fragments, move, rename, copy, split, combine, concatenate. Search supports: operators (file:, path:, content:, tag:), OR/AND, "quoted phrases", /regex/. Options: ranked=true for TF-IDF relevance scoring, searchStrategy (filename|content|combined|auto), includeSnippets for contextual extracts.',
+    vault: '📁 File operations - list, read, create, update, delete, search, fragments, move, rename, copy, split, combine, concatenate. Search supports: operators (file:, path:, content:, tag:), OR/AND, "quoted phrases", /regex/. Options: ranked=true for TF-IDF relevance scoring, searchStrategy (filename|content|combined|auto), includeSnippets for contextual extracts. Search matches words, not meaning — it will miss notes that cover a topic in different vocabulary. Prefer a couple of BROAD scans over many narrow ones, then follow links from the hits with `graph.neighbors` to reach what search cannot rank.',
     edit: '✏️ Edit files - window: find/replace with fuzzy matching, append: add to end, patch: modify headings/blocks/frontmatter, at_line: insert at line number, from_buffer: reuse previous window content',
     view: '👁️ View content - file: entire document, window: ~20 lines around point, active: current editor file, open_in_obsidian: launch in app',
     workflow: '💡 Get contextual suggestions for next actions based on current state',
     system: 'ℹ️ System operations - info: server details, commands: available actions, fetch_web: retrieve and process web content',
-    graph: '🕸️ Graph navigation - traverse: explore connections, neighbors: immediate links, path: find routes between notes, statistics: link counts, backlinks/forwardlinks: directional analysis, search-traverse: connected snippets',
+    graph: '🕸️ Graph navigation — follow the vault\'s own links. Use this to EXPAND from a note you already found, instead of running another search: search ranks by term frequency, so it cannot reach notes that discuss a topic in different words, but a link to them usually exists. Best pattern: one or two broad `vault.search` scans to find anchor notes, then `neighbors`/`traverse` from those anchors to gather the rest. Actions — neighbors: immediate links of a note (start here); traverse: multi-hop exploration; search-traverse: traverse while matching a query, i.e. scan and follow in one call; path: how two notes connect; backlinks/forwardlinks: directional links; statistics: link counts (call with no sourcePath for vault-wide density); tag-analysis/shared-tags: tag structure.',
     dataview: '📊 Dataview operations - query: execute DQL queries (LIST FROM "folder", TABLE field FROM #tag WHERE condition), list: get pages with metadata and frontmatter, metadata: extract complete page metadata, validate: check DQL syntax, status: plugin availability. Supports LIST, TABLE, TASK, CALENDAR queries with WHERE filters, sorting, grouping.',
     bases: '🗃️ Bases operations - list: show all .base files, read: get YAML config, create: new base with views/filters/formulas, query: execute filters on vault notes, view: get table/card view data, evaluate: test formulas, export: CSV/JSON/Markdown. Bases use YAML format with expression-based filters like status == "active" and file.hasTag("project")'
   };
@@ -441,8 +441,8 @@ function getParametersForOperation(operation: string): Record<string, unknown> {
       },
       strategy: {
         type: 'string',
-        enum: ['auto', 'adaptive', 'proximity', 'semantic'],
-        description: 'Fragment retrieval strategy (default: auto)'
+        enum: ['auto', 'adaptive', 'proximity', 'structure', 'semantic'],
+        description: 'Fragment retrieval strategy (default: auto). None of these are embedding/vector search — all match words, not meaning. auto: pick per query. adaptive: term-frequency ranked passages. proximity: passages where the query terms appear close together. structure: passages cut on the document\'s own structure (headings, paragraphs) with surrounding context kept. "semantic" is a deprecated alias of "structure" — it never meant vector similarity, and is retained only for compatibility.'
       },
       maxFragments: {
         type: 'number',

@@ -32,20 +32,24 @@ export class UniversalFragmentRetriever {
     query: string,
     options: RetrievalOptions = {}
   ): SemanticResponse<Fragment[]> {
-    const { strategy = 'auto', maxFragments = 5 } = options;
-    
+    const { strategy = 'auto', maxFragments = 5, scopePath } = options;
+
     let fragments: Fragment[] = [];
     let selectedStrategy: string = strategy;
-    
+
     if (strategy === 'auto') {
       // Choose strategy based on query characteristics
       selectedStrategy = this.selectOptimalStrategy(query);
     }
-    
+
+    // When scoping to one document, over-fetch: the strategies rank across every indexed
+    // document, so the top `maxFragments` may contain nothing from the requested file.
+    const candidateCount = scopePath ? Math.max(maxFragments * 10, 50) : maxFragments;
+
     // Execute the selected strategy (all search methods are synchronous)
     switch (selectedStrategy) {
       case 'adaptive':
-        fragments = this.adaptiveIndex.search(query, maxFragments);
+        fragments = this.adaptiveIndex.search(query, candidateCount);
         break;
 
       case 'proximity':
@@ -53,15 +57,19 @@ export class UniversalFragmentRetriever {
         break;
 
       case 'semantic':
-        fragments = this.semanticIndex.searchWithContext(query, { maxFragments });
+        fragments = this.semanticIndex.searchWithContext(query, { maxFragments: candidateCount });
         break;
 
       default:
         // Hybrid approach - combine results from multiple strategies
-        fragments = this.hybridSearch(query, maxFragments);
+        fragments = this.hybridSearch(query, candidateCount);
         selectedStrategy = 'hybrid';
     }
-    
+
+    if (scopePath) {
+      fragments = fragments.filter(fragment => fragment.docPath === scopePath);
+    }
+
     // Limit to requested number of fragments
     fragments = fragments.slice(0, maxFragments);
     

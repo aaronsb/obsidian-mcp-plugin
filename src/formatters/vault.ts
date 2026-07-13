@@ -48,10 +48,12 @@ export function formatFileList(response: FileListResponse | string[]): string {
     lines.push(`Found ${paths.length} item${paths.length !== 1 ? 's' : ''}`);
     lines.push('');
 
+    // Full vault-relative path, not the basename. A listing that shows only names
+    // invites the agent to join them onto the directory it asked for, which
+    // fabricates a path when the entries actually live in nested subdirectories.
     paths.slice(0, truncateAt).forEach(path => {
-      const name = path.split('/').pop() || path;
-      const isFolder = !path.includes('.');
-      lines.push(`- ${isFolder ? name + '/' : name}`);
+      const isFolder = !path.split('/').pop()?.includes('.');
+      lines.push(`- ${isFolder ? path + '/' : path}`);
     });
 
     if (paths.length > truncateAt) {
@@ -96,11 +98,15 @@ export function formatFileList(response: FileListResponse | string[]): string {
     lines.push('');
   }
 
+  // Entries are listed by full vault-relative path, never by basename alone: the path
+  // is what the agent passes to the next call, and a nested entry shown as a bare name
+  // reads as though it sits directly under `directory`, which it may not.
+
   // Folders first
   if (folders.length > 0) {
     lines.push(header(2, 'Folders'));
     folders.slice(0, 20).forEach(f => {
-      lines.push(`- ${f.name}/`);
+      lines.push(`- ${f.path}/`);
     });
     if (folders.length > 20) {
       lines.push(`- ... and ${folders.length - 20} more folders`);
@@ -113,7 +119,7 @@ export function formatFileList(response: FileListResponse | string[]): string {
     lines.push(header(2, 'Files'));
     regularFiles.slice(0, 30).forEach(f => {
       const sizeText = f.size !== undefined ? ` (${formatFileSize(f.size)})` : '';
-      lines.push(`- ${f.name}${sizeText}`);
+      lines.push(`- ${f.path}${sizeText}`);
     });
     if (regularFiles.length > 30) {
       lines.push(`- ... and ${regularFiles.length - 30} more files`);
@@ -212,8 +218,13 @@ export function formatFileRead(response: FileReadResponse): string {
     }
   }
 
-  // Frontmatter summary
-  if (frontmatter && Object.keys(frontmatter).length > 0) {
+  // Frontmatter summary — skipped when the body already carries the raw frontmatter
+  // block, which is the normal case for a whole-note read. Printing a truncated summary
+  // of text that is reproduced verbatim a few lines below costs tokens on the most
+  // frequently called action and tells the reader nothing new.
+  const bodyRepeatsFrontmatter = typeof content === 'string' && content.trimStart().startsWith('---');
+
+  if (frontmatter && Object.keys(frontmatter).length > 0 && !bodyRepeatsFrontmatter) {
     lines.push('');
     lines.push(header(2, 'Frontmatter'));
     const keys = Object.keys(frontmatter).slice(0, 10);
