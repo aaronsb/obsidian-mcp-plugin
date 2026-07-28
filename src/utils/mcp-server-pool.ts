@@ -42,6 +42,25 @@ interface PooledServer {
   requestCount: number;
 }
 
+/**
+ * Hard ceiling on a single tool call's execution time (#268). A tool handler
+ * that never resolves — e.g. a third-party plugin API (Dataview) stuck on an
+ * unready index — previously left the underlying HTTP request open with no
+ * client-visible error until the client's own multi-minute timeout gave up.
+ * `transport.handleRequest` has no request-level timeout of its own (the
+ * server's socket idle timeout, configured in mcp-server.ts's start(), does
+ * not reliably bound this: it only re-arms on socket-level byte activity, and
+ * this response is a still-open SSE stream with no bytes to send until the
+ * tool resolves — the exact case it never catches).
+ *
+ * 30s reuses this project's existing request-timeout convention (see
+ * ConnectionPool's `requestTimeout` default in connection-pool.ts / its call
+ * site in mcp-server.ts) rather than inventing a new number. Exported so
+ * tests can drive fake timers against the exact value instead of a
+ * duplicated magic number.
+ */
+export const TOOL_CALL_TIMEOUT_MS = 30000;
+
 export class MCPServerPool extends EventEmitter {
   private servers: Map<string, PooledServer> = new Map();
   private maxServers: number;
@@ -191,8 +210,15 @@ export class MCPServerPool extends EventEmitter {
         };
       }
 
+      let timeoutHandle: number | undefined;
       try {
-        const result = await tool.handler(sessionAPI, args ?? {});
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutHandle = window.setTimeout(
+            () => reject(new Error(`Tool "${name}" timed out after ${TOOL_CALL_TIMEOUT_MS / 1000}s with no response`)),
+            TOOL_CALL_TIMEOUT_MS
+          );
+        });
+        const result = await Promise.race([tool.handler(sessionAPI, args ?? {}), timeoutPromise]);
         return result as CallToolResult;
       } catch (error: unknown) {
         Debug.error(`[Session ${sessionId}] Tool execution error (${name}):`, error);
@@ -203,6 +229,8 @@ export class MCPServerPool extends EventEmitter {
           }],
           isError: true
         };
+      } finally {
+        window.clearTimeout(timeoutHandle);
       }
     });
 
