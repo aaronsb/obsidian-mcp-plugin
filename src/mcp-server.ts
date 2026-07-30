@@ -13,9 +13,8 @@ import { getVersion } from './version';
 import { ObsidianAPI } from './utils/obsidian-api';
 import { SecureObsidianAPI } from './security';
 import { authorizeRequest } from './security/http-auth';
-import { semanticTools } from './tools/semantic-tools';
 import { Debug } from './utils/debug';
-import { ConnectionPool, PooledRequest } from './utils/connection-pool';
+import { ConnectionPool } from './utils/connection-pool';
 import { SessionManager } from './utils/session-manager';
 import { MCPServerPool } from './utils/mcp-server-pool';
 import { CertificateManager, CertificateConfig } from './utils/certificate-manager';
@@ -210,40 +209,21 @@ export class MCPHttpServer {
     });
     void this.connectionPool.initialize();
 
-    // Set up connection pool request processing
-    this.connectionPool.on('process', (request: PooledRequest) => {
-      void (async () => {
-        try {
-          if (request.sessionId && this.sessionManager) {
-            this.sessionManager.touchSession(request.sessionId);
-          }
-
-          const toolName = request.method.replace('tool.', '');
-          const tool = semanticTools.find(t => t.name === toolName);
-
-          if (!tool) {
-            this.connectionPool!.completeRequest(request.id, {
-              id: request.id,
-              error: new Error(`Tool not found: ${toolName}`)
-            });
-            return;
-          }
-
-          const sessionAPI = this.getSessionAPI(request.sessionId);
-          const result = await tool.handler(sessionAPI, request.params);
-
-          this.connectionPool!.completeRequest(request.id, {
-            id: request.id,
-            result
-          });
-        } catch (error) {
-          this.connectionPool!.completeRequest(request.id, {
-            id: request.id,
-            error
-          });
-        }
-      })();
-    });
+    // No 'process' dispatch handler is registered here, deliberately.
+    //
+    // There was one, and it resolved tools from the module-level `semanticTools`
+    // const — which is built with NO visibility argument, so neither the enum
+    // filter nor the ACTION_DISABLED check existed on that path: a complete
+    // bypass of tool visibility. It was dead code (nothing calls the pool's
+    // submitRequest/submitPriorityRequest), but it would have become a live
+    // bypass the moment anything enqueued a request, which is the same shape as
+    // the unsecured-session fallback removed from MCPServerPool.
+    //
+    // Real dispatch goes through MCPServerPool, which builds per-session tools
+    // WITH the live visibility settings. If request queueing is ever wanted, it
+    // must route through that path rather than re-introducing a second dispatcher.
+    // The pool itself stays — it is still used for stats, session context, and
+    // shutdown.
 
     // Initialize MCP Server Pool
     this.mcpServerPool = new MCPServerPool(this.obsidianAPI, maxConnections, plugin);
@@ -294,6 +274,8 @@ export class MCPHttpServer {
           Debug.log('⚠️ Authentication is DISABLED - allowing access without credentials');
         } else if (decision.reason === 'no-key-configured') {
           Debug.log('🔓 No API key configured, allowing access');
+        } else if (decision.reason === 'authenticated') {
+          Debug.log('✅ Auth successful');
         }
         return next();
       }

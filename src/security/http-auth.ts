@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 
 /**
  * The HTTP auth decision, extracted from the express middleware so it can be
@@ -27,24 +27,23 @@ export interface AuthInput {
 }
 
 /**
- * Constant-time string comparison.
+ * Constant-time secret comparison, independent of input length.
  *
- * A plain `===` short-circuits on the first differing byte, which leaks a key
- * prefix through response timing. The server is loopback by default so this is
- * a small window, but it is not zero when binding is widened, and the fix is
- * free.
+ * A plain `===` short-circuits on the first differing byte, leaking a key prefix
+ * through response timing. The server is loopback by default so the window is
+ * small, but not zero once binding is widened, and the fix is free.
+ *
+ * Both sides are hashed to a fixed 32 bytes before comparing. An earlier version
+ * compared the raw buffers and bailed early on a length mismatch, which still
+ * did work proportional to the attacker's input — so it leaked the key's LENGTH
+ * even though each individual comparison was constant-time. Hashing removes the
+ * length signal entirely and lets timingSafeEqual see two equal-length buffers
+ * always, so it can never throw.
  */
 function secretsMatch(a: string, b: string): boolean {
-  const bufA = Buffer.from(a, 'utf8');
-  const bufB = Buffer.from(b, 'utf8');
-  // timingSafeEqual throws on length mismatch, which would itself be a leak, so
-  // compare lengths separately and still run the full comparison.
-  if (bufA.length !== bufB.length) {
-    // Compare against itself to keep the work roughly constant, then fail.
-    timingSafeEqual(bufA, bufA);
-    return false;
-  }
-  return timingSafeEqual(bufA, bufB);
+  const digestA = createHash('sha256').update(a, 'utf8').digest();
+  const digestB = createHash('sha256').update(b, 'utf8').digest();
+  return timingSafeEqual(digestA, digestB);
 }
 
 export function authorizeRequest(input: AuthInput): AuthDecision {
@@ -80,9 +79,19 @@ export function authorizeRequest(input: AuthInput): AuthDecision {
 
   if (input.authHeader.startsWith('Basic ')) {
     const decoded = Buffer.from(input.authHeader.slice(6), 'base64').toString('utf8');
+    const sep = decoded.indexOf(':');
+    // RFC 7617 requires the colon. Rejecting a credential without one also keeps
+    // parity with the previous implementation, whose destructuring yielded
+    // `password === undefined` and failed — without this guard, slice(-1 + 1)
+    // would treat the ENTIRE decoded string as the password, widening the
+    // accepted credential encodings for no reason.
+    if (sep === -1) {
+      return { allow: false, status: 401, error: 'Invalid API key', reason: 'bad-format' };
+    }
     // Only the password carries the key; the username is ignored, which is what
-    // lets `curl -u anything:KEY` work.
-    const password = decoded.slice(decoded.indexOf(':') + 1);
+    // lets `curl -u anything:KEY` work. Slicing after the FIRST colon (rather
+    // than splitting on every one) keeps a key that itself contains a colon.
+    const password = decoded.slice(sep + 1);
     return secretsMatch(password, apiKey)
       ? { allow: true, reason: 'authenticated' }
       : { allow: false, status: 401, error: 'Invalid API key', reason: 'bad-key' };
