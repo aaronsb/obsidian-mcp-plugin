@@ -173,6 +173,31 @@ describe('write-path containment', () => {
     });
   });
 
+  /**
+   * safeMode's contract is "can reorganise, cannot destroy". Pinning it because
+   * the meaning of EXECUTE changed under it: it used to be openFile, which is
+   * inert, and is now "run an arbitrary Obsidian command by id". The command
+   * palette contains "Delete current file", so execute:true would authorise
+   * precisely what delete:false exists to prevent. A preset that says it cannot
+   * destroy must not hold a permission that can.
+   */
+  describe('preset coherence', () => {
+    it('safeMode denies delete and execute, and permits reorganisation', () => {
+      expect(VaultSecurityManager.presets.safeMode().permissions).toEqual({
+        read: true, create: true, update: true,
+        delete: false, move: true, rename: true, execute: false,
+      });
+    });
+
+    it('readOnly denies everything except read', () => {
+      const perms = VaultSecurityManager.presets.readOnly().permissions!;
+      expect(perms.read).toBe(true);
+      for (const [name, allowed] of Object.entries(perms)) {
+        if (name !== 'read') expect(allowed).toBe(false);
+      }
+    });
+  });
+
   describe('active-file writes go through the security layer', () => {
     it('blocks update/append/delete under read-only', async () => {
       const api = new SecureObsidianAPI(

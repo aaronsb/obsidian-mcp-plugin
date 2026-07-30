@@ -467,6 +467,14 @@ export class VaultSecurityManager {
 			}
 		}),
 		
+		// "Can reorganise, cannot destroy": delete is denied, and because delete is
+		// denied the create+delete composition cannot stand in for it either.
+		//
+		// execute is denied for the same reason. It used to be true, correctly, when
+		// EXECUTE meant openFile — opening a note is inert and reversible. EXECUTE
+		// now means running an arbitrary Obsidian command by id, and the command
+		// palette contains "Delete current file", so leaving it true would let
+		// safeMode authorise exactly what delete:false exists to prevent.
 		safeMode: (): Partial<SecuritySettings> => ({
 			permissions: {
 				read: true,
@@ -475,7 +483,7 @@ export class VaultSecurityManager {
 				delete: false,
 				move: true,
 				rename: true,
-				execute: true
+				execute: false
 			}
 		}),
 		
