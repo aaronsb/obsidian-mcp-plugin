@@ -70,18 +70,40 @@ permission state is read live rather than snapshotted.**
    fail-open shape as the original bug. A live predicate is correct by
    construction: new and existing sessions consult one source.
 
-3. **Demote the tool-layer guard to presentation.** It stops deciding anything.
+3. **The baseline ruleset must stay permissive.** The predicate can only *add*
+   denial; it cannot grant. That asymmetry is deliberate — a user who configures
+   restrictive permissions should not have them loosened by a read-only toggle —
+   but it makes a restrictive baseline a one-way door. `mcp-server.ts` previously
+   installed `presets.readOnly()` when the server booted with read-only on, so
+   toggling read-only *off* left every permission false until the next restart:
+   the OFF direction of the very bug this ADR set out to fix, surviving in a file
+   the first draft of this decision did not touch. The branch is removed and the
+   single permissive `BASELINE_SECURITY_SETTINGS` is exported so a test can pin
+   the invariant. Path validation and `.mcpignore` blocking are unaffected —
+   those are not permissions.
+
+4. **Demote the tool-layer guard to presentation.** It stops deciding anything.
    `PERMISSION_DENIED` from the security layer is relabelled to
    `READ_ONLY_MODE` when read-only is on, preserving the clearer error without a
    second gate. Removing enforcement here is the point: the duplicate is the
    defect.
 
-4. **Correct the user-facing copy.** The toggle notice stops asserting an
-   immediate guarantee it cannot make (now it can, so the notice becomes true),
-   and the setting description stops enumerating an incomplete list of blocked
-   operations. Read-only also blocks `view.open_in_obsidian` — it maps to
-   `OperationType.EXECUTE`, which `presets.readOnly()` denies — and the
-   description said only "create, update, delete, move, rename".
+5. **Correct the user-facing copy.** The toggle notice stops asserting an
+   immediate guarantee it cannot make — now it can, so the notice becomes true.
+   The setting description stops enumerating an incomplete list
+   ("create, update, delete, move, rename") and states the actual rule: every
+   operation that changes the vault is blocked, reads and opens still work, and
+   it takes effect immediately.
+
+6. **Split `openFile` off `EXECUTE`.** `EXECUTE` originally meant `openFile`
+   alone, and read-only denied it, so read-only blocked opening a note — which
+   mutates nothing. Wrapping `executeCommand` (needed, since the command palette
+   reaches "Delete current file") put a genuinely dangerous operation behind the
+   same permission, forcing a choice between blocking a harmless open and
+   permitting arbitrary commands under read-only. `openFile` is now charged as
+   `READ` and works under read-only; `EXECUTE` covers `executeCommand` and stays
+   denied. Path validation still applies to `openFile`, so it cannot probe outside
+   the vault or open an excluded file.
 
 ## Consequences
 
@@ -91,8 +113,12 @@ permission state is read live rather than snapshotted.**
   both directions, matching what the UI has always claimed.
 - One place to reason about. A future operation is enforced by the gate it
   already flows through; there is no second list to remember to update.
-- Restart-order bugs in this area become structurally impossible rather than
-  merely fixed — there is no snapshot left to go stale.
+- Restart-order bugs in this area are structurally closed for the *permission*
+  state: there is no read-only snapshot left to go stale. This claim was too broad
+  in the first draft — the predicate's add-only asymmetry meant a restrictive
+  *baseline* still had to be removed separately (decision 3) before the OFF
+  direction worked. The remaining snapshot is the non-read-only settings, which
+  the toggle does not touch.
 - The notice stops lying, which is the part of the reported finding that
   actually harmed users.
 
@@ -117,7 +143,11 @@ permission state is read live rather than snapshotted.**
   demotion lands, or the demotion removes the thing that was masking the gap
   and nothing notices.
 - `presets.readOnly()` remains for explicit/API use; it is no longer the
-  mechanism by which the settings toggle takes effect.
+  mechanism by which the settings toggle takes effect, and is no longer installed
+  at server construction.
+- A restrictive baseline still cannot be loosened at runtime, by design. Anything
+  that wants runtime-adjustable permissions beyond read-only needs its own
+  predicate rather than a snapshot.
 
 ## Alternatives Considered
 

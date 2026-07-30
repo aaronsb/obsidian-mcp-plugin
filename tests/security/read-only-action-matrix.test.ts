@@ -37,13 +37,13 @@ const OPERATIONS: readonly string[] = ALL_OPERATIONS;
  * Every action's expected effect on the vault. Adding an action to
  * getActionsForOperation() without adding it here fails the coverage test.
  *
- * 'execute' is its own kind, not a synonym for read: opening a file in the
- * Obsidian UI mutates nothing, but it maps to OperationType.EXECUTE and
- * presets.readOnly() sets execute:false, so read-only DOES block it. That is
- * over-blocking, which is the safe direction — recorded here as the actual
- * contract rather than assumed away. Note the Read-only setting description
- * enumerates only "create, update, delete, move, rename", so the copy
- * understates what the mode does.
+ * 'execute' is kept as a distinct kind even though no shipped action maps to it
+ * today. view.open_in_obsidian used to: it was charged as EXECUTE, which
+ * presets.readOnly() denies, so read-only blocked opening a note. Opening mutates
+ * nothing, so openFile is now charged as READ and works under read-only. EXECUTE
+ * survives for executeCommand — unreachable from any tool, and denied under
+ * read-only because the command palette reaches destructive commands. If an
+ * action ever maps to it again, classify it here.
  */
 const ACTION_KIND: Record<string, 'read' | 'write' | 'execute'> = {
   // vault
@@ -70,7 +70,7 @@ const ACTION_KIND: Record<string, 'read' | 'write' | 'execute'> = {
   'view.file': 'read',
   'view.window': 'read',
   'view.active': 'read',
-  'view.open_in_obsidian': 'execute',
+  'view.open_in_obsidian': 'read',
   // workflow / system
   'workflow.suggest': 'read',
   'system.info': 'read',
@@ -314,8 +314,17 @@ describe('read-only enforcement — exhaustive action matrix', () => {
 
   const executeActions = allActions.filter(a => ACTION_KIND[a.key] === 'execute' && invocable(a.op));
 
-  describe.each(executeActions)('$key (execute)', ({ op, action }) => {
-    it('is blocked under read-only — over-blocking, documented not assumed', async () => {
+  // Empty today: openFile moved to READ, and executeCommand is not tool-reachable.
+  // describe.each throws on an empty table, so this is guarded by a plain `if`
+  // rather than describe.skip — the repo's test contract forbids skipped tests,
+  // and a skipped block would read as coverage that isn't there. The assertion
+  // above is what notices if an execute action ever appears.
+  it('records that no shipped action currently maps to execute', () => {
+    expect(executeActions).toEqual([]);
+  });
+
+  if (executeActions.length) describe.each(executeActions)('$key (execute)', ({ op, action }) => {
+    it('is blocked under read-only', async () => {
       const writes: Write[] = [];
       const api = new SecureObsidianAPI(
         makeApp(writes), undefined, { settings: { readOnlyMode: true } } as never,

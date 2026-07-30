@@ -13,6 +13,7 @@
  */
 import { SecureObsidianAPI } from '../../src/security';
 import { createSemanticTools } from '../../src/tools/semantic-tools';
+import { BASELINE_SECURITY_SETTINGS } from '../../src/mcp-server';
 import { App, TFile } from 'obsidian';
 
 jest.mock('obsidian');
@@ -109,6 +110,73 @@ describe('read-only mode liveness', () => {
     });
 
     expect(s.writes).toEqual([]);
+  });
+
+  /**
+   * The quadrant that shipped broken.
+   *
+   * The other cases build the API without an explicit snapshot, so it defaults to
+   * DEFAULT_SECURITY_SETTINGS (all permissions true) and the OFF direction passes
+   * for free — the predicate only ever ADDS denial. Production was different:
+   * mcp-server.ts installed presets.readOnly() when the server booted with
+   * read-only on, and no predicate returning false can undo an all-false
+   * snapshot. Toggling off left every write denied until restart.
+   *
+   * Passing presets.readOnly() explicitly reproduces a read-only boot. This must
+   * hold for the user who runs read-only by default and flips it off for one edit.
+   */
+  it('re-allows writes after a read-only BOOT, using the shipped baseline', async () => {
+    const writes: Write[] = [];
+    const plugin = { settings: { readOnlyMode: true } };
+    // Exactly what mcp-server.ts builds every API with, read-only or not.
+    const api = new SecureObsidianAPI(
+      makeApp(writes), undefined, plugin as never, BASELINE_SECURITY_SETTINGS,
+    );
+    const edit = createSemanticTools(api)!.find(t => t.name === 'edit')!;
+
+    await edit.handler(api, { action: 'append', path: 'note.md', content: 'x' });
+    expect(writes).toEqual([]);
+
+    plugin.settings.readOnlyMode = false;
+
+    await edit.handler(api, { action: 'append', path: 'note.md', content: 'y' });
+    expect(writes.length).toBe(1);
+  });
+
+  /**
+   * The invariant that makes the case above work, stated directly.
+   *
+   * The predicate can only ADD denial, never grant, so a restrictive baseline is
+   * a one-way door — and that is correct, since a user who configures restrictive
+   * permissions should not have them loosened by a read-only toggle. The
+   * consequence is that the baseline itself must stay permissive. mcp-server.ts
+   * previously installed presets.readOnly() when booting read-only, which is why
+   * toggling read-only off required a restart.
+   */
+  it('ships a permissive baseline, so read-only is the only thing denying', () => {
+    expect(BASELINE_SECURITY_SETTINGS.permissions).toEqual({
+      read: true, create: true, update: true,
+      delete: true, move: true, rename: true, execute: true,
+    });
+    // Path validation is not a permission and must stay on regardless.
+    expect(BASELINE_SECURITY_SETTINGS.pathValidation).toBe('strict');
+  });
+
+  it('confirms a restrictive baseline is NOT undone by the predicate', async () => {
+    // Documents the one-way door rather than asserting it away: this is why the
+    // baseline above must never be restrictive.
+    const writes: Write[] = [];
+    const plugin = { settings: { readOnlyMode: true } };
+    const api = new SecureObsidianAPI(
+      makeApp(writes), undefined, plugin as never,
+      { permissions: { read: true, create: false, update: false, delete: false, move: false, rename: false, execute: false } },
+    );
+    const edit = createSemanticTools(api)!.find(t => t.name === 'edit')!;
+
+    plugin.settings.readOnlyMode = false;
+    await edit.handler(api, { action: 'append', path: 'note.md', content: 'y' });
+
+    expect(writes).toEqual([]);
   });
 
   /**

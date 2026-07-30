@@ -1087,7 +1087,7 @@ class MCPSettingTab extends PluginSettingTab {
 		
 		new Setting(containerEl)
 			.setName('Read-only mode')
-			.setDesc('Blocks every operation that changes the vault, and blocks opening files in Obsidian. Reads, searches and graph queries still work. Takes effect immediately.')
+			.setDesc('Blocks every operation that changes the vault. Reads, searches, graph queries and opening notes still work. Takes effect immediately — no restart needed.')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.readOnlyMode)
 				.onChange(async (value) => {

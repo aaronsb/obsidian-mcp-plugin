@@ -274,15 +274,30 @@ export class SecureObsidianAPI extends ObsidianAPI {
 		return super.deleteActiveFile();
 	}
 
-	// File Operations - EXECUTE
+	// File Operations - OPEN
 
+	/**
+	 * Charged as READ, not EXECUTE.
+	 *
+	 * Opening a note changes nothing in the vault — it asks Obsidian to show a
+	 * document the caller is already allowed to read, so read-only has no reason
+	 * to deny it. EXECUTE originally meant exactly this method, but it now also
+	 * covers executeCommand, which can reach destructive commands ("Delete current
+	 * file"). Sharing one permission between the two would force a choice between
+	 * blocking a harmless open and permitting arbitrary commands under read-only.
+	 * Splitting them keeps executeCommand denied while `view.open_in_obsidian`
+	 * keeps working.
+	 *
+	 * Path validation still applies, so this cannot be used to probe outside the
+	 * vault or to open an .mcpignore-excluded file.
+	 */
 	async openFile(path: string): ReturnType<ObsidianAPI['openFile']> {
 		const validated = await this.security.validateOperation({
-			type: OperationType.EXECUTE,
+			type: OperationType.READ,
 			path: path,
 			context: { method: 'openFile' }
 		});
-		
+
 		return super.openFile(validated.path!);
 	}
 

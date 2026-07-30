@@ -17,7 +17,10 @@ export enum OperationType {
 	MOVE = 'move',        // moveFile
 	RENAME = 'rename',    // renameFile
 	COPY = 'copy',        // copyFile
-	EXECUTE = 'execute'   // openFile (opens in Obsidian)
+	// Running an Obsidian command by id. Originally meant openFile, which is now
+	// charged as READ: opening a note mutates nothing, while the command palette
+	// reaches destructive commands, so they cannot share one permission.
+	EXECUTE = 'execute'
 }
 
 /**
