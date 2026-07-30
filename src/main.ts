@@ -1516,7 +1516,7 @@ class MCPSettingTab extends PluginSettingTab {
 		
 		// Show warning if auth is disabled
 		if (this.plugin.settings.dangerouslyDisableAuth) {
-			info.createEl('div', {
+			info.createDiv({
 				text: '⚠️ warning: authentication is disabled. Your vault is accessible without credentials!',
 				cls: 'mcp-warning-box'
 			});

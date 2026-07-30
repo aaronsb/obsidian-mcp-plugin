@@ -111,8 +111,12 @@ async function resizeImageWithCanvas(
           
           // Check if resizing is needed
           if (originalWidth <= maxDimension && originalHeight <= maxDimension) {
-            // No resizing needed, but convert to JPEG with quality
-            const canvas = activeDocument.createElement('canvas');
+            // No resizing needed, but convert to JPEG with quality.
+            // createEl, not activeDocument.createElement (obsidianmd/prefer-create-el).
+            // The canvas is a detached pixel buffer — never attached to the DOM,
+            // only drawn to and read back via toBlob — so there is no document
+            // affinity to preserve.
+            const canvas = createEl('canvas');
             const ctx = canvas.getContext('2d');
             
             if (!ctx) {
@@ -164,8 +168,8 @@ async function resizeImageWithCanvas(
             }
           }
           
-          // Create canvas for resizing
-          const canvas = activeDocument.createElement('canvas');
+          // Create canvas for resizing. See the note above on createEl.
+          const canvas = createEl('canvas');
           const ctx = canvas.getContext('2d');
           
           if (!ctx) {
