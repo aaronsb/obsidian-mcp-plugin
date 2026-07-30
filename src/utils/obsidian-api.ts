@@ -458,14 +458,27 @@ export class ObsidianAPI {
   }
 
   /**
-   * Move or rename a file via Obsidian's link-preserving rename.
+   * Rename a file via Obsidian's link-preserving rename.
    *
    * Exists so callers never reach for app.fileManager.renameFile directly: the
    * raw call skips the security layer entirely, which let a `../` destination
    * relocate files outside the vault. SecureObsidianAPI overrides this to
    * validate both path and targetPath.
+   *
+   * Obsidian uses one API for move and rename, but these are kept as separate
+   * methods so the security layer can charge each against its own permission —
+   * a single method would make permissions.rename dead config.
    */
   async renameFile(path: string, newPath: string) {
+    return this.relocateFile(path, newPath);
+  }
+
+  /** Move a file. Same Obsidian primitive as renameFile; distinct permission. */
+  async moveFile(path: string, newPath: string) {
+    return this.relocateFile(path, newPath);
+  }
+
+  private async relocateFile(path: string, newPath: string) {
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!file) {
       throw new Error(`File not found: ${path}`);
@@ -474,6 +487,16 @@ export class ObsidianAPI {
     await this.app.fileManager.renameFile(file, newPath);
     return { success: true, oldPath: path, newPath };
   }
+
+  /**
+   * Run an Obsidian command by id.
+   *
+   * Wrapped as an EXECUTE operation in SecureObsidianAPI: the command palette
+   * includes mutators ("Delete current file", "Move file to…"), so an
+   * unguarded executeCommand is a write path that skips the security layer.
+   * Only getCommands() is currently wired to a tool, which is why this was
+   * latent rather than exploitable.
+   */
 
   async appendToFile(path: string, content: string) {
     // Validate input

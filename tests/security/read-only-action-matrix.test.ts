@@ -17,13 +17,18 @@
  * while testing nothing at all.
  */
 import { SecureObsidianAPI, VaultSecurityManager } from '../../src/security';
-import { createSemanticTools, getActionsForOperation } from '../../src/tools/semantic-tools';
+import { createSemanticTools, getActionsForOperation, ALL_OPERATIONS } from '../../src/tools/semantic-tools';
 import { ContentBufferManager } from '../../src/utils/content-buffer';
 import { App, TFile } from 'obsidian';
 
 jest.mock('obsidian');
 
-const OPERATIONS = ['vault', 'edit', 'view', 'workflow', 'system', 'graph', 'bases'];
+/**
+ * Derived from ALL_OPERATIONS, not hand-listed: a hand-written list means adding
+ * a whole new OPERATION silently escapes the matrix (only new *actions* on known
+ * operations would be caught).
+ */
+const OPERATIONS: readonly string[] = ALL_OPERATIONS;
 
 /**
  * Every action's expected effect on the vault. Adding an action to
@@ -80,6 +85,13 @@ const ACTION_KIND: Record<string, 'read' | 'write' | 'execute'> = {
   'graph.tag-traverse': 'read',
   'graph.tag-analysis': 'read',
   'graph.shared-tags': 'read',
+  // dataview — all query/inspection. dataview-tool.ts rejects format 'js', so
+  // there is no execution vector here.
+  'dataview.query': 'read',
+  'dataview.list': 'read',
+  'dataview.metadata': 'read',
+  'dataview.validate': 'read',
+  'dataview.status': 'read',
   // bases
   'bases.list': 'read',
   'bases.read': 'read',
@@ -170,19 +182,32 @@ function makeApp(writes: Write[]): App {
   } as unknown as App;
 }
 
-/** Invoke one action through the production tool handler. */
+/**
+ * Invoke one action through the production tool handler.
+ *
+ * Three modes, and the distinction matters:
+ *
+ *  - 'readOnly'      both gates armed — what a user actually gets
+ *  - 'securityLayer' ONLY the security layer armed (plugin.settings.readOnlyMode
+ *                    left false, so the tool-layer guard at semantic-tools.ts:142
+ *                    never fires). Without this mode the vault.* write assertions
+ *                    are satisfied by the legacy tool-layer guard and pass even on
+ *                    code where the security layer is bypassed — measured: the
+ *                    pre-fix tree failed only on bases.create.
+ *  - 'permissive'    positive control: the call must really reach a write
+ */
 async function invoke(
   operation: string,
   action: string,
   params: Record<string, unknown>,
-  mode: 'readOnly' | 'permissive',
+  mode: 'readOnly' | 'securityLayer' | 'permissive',
 ): Promise<Write[]> {
   const writes: Write[] = [];
   const app = makeApp(writes);
   const plugin = { settings: { readOnlyMode: mode === 'readOnly' } };
   const api = new SecureObsidianAPI(
     app, undefined, plugin as never,
-    mode === 'readOnly' ? VaultSecurityManager.presets.readOnly() : PERMISSIVE,
+    mode === 'permissive' ? PERMISSIVE : VaultSecurityManager.presets.readOnly(),
   );
   const tool = createSemanticTools(api)!.find(t => t.name === operation);
   if (!tool) throw new Error(`tool not found: ${operation}`);
@@ -202,6 +227,30 @@ describe('read-only enforcement — exhaustive action matrix', () => {
     getActionsForOperation(op).map(action => ({ op, action, key: `${op}.${action}` })),
   );
 
+  /**
+   * Operations whose tool exists in this environment. `dataview` is gated behind
+   * the Dataview plugin being installed, so createSemanticTools omits it here and
+   * its actions cannot be invoked. They are still CLASSIFIED above — the
+   * fail-closed coverage check below covers the whole shipped surface — but the
+   * behavioural assertions can only run against tools that exist.
+   */
+  const invocable = (() => {
+    const probeWrites: Write[] = [];
+    const probeApi = new SecureObsidianAPI(
+      makeApp(probeWrites), undefined, { settings: {} } as never, PERMISSIVE,
+    );
+    const names = new Set((createSemanticTools(probeApi) ?? []).map(t => t.name));
+    return (op: string) => names.has(op);
+  })();
+
+  it('reports which operations are not behaviourally exercised here', () => {
+    const skipped = [...new Set(allActions.map(a => a.op))].filter(op => !invocable(op));
+    // Not a failure — a disclosure. Silent partial coverage is what lets a gap
+    // read as "covered". If this list grows, the matrix is testing less than it
+    // appears to.
+    expect(skipped).toEqual(['dataview']);
+  });
+
   it('classifies every shipped action as read or write', () => {
     const unclassified = allActions.filter(a => !(a.key in ACTION_KIND)).map(a => a.key);
 
@@ -217,13 +266,22 @@ describe('read-only enforcement — exhaustive action matrix', () => {
     expect(stale).toEqual([]);
   });
 
-  const writeActions = allActions.filter(a => ACTION_KIND[a.key] === 'write');
+  const writeActions = allActions.filter(a => ACTION_KIND[a.key] === 'write' && invocable(a.op));
 
   describe.each(writeActions)('$key (write)', ({ op, action, key }) => {
     const params = WRITE_PARAMS[key] ?? {};
 
     it('records no vault write under read-only mode', async () => {
       const writes = await invoke(op, action, params, 'readOnly');
+      expect(writes).toEqual([]);
+    });
+
+    it('records no vault write with ONLY the security layer armed', async () => {
+      // The assertion that actually exercises the repaired layer. With the
+      // tool-layer guard disarmed, a write reaching the vault here means the
+      // action bypasses SecureObsidianAPI — which is precisely how bases.create,
+      // vault.move and vault.rename escaped.
+      const writes = await invoke(op, action, params, 'securityLayer');
       expect(writes).toEqual([]);
     });
 
@@ -239,7 +297,7 @@ describe('read-only enforcement — exhaustive action matrix', () => {
     }
   });
 
-  const executeActions = allActions.filter(a => ACTION_KIND[a.key] === 'execute');
+  const executeActions = allActions.filter(a => ACTION_KIND[a.key] === 'execute' && invocable(a.op));
 
   describe.each(executeActions)('$key (execute)', ({ op, action }) => {
     it('is blocked under read-only — over-blocking, documented not assumed', async () => {
@@ -259,7 +317,7 @@ describe('read-only enforcement — exhaustive action matrix', () => {
     });
   });
 
-  const readActions = allActions.filter(a => ACTION_KIND[a.key] === 'read');
+  const readActions = allActions.filter(a => ACTION_KIND[a.key] === 'read' && invocable(a.op));
 
   describe.each(readActions)('$key (read)', ({ op, action }) => {
     it('is not denied by the permission layer under read-only', async () => {

@@ -313,7 +313,7 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
         {
           const abstractFile = ctx.app?.vault.getAbstractFileByPath(path);
           if (abstractFile && 'extension' in abstractFile) {
-            await ctx.api.renameFile(path, destination);
+            await ctx.api.moveFile(path, destination);
             return {
               success: true,
               oldPath: path,

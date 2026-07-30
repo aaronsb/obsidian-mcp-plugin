@@ -162,15 +162,12 @@ export class SecureObsidianAPI extends ObsidianAPI {
 	 * Before this override the router called app.fileManager.renameFile directly
 	 * and a `../` destination relocated files outside the vault root.
 	 *
-	 * Deliberately typed MOVE for both move and rename: Obsidian models a rename
-	 * as a move (one fileManager.renameFile serves both), and no preset splits
-	 * permissions.move from permissions.rename. If those ever become
-	 * independently configurable, this needs to take the operation type from the
-	 * caller instead.
+	 * Charged as RENAME so permissions.rename is real config rather than dead —
+	 * moveFile below charges the same Obsidian primitive against permissions.move.
 	 */
 	async renameFile(path: string, newPath: string): ReturnType<ObsidianAPI['renameFile']> {
 		const validated = await this.security.validateOperation({
-			type: OperationType.MOVE,
+			type: OperationType.RENAME,
 			path: path,
 			targetPath: newPath,
 			context: { method: 'renameFile' }
@@ -179,8 +176,34 @@ export class SecureObsidianAPI extends ObsidianAPI {
 		return super.renameFile(validated.path!, validated.targetPath!);
 	}
 
+	async moveFile(path: string, newPath: string): ReturnType<ObsidianAPI['moveFile']> {
+		const validated = await this.security.validateOperation({
+			type: OperationType.MOVE,
+			path: path,
+			targetPath: newPath,
+			context: { method: 'moveFile' }
+		});
+
+		return super.moveFile(validated.path!, validated.targetPath!);
+	}
+
+	/**
+	 * The command palette contains mutators ("Delete current file", "Move file
+	 * to…"), so an unwrapped executeCommand is a write path around the layer.
+	 * Latent today — only getCommands() is wired to a tool — but wrapped for the
+	 * same reason as the active-file writes above.
+	 */
+	executeCommand(commandId: string): ReturnType<ObsidianAPI['executeCommand']> {
+		this.security.assertOperationPermitted(
+			OperationType.EXECUTE,
+			{ method: 'executeCommand', commandId }
+		);
+
+		return super.executeCommand(commandId);
+	}
+
 	// Note: These methods don't exist in base ObsidianAPI:
-	// - trash(), moveFile(), copyFile()
+	// - trash(), copyFile()
 	// They would need to be implemented in the base class first
 
 	// Bases

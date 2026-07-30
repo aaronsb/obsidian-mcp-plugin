@@ -168,8 +168,11 @@ describe('write-path containment', () => {
         params: { path: 'sec/victim.md', destination: '../escaped.md' },
       });
 
+      // The recorded-writes assertion is the load-bearing one: it fails on
+      // pre-fix vault.ts with `../escaped.md` recorded.
       expect(writes).toEqual([]);
-      expect(JSON.stringify(res)).not.toContain('Successfully moved');
+      // Names the rejecting control, so an incidental failure can't satisfy this.
+      expect(JSON.stringify(res)).toContain('FORBIDDEN_PATTERN');
     });
 
     it('vault.rename cannot relocate a file outside the vault', async () => {
@@ -181,8 +184,10 @@ describe('write-path containment', () => {
         params: { path: 'sec/victim.md', newName: '../../escaped.md' },
       });
 
+      // Load-bearing: fails on pre-fix vault.ts with `sec/../../escaped.md`.
       expect(writes).toEqual([]);
-      expect(JSON.stringify(res)).not.toContain('Successfully renamed');
+      // Names the rejecting control, so an incidental failure can't satisfy this.
+      expect(JSON.stringify(res)).toContain('FORBIDDEN_PATTERN');
     });
 
     it('vault.move still works for a legitimate destination', async () => {
