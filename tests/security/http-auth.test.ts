@@ -77,6 +77,16 @@ describe('authorizeRequest', () => {
       expect(d).toMatchObject({ allow: false, reason: 'bad-key' });
     });
 
+    it('rejects a Basic credential with no colon', () => {
+      // RFC 7617 requires the colon. Also a parity guard: slicing after
+      // indexOf(':') would, at -1, treat the ENTIRE decoded string as the
+      // password and authenticate `Basic base64(KEY)` — which the previous
+      // destructuring implementation rejected.
+      const noColon = `Basic ${Buffer.from(KEY, 'utf8').toString('base64')}`;
+      const d = authorizeRequest({ method: 'POST', authHeader: noColon, apiKey: KEY });
+      expect(d).toMatchObject({ allow: false, status: 401, reason: 'bad-format' });
+    });
+
     it('rejects malformed base64 rather than throwing', () => {
       const d = authorizeRequest({ method: 'POST', authHeader: 'Basic !!!not-base64!!!', apiKey: KEY });
       expect(d.allow).toBe(false);
@@ -152,12 +162,23 @@ describe('authorizeRequest', () => {
 
   describe('constant-time comparison', () => {
     it('does not throw on length mismatch', () => {
-      // timingSafeEqual throws when lengths differ, so the length check has to
-      // come first — otherwise every wrong-length key is a 500, not a 401.
+      // Both sides are hashed to a fixed width before comparing, so
+      // timingSafeEqual always sees equal lengths and can never throw. An
+      // earlier version compared raw buffers and bailed early on a length
+      // mismatch, which leaked the key's LENGTH even though each comparison was
+      // itself constant-time.
       expect(() => authorizeRequest({ method: 'POST', authHeader: 'Bearer x', apiKey: KEY }))
         .not.toThrow();
       expect(() => authorizeRequest({ method: 'POST', authHeader: `Bearer ${KEY}${KEY}`, apiKey: KEY }))
         .not.toThrow();
+    });
+
+    it('rejects keys of every wrong length without leaking via an exception', () => {
+      for (const len of [0, 1, KEY.length - 1, KEY.length + 1, KEY.length * 4]) {
+        const guess = 'x'.repeat(len);
+        expect(authorizeRequest({ method: 'POST', authHeader: `Bearer ${guess}`, apiKey: KEY }).allow)
+          .toBe(false);
+      }
     });
 
     it('handles multi-byte characters without throwing', () => {

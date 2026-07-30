@@ -122,15 +122,28 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility): Sem
     const args = (rawArgs ?? {}) as ToolArgs;
     const app = api.getApp();
 
-    // Defense in depth: block actions disabled by visibility even if tool is enumerated
-    if (visibility && visibility[`${operation}.${args.action}`] === false) {
+    // Defense in depth: block actions disabled by visibility even if tool is
+    // enumerated.
+    //
+    // Both the operation-level and action-level toggles are checked here, not
+    // just the action-level one. Operation-level used to be enforced ONLY by the
+    // tool being absent from the built list — which is enumeration, and
+    // enumeration is advisory: the settings UI mutates toolVisibility in place,
+    // so switching a whole operation off left every live MCP session with full
+    // access to it until eviction or restart. Same staleness class as the
+    // read-only bug in ADR-108, in the sibling control.
+    if (visibility && (visibility[operation] === false ||
+        visibility[`${operation}.${args.action}`] === false)) {
+      const operationDisabled = visibility[operation] === false;
       return {
         content: [{
           type: 'text' as const,
           text: JSON.stringify({
             error: {
               code: 'ACTION_DISABLED',
-              message: `Action '${args.action}' is disabled in tool visibility settings`
+              message: operationDisabled
+                ? `Operation '${operation}' is disabled in tool visibility settings`
+                : `Action '${args.action}' is disabled in tool visibility settings`
             }
           }, null, 2)
         }]
@@ -789,12 +802,13 @@ export function createSemanticTools(api?: ObsidianAPI, visibility?: ToolVisibili
 export const ALL_OPERATIONS = ['vault', 'edit', 'view', 'workflow', 'system', 'graph', 'bases', 'dataview'] as const;
 
 // Export the base semantic tools (for backward compatibility, no visibility filtering)
-export const semanticTools = [
-  createSemanticTool('vault'),
-  createSemanticTool('edit'),
-  createSemanticTool('view'),
-  createSemanticTool('workflow'),
-  createSemanticTool('system'),
-  createSemanticTool('graph'),
-  createSemanticTool('bases')
-].filter((tool): tool is SemanticTool => tool !== null);
+// There is deliberately no exported module-level tool list.
+//
+// One existed, built by calling createSemanticTool() with no visibility argument,
+// which produced tools that neither filtered their action enum nor performed the
+// ACTION_DISABLED check — a complete bypass of tool visibility for any caller
+// that picked it up. mcp-server.ts did, on a dead request-dispatch path.
+//
+// Tools must be built per session via createSemanticTools(api, visibility) so the
+// live settings apply. Anything needing the list of operations wants
+// ALL_OPERATIONS; anything needing a tool wants createSemanticTools().

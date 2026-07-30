@@ -172,6 +172,48 @@ describe('tool visibility gating', () => {
       expect(writes).toEqual([]);
     });
 
+    /**
+     * The gap that made the claim above narrower than it read.
+     *
+     * The settings UI mutates toolVisibility IN PLACE, so a live MCP session
+     * keeps the tools it was built with. Operation-level disable used to be
+     * enforced only by the tool being absent from the built list — enumeration,
+     * which is advisory — so switching the whole `edit` operation off left every
+     * existing session with full edit access until eviction (1h idle) or restart.
+     * Same staleness class as the read-only bug ADR-108 fixed, in the sibling
+     * control, and invisible to the test above because with {edit: false} there
+     * is no edit handler left to invoke.
+     */
+    it('enforces an operation-level disable applied AFTER the session exists', async () => {
+      const visibility: Record<string, boolean> = {};
+      const { byName, api, writes } = setup(visibility);
+
+      // Session built while `edit` was enabled, so it holds a live handler.
+      const edit = byName('edit')!;
+      await edit.handler(api, { action: 'append', path: 'note.md', content: 'x' });
+      expect(writes.length).toBe(1);
+
+      // User switches the whole operation off. Nothing is rebuilt.
+      visibility.edit = false;
+
+      const res = await edit.handler(api, { action: 'append', path: 'note.md', content: 'y' });
+
+      expect(writes.length).toBe(1);
+      expect(JSON.stringify(res)).toContain('ACTION_DISABLED');
+    });
+
+    it('enforces an action-level disable applied after the session exists', async () => {
+      const visibility: Record<string, boolean> = {};
+      const { byName, api, writes } = setup(visibility);
+      const edit = byName('edit')!;
+
+      visibility['edit.append'] = false;
+      const res = await edit.handler(api, { action: 'append', path: 'note.md', content: 'x' });
+
+      expect(writes).toEqual([]);
+      expect(JSON.stringify(res)).toContain('ACTION_DISABLED');
+    });
+
     it('does NOT block vault writes — visibility is per-action, not a read-only mode', async () => {
       // Worth pinning explicitly: this configuration is not equivalent to
       // read-only. vault.create is untouched by it and still writes. Anyone
