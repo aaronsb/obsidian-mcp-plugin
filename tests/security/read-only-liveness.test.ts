@@ -111,6 +111,41 @@ describe('read-only mode liveness', () => {
     expect(s.writes).toEqual([]);
   });
 
+  /**
+   * The path real MCP clients take. MCPServerPool.createPooledServer builds each
+   * session's API with BOTH the plugin ref and a *snapshot* of the parent's
+   * security settings (`getSecuritySettings()`), captured when the server was
+   * constructed. If that snapshot won over the live predicate, every session
+   * would keep enforcing the state read-only had at server start — reproducing
+   * the original bug for exactly the callers that matter.
+   */
+  it('live predicate beats the settings snapshot a session API is built with', async () => {
+    const writes: Write[] = [];
+    const plugin = { settings: { readOnlyMode: false } };
+
+    // Permissive snapshot, as taken when read-only was off at construction.
+    const permissiveSnapshot = {
+      pathValidation: 'strict' as const,
+      permissions: {
+        read: true, create: true, update: true,
+        delete: true, move: true, rename: true, execute: true,
+      },
+      blockedPaths: [],
+      logSecurityEvents: false,
+    };
+
+    const sessionApi = new SecureObsidianAPI(
+      makeApp(writes), undefined, plugin as never, permissiveSnapshot,
+    );
+    const edit = createSemanticTools(sessionApi)!.find(t => t.name === 'edit')!;
+
+    plugin.settings.readOnlyMode = true;
+
+    await edit.handler(sessionApi, { action: 'append', path: 'note.md', content: 'x' });
+
+    expect(writes).toEqual([]);
+  });
+
   it('never blocks reads', async () => {
     const s = setup(true);
 
