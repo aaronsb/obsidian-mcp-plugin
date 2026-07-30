@@ -457,6 +457,24 @@ export class ObsidianAPI {
     return { success: true, path };
   }
 
+  /**
+   * Move or rename a file via Obsidian's link-preserving rename.
+   *
+   * Exists so callers never reach for app.fileManager.renameFile directly: the
+   * raw call skips the security layer entirely, which let a `../` destination
+   * relocate files outside the vault. SecureObsidianAPI overrides this to
+   * validate both path and targetPath.
+   */
+  async renameFile(path: string, newPath: string) {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!file) {
+      throw new Error(`File not found: ${path}`);
+    }
+
+    await this.app.fileManager.renameFile(file, newPath);
+    return { success: true, oldPath: path, newPath };
+  }
+
   async appendToFile(path: string, content: string) {
     // Validate input
     const validationResult = this.validator.validate('file.append', { content });

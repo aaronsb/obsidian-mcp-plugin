@@ -8,6 +8,7 @@ import {
 } from './vault-security-manager';
 import { MCPIgnoreManager } from './mcp-ignore-manager';
 import { ObsidianConfig, ObsidianFile, ObsidianFileResponse } from '../types/obsidian';
+import { BaseYAML } from '../types/bases-yaml';
 import { Debug } from '../utils/debug';
 
 /** Minimal plugin interface for security-relevant properties.
@@ -150,9 +151,84 @@ export class SecureObsidianAPI extends ObsidianAPI {
 		return super.deleteFile(validated.path!);
 	}
 
+	// File Operations - MOVE / RENAME
+
+	/**
+	 * Validates BOTH source and destination before a move/rename.
+	 *
+	 * validateOperation already understands targetPath, so the destination goes
+	 * through the same path validator as the source. Before this override the
+	 * router called app.fileManager.renameFile directly and a `../` destination
+	 * relocated files outside the vault root.
+	 */
+	async renameFile(path: string, newPath: string): ReturnType<ObsidianAPI['renameFile']> {
+		const validated = await this.security.validateOperation({
+			type: OperationType.MOVE,
+			path: path,
+			targetPath: newPath,
+			context: { method: 'renameFile' }
+		});
+
+		return super.renameFile(validated.path!, validated.targetPath!);
+	}
+
 	// Note: These methods don't exist in base ObsidianAPI:
-	// - trash(), renameFile(), moveFile(), copyFile()
+	// - trash(), moveFile(), copyFile()
 	// They would need to be implemented in the base class first
+
+	// Bases
+
+	/**
+	 * Routes base creation through the security layer.
+	 *
+	 * createBase writes with app.vault.create() and was the one write in the
+	 * plugin that reached the vault without passing through here, so neither the
+	 * read-only permission check nor path validation applied. A `../` path
+	 * created files outside the vault root.
+	 */
+	async createBase(path: string, config: BaseYAML): Promise<void> {
+		const validated = await this.security.validateOperation({
+			type: OperationType.CREATE,
+			path: path,
+			context: { method: 'createBase' }
+		});
+
+		return super.createBase(validated.path!, config);
+	}
+
+	// Active-file writes
+	//
+	// Not currently reachable from the tool surface, but they write via
+	// app.vault.modify / fileManager.trashFile, so an unwrapped version is the
+	// same bug class as createBase waiting for its first caller. patchActiveFile
+	// needs no override — it delegates to the wrapped patchVaultFile.
+
+	async updateActiveFile(content: string): ReturnType<ObsidianAPI['updateActiveFile']> {
+		await this.security.validateOperation({
+			type: OperationType.UPDATE,
+			context: { method: 'updateActiveFile', contentSize: content.length }
+		});
+
+		return super.updateActiveFile(content);
+	}
+
+	async appendToActiveFile(content: string): ReturnType<ObsidianAPI['appendToActiveFile']> {
+		await this.security.validateOperation({
+			type: OperationType.UPDATE,
+			context: { method: 'appendToActiveFile', contentSize: content.length }
+		});
+
+		return super.appendToActiveFile(content);
+	}
+
+	async deleteActiveFile(): ReturnType<ObsidianAPI['deleteActiveFile']> {
+		await this.security.validateOperation({
+			type: OperationType.DELETE,
+			context: { method: 'deleteActiveFile' }
+		});
+
+		return super.deleteActiveFile();
+	}
 
 	// File Operations - EXECUTE
 
