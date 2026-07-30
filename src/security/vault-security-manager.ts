@@ -165,7 +165,12 @@ export class VaultSecurityManager {
 			let validatedPath: ValidatedPath | undefined;
 			let validatedTargetPath: ValidatedPath | undefined;
 
-			if (operation.path) {
+			// Presence, not truthiness: '' is a path the caller supplied and must be
+			// validated (and rejected), not silently treated as "no path given".
+			// Operations with genuinely no path — the active-file writes — pass
+			// undefined and still skip path validation while keeping the permission
+			// check above.
+			if (operation.path !== undefined && operation.path !== null) {
 				// Check if path is in blocked list
 				if (this.isPathBlocked(operation.path)) {
 					this.logSecurityEvent(operation, 'blocked', 'PATH_BLOCKED');
@@ -189,7 +194,9 @@ export class VaultSecurityManager {
 			}
 
 			// Step 4: Validate target path for move/rename operations
-			if (operation.targetPath) {
+			// Presence, not truthiness — see the path check above. A '' destination
+			// previously skipped validation entirely and reached fileManager.
+			if (operation.targetPath !== undefined && operation.targetPath !== null) {
 				if (this.isPathBlocked(operation.targetPath)) {
 					this.logSecurityEvent(operation, 'blocked', 'TARGET_PATH_BLOCKED');
 					throw new SecurityError(
@@ -234,6 +241,28 @@ export class VaultSecurityManager {
 			}
 			throw error;
 		}
+	}
+
+	/**
+	 * Synchronous permission check for operations with no path to validate.
+	 *
+	 * Exists for callers whose base signature is synchronous (executeCommand), so
+	 * they cannot await validateOperation. This is the SAME policy — it delegates
+	 * to isOperationAllowed and logs identically — not a second gate. Anything
+	 * with a path must use validateOperation so path validation runs too.
+	 */
+	assertOperationPermitted(type: OperationType, context?: VaultOperation['context']): void {
+		const operation: VaultOperation = { type, context };
+
+		if (!this.isOperationAllowed(type)) {
+			this.logSecurityEvent(operation, 'blocked', 'PERMISSION_DENIED');
+			throw new SecurityError(
+				`Operation '${type}' is not permitted in current security mode`,
+				'PERMISSION_DENIED'
+			);
+		}
+
+		this.logSecurityEvent(operation, 'allowed');
 	}
 
 	/**

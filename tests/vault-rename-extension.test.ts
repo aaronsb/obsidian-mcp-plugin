@@ -5,6 +5,10 @@
  * boundary is stubbed (ObsidianAPI.getFile, app.fileManager.renameFile), so the path
  * construction under test is the shipped one. The rename action had no behavioural
  * test at all before this, which is why the dropped extension shipped.
+ *
+ * The API and the app must share one App instance, as they do in production: the
+ * rename write goes through ObsidianAPI.renameFile (so the security layer can
+ * validate the destination) rather than reaching for app.fileManager directly.
  */
 import { SemanticRouter } from '../src/semantic/router';
 import { ObsidianAPI } from '../src/utils/obsidian-api';
@@ -17,8 +21,8 @@ interface RenameResult {
 }
 
 class MockObsidianAPI extends ObsidianAPI {
-  constructor(private existing: Set<string>) {
-    super({} as App);
+  constructor(private existing: Set<string>, app: App) {
+    super(app);
   }
 
   async getFile(path: string): Promise<never> {
@@ -50,7 +54,8 @@ function fakeApp(existing: Set<string>, renamed: string[]): App {
 async function rename(source: string, newName: string): Promise<{ result: RenameResult; renamed: string[] }> {
   const existing = new Set([source]);
   const renamed: string[] = [];
-  const router = new SemanticRouter(new MockObsidianAPI(existing), fakeApp(existing, renamed));
+  const app = fakeApp(existing, renamed);
+  const router = new SemanticRouter(new MockObsidianAPI(existing, app), app);
 
   const response = await router.route({
     operation: 'vault',

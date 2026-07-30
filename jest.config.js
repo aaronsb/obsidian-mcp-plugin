@@ -47,7 +47,12 @@ module.exports = {
   },
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   moduleNameMapper: {
-    '^obsidian$': '<rootDir>/tests/__mocks__/obsidian.ts'
+    '^obsidian$': '<rootDir>/tests/__mocks__/obsidian.ts',
+    // The router's lazy `import('../tools/window-edit.js')` carries the ESM .js
+    // extension the bundler expects. ts-jest resolves against .ts, so without
+    // this the import throws MODULE_NOT_FOUND and edit.window / edit.from_buffer
+    // could not be tested at all — they failed before reaching any logic.
+    '^(\\.{1,2}/.*)\\.js$': '$1'
   },
   testTimeout: 10000
 };

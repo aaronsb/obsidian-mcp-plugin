@@ -469,8 +469,20 @@ by reverting the decision behind them; they were analysed and accepted:
   No real placeholders exist; the heuristic trips on legitimate markdown
   badge/link labels (`[BRAT]`, `[MIT]`, …). Mangling valid markdown to
   appease it is the wrong action — leave it.
-- **"… scan not available" disclosures** — neutral. Obsidian's
-  malware/dependency/obfuscation scanners did not run; not a failure.
+- **"… scan not available" disclosures** — neutral. Where Obsidian's
+  malware/obfuscation scanners do not run, that is not a failure. The
+  **dependency** scan *does* run now and passed at the 0.11.42 portal scan
+  ("No vulnerable dependencies found") — treat a regression there as real,
+  not a disclosure.
+
+  The portal scan and local `npm audit` **can diverge**, and the local audit
+  is the leading indicator — it sees advisories published since the last
+  portal scan. As of 2026-07-29 `npm audit` reports 5 (2 high
+  `brace-expansion` + `fast-uri`, 2 moderate `@modelcontextprotocol/sdk` →
+  `@hono/node-server`, 1 low `body-parser`), all with fixes available, while
+  the portal still shows the 0.11.42 pass. Re-run `npm audit` before reading
+  the portal result as current; per the supply-chain rule above these are
+  security fixes and exempt from the 7-day hold.
 
 **Dynamic code execution** — the Bases-evaluator `new Function` (the
 exploitable vector: arbitrary JS from a synced/shared `.base`) is **removed**
@@ -486,9 +498,17 @@ different, library-internal class **not reachable from vault content**. They
 were already in 0.11.25's bundle, the release that passed full review with
 only the fs Warning, so they were non-gating then. The "Dynamic Code
 Execution" Recommendation was attributed to the Bases path specifically;
-this clears that path. Whether a heuristic re-scan re-flags the ajv-class
-residual is unknown until the next scan (scorecard blind — #183); if it
-does, it is the *transitive* class above, not the closed Bases vector.
+this clears that path.
+
+**Settled at 0.11.42:** the re-scan *does* still raise the "Dynamic Code
+Execution" Recommendation, and it is the transitive class — verified at scan
+time: `src/` contains **zero** `new Function`/`eval` (the only match is a
+comment in `expression-evaluator.ts` saying it avoids them), while `main.js`
+has exactly 3, all library-internal (1× `depd` deprecation shim, 2× ajv's
+`makeValidate` compiler). The heuristic greps the bundle, not the reachable
+call graph, so ADR-201 cannot make it go away. It is a Recommendation, never
+an Error — **do not chase it to zero**; the closed Bases vector is what
+mattered and it stays closed.
 
 Actionable findings became issues/PRs: #163/#164/#170 (SSL + attestation,
 shipped), #171/#173 (build-dep + CSS, shipped), #174 (js-yaml, shipped),

@@ -9,6 +9,7 @@ import { Debug } from '../../utils/debug';
 import { isImageFile, ObsidianFileResponse } from '../../types/obsidian';
 import { readFileWithFragments } from '../../utils/file-reader';
 import { ValidationException } from '../../validation/input-validator';
+import { SecurityError } from '../../security';
 import { RouterContext } from './router-context';
 import { Params, paramStr, paramNum, paramBool, requireParamStr } from './shared';
 
@@ -296,19 +297,25 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
           if (destFile && !overwrite) {
             throw new Error(`Destination already exists: ${destination}. Set overwrite=true to replace.`);
           }
-        } catch {
-          // File doesn't exist, which is what we want
+        } catch (error) {
+          // A rejected destination is not a "doesn't exist yet" — swallowing it
+          // here is what let a `../` destination through to the rename call.
+          if (error instanceof SecurityError) {
+            throw error;
+          }
+          // Otherwise the file doesn't exist, which is what we want
         }
 
         // Directory creation is handled automatically by createFile
 
-        // Use Obsidian's rename method (which handles moves)
-        if (ctx.app) {
-          const file = ctx.app.vault.getAbstractFileByPath(path);
-          if (file && 'extension' in file) {
-            await ctx.app.fileManager.renameFile(file, destination);
-            return { 
-              success: true, 
+        // Route through the API layer, not app.fileManager directly, so the
+        // security layer validates the destination as well as the source.
+        {
+          const abstractFile = ctx.app?.vault.getAbstractFileByPath(path);
+          if (abstractFile && 'extension' in abstractFile) {
+            await ctx.api.moveFile(path, destination);
+            return {
+              success: true,
               oldPath: path,
               newPath: destination,
               workflow: {
@@ -389,16 +396,21 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
           if (destFile && !overwrite) {
             throw new Error(`File already exists: ${newPath}. Set overwrite=true to replace.`);
           }
-        } catch {
-          // File doesn't exist, which is what we want
+        } catch (error) {
+          // A rejected path is not a "doesn't exist yet" — see the move case.
+          if (error instanceof SecurityError) {
+            throw error;
+          }
+          // Otherwise the file doesn't exist, which is what we want
         }
 
-        // Use Obsidian's rename method
-        if (ctx.app) {
-          const file = ctx.app.vault.getAbstractFileByPath(path);
-          if (file && 'extension' in file) {
-            await ctx.app.fileManager.renameFile(file, newPath);
-            return { 
+        // Route through the API layer, not app.fileManager directly, so the
+        // security layer validates the new path as well as the source.
+        {
+          const abstractFile = ctx.app?.vault.getAbstractFileByPath(path);
+          if (abstractFile && 'extension' in abstractFile) {
+            await ctx.api.renameFile(path, newPath);
+            return {
               success: true,
               oldPath: path,
               newPath: newPath,
