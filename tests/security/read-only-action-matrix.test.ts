@@ -312,7 +312,10 @@ describe('read-only enforcement — exhaustive action matrix', () => {
         content: [{ type: 'text' as const, text: String(e) }],
       }));
 
-      expect(JSON.stringify(res)).toContain('PERMISSION_DENIED');
+      // Surfaced as READ_ONLY_MODE: the security layer denies it as
+      // PERMISSION_DENIED and the tool layer relabels for the caller (ADR-108).
+      // Either code means the gate refused it.
+      expect(JSON.stringify(res)).toMatch(/READ_ONLY_MODE|PERMISSION_DENIED/);
       expect(writes).toEqual([]);
     });
   });

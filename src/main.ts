@@ -1087,19 +1087,22 @@ class MCPSettingTab extends PluginSettingTab {
 		
 		new Setting(containerEl)
 			.setName('Read-only mode')
-			.setDesc('Enable read-only mode - blocks all write operations (create, update, delete, move, rename)')
+			.setDesc('Blocks every operation that changes the vault, and blocks opening files in Obsidian. Reads, searches and graph queries still work. Takes effect immediately.')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.readOnlyMode)
 				.onChange(async (value) => {
 					this.plugin.settings.readOnlyMode = value;
 					await this.plugin.saveSettings();
 					
-					// Debug logging for read-only mode changes
+					// Effective immediately, no restart (ADR-108): the security layer
+					// reads this setting live per operation. The notices below used to
+					// claim writes were blocked while the running server still held a
+					// permissive ruleset until restart — the claim is now true.
 					if (value) {
-						Debug.log('🔒 READ-ONLY MODE ENABLED via settings - Server restart required for activation');
-						new Notice('🔒 Read-only mode enabled. All write operations are blocked.');
+						Debug.log('🔒 READ-ONLY MODE ENABLED via settings - effective immediately');
+						new Notice('🔒 Read-only mode enabled. Write operations are blocked.');
 					} else {
-						Debug.log('✅ READ-ONLY MODE DISABLED via settings - Server restart required for deactivation');
+						Debug.log('✅ READ-ONLY MODE DISABLED via settings - effective immediately');
 						new Notice('✅ Read-only mode disabled. All operations are allowed.');
 					}
 					

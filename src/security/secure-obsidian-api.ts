@@ -18,6 +18,7 @@ interface SecurePluginRef {
 		security?: Partial<SecuritySettings>;
 		validation?: Partial<import('../validation/input-validator').ValidationConfig>;
 		httpPort?: number;
+		readOnlyMode?: boolean;
 	};
 	ignoreManager?: MCPIgnoreManager;
 	mcpServer?: { isServerRunning(): boolean; getConnectionCount(): number };
@@ -37,7 +38,16 @@ export class SecureObsidianAPI extends ObsidianAPI {
 		// Initialize security manager with provided or default settings
 		const settings: Partial<SecuritySettings> = securitySettings || plugin?.settings?.security || {};
 		const ignoreManager: MCPIgnoreManager | undefined = plugin?.ignoreManager;
-		this.security = new VaultSecurityManager(app, settings, ignoreManager);
+
+		// Read-only is read live off the plugin settings, not captured here
+		// (ADR-108). Reading `plugin.settings.readOnlyMode` inside the closure
+		// rather than dereferencing it now is what makes the toggle take effect
+		// without a server restart.
+		const isReadOnly = plugin
+			? (): boolean => plugin.settings?.readOnlyMode === true
+			: undefined;
+
+		this.security = new VaultSecurityManager(app, settings, ignoreManager, isReadOnly);
 		
 		Debug.log('🔐 SecureObsidianAPI initialized with security settings:', this.security.getSettings());
 		Debug.log('🔐 SecureObsidianAPI has ignoreManager:', !!ignoreManager);

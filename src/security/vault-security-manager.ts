@@ -109,11 +109,28 @@ export class VaultSecurityManager {
 	private auditLog: SecurityLogEntry[] = [];
 	private readonly maxLogEntries = 1000;
 	private ignoreManager?: MCPIgnoreManager;
+	private isReadOnly?: () => boolean;
 
-	constructor(app: App, settings: Partial<SecuritySettings> = {}, ignoreManager?: MCPIgnoreManager) {
+	/**
+	 * @param isReadOnly - Live read-only predicate, consulted per call (ADR-108).
+	 *   Passed as a function rather than a boolean on purpose: the settings
+	 *   snapshot taken at construction is what let read-only go stale, blocking
+	 *   `vault` writes via the tool layer while `edit` writes kept working
+	 *   through a permissive security layer until the next server restart.
+	 *   Session-scoped API instances are closure-captured with no registry to
+	 *   push updates to, so pulling from one live source is the only design that
+	 *   cannot miss an instance.
+	 */
+	constructor(
+		app: App,
+		settings: Partial<SecuritySettings> = {},
+		ignoreManager?: MCPIgnoreManager,
+		isReadOnly?: () => boolean
+	) {
 		this.validator = new SecurePathValidator(app);
 		this.settings = { ...DEFAULT_SECURITY_SETTINGS, ...settings };
 		this.ignoreManager = ignoreManager;
+		this.isReadOnly = isReadOnly;
 		Debug.log(`VaultSecurityManager initialized with ignoreManager: ${!!ignoreManager}`);
 	}
 
@@ -269,8 +286,17 @@ export class VaultSecurityManager {
 	 * Checks if an operation type is allowed
 	 */
 	private isOperationAllowed(type: OperationType): boolean {
+		// Live read-only check, ahead of the snapshot (ADR-108). Equivalent to
+		// presets.readOnly() but evaluated per call, so toggling the setting takes
+		// effect immediately in both directions instead of at the next server
+		// start. READ is the only operation read-only permits; EXECUTE is denied
+		// too, matching presets.readOnly().
+		if (this.isReadOnly?.() && type !== OperationType.READ) {
+			return false;
+		}
+
 		const perms = this.settings.permissions;
-		
+
 		switch (type) {
 			case OperationType.READ:
 				return perms.read;

@@ -137,35 +137,15 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility): Sem
       };
     }
 
-    // Check for read-only mode before processing write operations
+    // Read-only mode is NOT enforced here (ADR-108). It is enforced once, in
+    // VaultSecurityManager.validateOperation, which now reads the setting live.
+    // This layer previously enforced it too — for `operation === 'vault'` only —
+    // and the two disagreed: the live check here blocked `vault` writes while a
+    // security layer holding a stale snapshot let `edit` writes through until the
+    // next server restart. The duplicate gate was the defect, so it is gone
+    // rather than widened. What remains below is presentation.
     const plugin = (api as unknown as { plugin?: PluginWithSettings }).plugin;
-    if (plugin?.settings?.readOnlyMode && operation === 'vault') {
-      const writeOperations = ['create', 'update', 'delete', 'move', 'rename', 'copy', 'split', 'concatenate'];
-      // combine writes a file only when a destination is given; without one it
-      // returns content inline (no side effects) and is safe in read-only mode.
-      const isWriteOp = writeOperations.includes(args.action) ||
-        (args.action === 'combine' && Boolean(args.destination));
-      if (isWriteOp) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              error: {
-                code: 'READ_ONLY_MODE',
-                message: `Write operation '${args.action}' is blocked - read-only mode is enabled`
-              },
-              context: {
-                readOnlyMode: true,
-                operation: operation,
-                action: args.action,
-                blockedOperation: true
-              }
-            }, null, 2)
-          }]
-        };
-      }
-    }
-    
+
     // Handle Dataview operations separately
     if (operation === 'dataview') {
       const dataviewTool = new DataviewTool(api);
@@ -279,11 +259,27 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility): Sem
     
     // Format for MCP
     if (response.error) {
+      // Presentation only: relabel the security layer's generic
+      // PERMISSION_DENIED as READ_ONLY_MODE when read-only is what caused it, so
+      // callers get an actionable reason instead of "not permitted in current
+      // security mode". This makes no policy decision — the operation was already
+      // refused by the gate. Deciding here is what ADR-108 removed.
+      const error = plugin?.settings?.readOnlyMode &&
+        (response.error as { code?: string }).code === 'PERMISSION_DENIED'
+        ? {
+            ...response.error,
+            code: 'READ_ONLY_MODE',
+            // Not "write operation" — read-only also denies EXECUTE
+            // (view.open_in_obsidian), which writes nothing.
+            message: `Operation '${args.action}' is blocked - read-only mode is enabled`
+          }
+        : response.error;
+
       return {
         content: [{
           type: 'text' as const,
           text: JSON.stringify({
-            error: response.error,
+            error,
             workflow: response.workflow,
             context: response.context
           }, null, 2)

@@ -28,6 +28,7 @@ _Server architecture, transport, connection handling, plugin lifecycle_
 | [ADR-105](./core/ADR-105-remove-dormant-worker-offload-path-partial-reversal-of-adr-104.md) | Remove dormant worker-offload path (partial reversal of ADR-104) | Accepted |
 | [ADR-106](./core/ADR-106-client-driven-session-re-initialization-via-spec-compliant-http-404.md) | Client-driven session re-initialization via spec-compliant HTTP 404 | Accepted |
 | [ADR-107](./core/ADR-107-network-exposure-modes-as-a-classified-state-machine.md) | Network exposure modes as a classified state machine | Accepted |
+| [ADR-108](./core/ADR-108-consolidate-read-only-enforcement-onto-the-security-layer-and-make-it-live.md) | Consolidate read-only enforcement onto the security layer and make it live | Draft |
 
 ## Tools & API
 _MCP tool design, semantic operations, graph operations, formatters_
