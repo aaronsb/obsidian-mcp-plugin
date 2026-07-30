@@ -477,12 +477,22 @@ by reverting the decision behind them; they were analysed and accepted:
 
   The portal scan and local `npm audit` **can diverge**, and the local audit
   is the leading indicator — it sees advisories published since the last
-  portal scan. As of 2026-07-29 `npm audit` reports 5 (2 high
-  `brace-expansion` + `fast-uri`, 2 moderate `@modelcontextprotocol/sdk` →
-  `@hono/node-server`, 1 low `body-parser`), all with fixes available, while
-  the portal still shows the 0.11.42 pass. Re-run `npm audit` before reading
-  the portal result as current; per the supply-chain rule above these are
-  security fixes and exempt from the 7-day hold.
+  portal scan. Re-run `npm audit` before reading the portal result as current;
+  per the supply-chain rule above these are security fixes and exempt from the
+  7-day hold.
+
+  **Read `npm audit` with `--omit=dev`, not the headline count.** The bare
+  number conflates runtime exposure with build-tool exposure, and the two have
+  very different consequences for a plugin that ships a bundle. At 0.12.0:
+  `npm audit --omit=dev` reports **0**, while the bare count reports ~29 —
+  every one of them the *same* `brace-expansion` DoS advisory
+  (GHSA-mh99-v99m-4gvg) fanning out through nested copies inside the
+  jest/eslint trees. Production resolves `brace-expansion@5.0.8`, above the
+  `<=5.0.7` range; the vulnerable copies are dev-only.
+  Clearing them needs `npm audit fix --force`, which bumps jest/eslint across
+  majors — not worth breaking the toolchain for a DoS reachable only by our own
+  build processing adversarial input. **Do not chase the headline count to
+  zero**; check `--omit=dev` and confirm anything remaining is dev-only.
 
 **Dynamic code execution** — the Bases-evaluator `new Function` (the
 exploitable vector: arbitrary JS from a synced/shared `.base`) is **removed**
