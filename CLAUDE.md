@@ -579,6 +579,34 @@ ban is that specific rule set, not all directives. To raise `minAppVersion` and
 adopt the 1.13.0 APIs outright (`getSettingDefinitions`, `setDestructive`), see
 #224.
 
+### Keep `eslint-plugin-obsidianmd` current, or local lint lies
+
+The portal's source-code review runs its own copy of this plugin. When ours lags,
+`npm run lint` passes while the portal reports warnings we cannot reproduce —
+findings then arrive *after* a release is already cut. A rule can even be present
+in our installed `dist/` and still never fire, because it isn't wired into the
+`recommended` config yet in that version; the file existing proves nothing.
+
+Before a release scan, confirm parity:
+
+```
+node -e "console.log(require('eslint-plugin-obsidianmd/package.json').version)"
+npm view eslint-plugin-obsidianmd version
+```
+
+If they differ, upgrade and re-lint before scanning. A new minor of this plugin
+usually means new rules, and it is cheaper to see them locally than to read them
+off a scorecard. Treat a warning that only the portal can see as a tooling gap,
+not as a portal quirk.
+
+**Do not satisfy a rule by faking the implementation.** The
+`prefer-setting-definitions` warning can be silenced with a
+`getSettingDefinitions()` that declares a few settings, which would leave users a
+settings search that finds some and silently misses the rest. That is worse than
+the warning, and the same failure mode as suppressing a rule: the check goes
+green while the real problem grows. Either implement it fully or leave the
+warning and track the work.
+
 ## Important Notes
 
 - **Critical Path**: The ObsidianAPI abstraction layer is the cornerstone of this architecture
