@@ -471,18 +471,42 @@ by reverting the decision behind them; they were analysed and accepted:
   appease it is the wrong action — leave it.
 - **"… scan not available" disclosures** — neutral. Where Obsidian's
   malware/obfuscation scanners do not run, that is not a failure. The
-  **dependency** scan *does* run now and passed at the 0.11.42 portal scan
-  ("No vulnerable dependencies found") — treat a regression there as real,
-  not a disclosure.
+  **dependency** scan *does* run, so treat a regression there as real, not a
+  disclosure.
 
-  The portal scan and local `npm audit` **can diverge**, and the local audit
-  is the leading indicator — it sees advisories published since the last
-  portal scan. As of 2026-07-29 `npm audit` reports 5 (2 high
-  `brace-expansion` + `fast-uri`, 2 moderate `@modelcontextprotocol/sdk` →
-  `@hono/node-server`, 1 low `body-parser`), all with fixes available, while
-  the portal still shows the 0.11.42 pass. Re-run `npm audit` before reading
-  the portal result as current; per the supply-chain rule above these are
-  security fixes and exempt from the 7-day hold.
+  The portal scan and local `npm audit` **can diverge**, and the local audit is
+  the leading indicator — it sees advisories published since the last portal
+  scan. Re-run `npm audit` before reading a portal result as current.
+
+### Reading `npm audit` — procedure, not a headline
+
+The bare vulnerability count conflates two things with very different
+consequences for a plugin that ships a bundle: what reaches users, and what only
+runs on the maintainer's build machine. Judge them separately, in this order.
+
+1. **`npm audit --omit=dev` is the number that gates a release.** Anything it
+   reports reaches users through `main.js`. Non-zero means fix now — per the
+   supply-chain rule above, security fixes are exempt from the 7-day hold.
+2. **If that is zero, the bare count is not a release problem.** Confirm the
+   remainder is dev-only rather than assuming it: `npm ls <pkg> --omit=dev`
+   shows whether a package is in the production tree at all, and a production
+   copy can sit *outside* an advisory's range while an older nested copy inside
+   the toolchain sits within it. Note the count can be much larger than the
+   number of distinct advisories — one issue in a widely-shared transitive
+   package fans out across every dependent, so read the advisory IDs, not the
+   total.
+3. **Do not run `npm audit fix --force` to clear a dev-only finding.** It moves
+   dev dependencies across majors. Breaking the toolchain that verifies the
+   security work is a worse trade than carrying a vulnerability reachable only
+   by our own build processing adversarial input. Plain `npm audit fix`
+   (lockfile-only, no `package.json` change) is the tool for this job.
+4. **Record the split in the release notes** when the two numbers differ, so the
+   next reader is not startled by a large count that represents no user
+   exposure.
+
+**Do not chase the headline count to zero** — the same trap as the
+`new Function` scorecard finding below. Zero on `--omit=dev` is the goal; the
+bare count is context.
 
 **Dynamic code execution** — the Bases-evaluator `new Function` (the
 exploitable vector: arbitrary JS from a synced/shared `.base`) is **removed**
