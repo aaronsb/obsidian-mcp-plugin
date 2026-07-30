@@ -134,6 +134,45 @@ describe('write-path containment', () => {
     });
   });
 
+  /**
+   * move and rename are the same Obsidian primitive, so it is tempting to charge
+   * both against one permission. Doing that makes permissions.rename dead config
+   * — it can be set to anything with no effect. No shipped preset distinguishes
+   * them today, which is exactly why this needs a test: reverting renameFile to
+   * OperationType.MOVE undoes the split and every other test still passes.
+   */
+  describe('move and rename are charged against their own permissions', () => {
+    function apiWith(perms: { move: boolean; rename: boolean }) {
+      return new SecureObsidianAPI(
+        makeApp(['note.md'], writes), undefined, { settings: {} } as never,
+        {
+          ...PERMISSIVE,
+          permissions: { ...PERMISSIVE.permissions, move: perms.move, rename: perms.rename },
+        },
+      );
+    }
+
+    it('rename works and move is denied when only rename is permitted', async () => {
+      const api = apiWith({ move: false, rename: true });
+
+      await api.renameFile('note.md', 'renamed.md');
+      expect(writes).toEqual([{ op: 'rename', path: 'renamed.md' }]);
+
+      await expect(api.moveFile('note.md', 'moved.md')).rejects.toThrow(SecurityError);
+      expect(writes).toHaveLength(1);
+    });
+
+    it('move works and rename is denied when only move is permitted', async () => {
+      const api = apiWith({ move: true, rename: false });
+
+      await api.moveFile('note.md', 'moved.md');
+      expect(writes).toEqual([{ op: 'rename', path: 'moved.md' }]);
+
+      await expect(api.renameFile('note.md', 'renamed.md')).rejects.toThrow(SecurityError);
+      expect(writes).toHaveLength(1);
+    });
+  });
+
   describe('active-file writes go through the security layer', () => {
     it('blocks update/append/delete under read-only', async () => {
       const api = new SecureObsidianAPI(

@@ -488,16 +488,6 @@ export class ObsidianAPI {
     return { success: true, oldPath: path, newPath };
   }
 
-  /**
-   * Run an Obsidian command by id.
-   *
-   * Wrapped as an EXECUTE operation in SecureObsidianAPI: the command palette
-   * includes mutators ("Delete current file", "Move file to…"), so an
-   * unguarded executeCommand is a write path that skips the security layer.
-   * Only getCommands() is currently wired to a tool, which is why this was
-   * latent rather than exploitable.
-   */
-
   async appendToFile(path: string, content: string) {
     // Validate input
     const validationResult = this.validator.validate('file.append', { content });
@@ -933,7 +923,20 @@ export class ObsidianAPI {
     }));
   }
 
-  executeCommand(commandId: string) {
+  /**
+   * Run an Obsidian command by id.
+   *
+   * `async` purely so SecureObsidianAPI's override can await validateOperation,
+   * keeping a single gate function rather than adding a synchronous entry point
+   * that cannot validate paths. Nothing calls this yet — only getCommands() is
+   * wired to a tool — so widening the signature costs nothing today.
+   *
+   * It needs the gate because the command palette contains mutators ("Delete
+   * current file", "Move file to…"), making an unguarded executeCommand a write
+   * path around the security layer.
+   */
+  async executeCommand(commandId: string) {
+    await Promise.resolve();
     const appInternal = this.app as unknown as AppInternal;
     const success = appInternal.commands?.executeCommandById?.(commandId);
     return {

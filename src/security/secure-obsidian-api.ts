@@ -18,6 +18,7 @@ interface SecurePluginRef {
 		security?: Partial<SecuritySettings>;
 		validation?: Partial<import('../validation/input-validator').ValidationConfig>;
 		httpPort?: number;
+		readOnlyMode?: boolean;
 	};
 	ignoreManager?: MCPIgnoreManager;
 	mcpServer?: { isServerRunning(): boolean; getConnectionCount(): number };
@@ -37,7 +38,28 @@ export class SecureObsidianAPI extends ObsidianAPI {
 		// Initialize security manager with provided or default settings
 		const settings: Partial<SecuritySettings> = securitySettings || plugin?.settings?.security || {};
 		const ignoreManager: MCPIgnoreManager | undefined = plugin?.ignoreManager;
-		this.security = new VaultSecurityManager(app, settings, ignoreManager);
+
+		// Read-only is read live off the plugin settings, not captured here
+		// (ADR-108). Reading `plugin.settings.readOnlyMode` inside the closure
+		// rather than dereferencing it now is what makes the toggle take effect
+		// without a server restart — and it survives loadSettings() replacing the
+		// settings object wholesale, which main.ts does.
+		//
+		// Without a plugin ref there is no setting to read, so read-only CANNOT be
+		// enforced on this instance. Every production call site passes one; a
+		// future one that forgets would silently lose read-only, so say so loudly
+		// rather than leaving it to be discovered.
+		const isReadOnly = plugin
+			? (): boolean => plugin.settings?.readOnlyMode === true
+			: undefined;
+		if (!plugin) {
+			Debug.error(
+				'⚠️ SecureObsidianAPI built without a plugin reference: read-only mode ' +
+				'cannot be enforced on this instance. Path validation still applies.'
+			);
+		}
+
+		this.security = new VaultSecurityManager(app, settings, ignoreManager, isReadOnly);
 		
 		Debug.log('🔐 SecureObsidianAPI initialized with security settings:', this.security.getSettings());
 		Debug.log('🔐 SecureObsidianAPI has ignoreManager:', !!ignoreManager);
@@ -192,12 +214,16 @@ export class SecureObsidianAPI extends ObsidianAPI {
 	 * to…"), so an unwrapped executeCommand is a write path around the layer.
 	 * Latent today — only getCommands() is wired to a tool — but wrapped for the
 	 * same reason as the active-file writes above.
+	 *
+	 * Goes through validateOperation like every other write, rather than a
+	 * separate synchronous permission check: one gate function, and no entry
+	 * point that silently cannot validate a path.
 	 */
-	executeCommand(commandId: string): ReturnType<ObsidianAPI['executeCommand']> {
-		this.security.assertOperationPermitted(
-			OperationType.EXECUTE,
-			{ method: 'executeCommand', commandId }
-		);
+	async executeCommand(commandId: string): ReturnType<ObsidianAPI['executeCommand']> {
+		await this.security.validateOperation({
+			type: OperationType.EXECUTE,
+			context: { method: 'executeCommand', commandId }
+		});
 
 		return super.executeCommand(commandId);
 	}
@@ -260,15 +286,30 @@ export class SecureObsidianAPI extends ObsidianAPI {
 		return super.deleteActiveFile();
 	}
 
-	// File Operations - EXECUTE
+	// File Operations - OPEN
 
+	/**
+	 * Charged as READ, not EXECUTE.
+	 *
+	 * Opening a note changes nothing in the vault — it asks Obsidian to show a
+	 * document the caller is already allowed to read, so read-only has no reason
+	 * to deny it. EXECUTE originally meant exactly this method, but it now also
+	 * covers executeCommand, which can reach destructive commands ("Delete current
+	 * file"). Sharing one permission between the two would force a choice between
+	 * blocking a harmless open and permitting arbitrary commands under read-only.
+	 * Splitting them keeps executeCommand denied while `view.open_in_obsidian`
+	 * keeps working.
+	 *
+	 * Path validation still applies, so this cannot be used to probe outside the
+	 * vault or to open an .mcpignore-excluded file.
+	 */
 	async openFile(path: string): ReturnType<ObsidianAPI['openFile']> {
 		const validated = await this.security.validateOperation({
-			type: OperationType.EXECUTE,
+			type: OperationType.READ,
 			path: path,
 			context: { method: 'openFile' }
 		});
-		
+
 		return super.openFile(validated.path!);
 	}
 

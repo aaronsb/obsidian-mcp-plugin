@@ -11,7 +11,7 @@ import {
 import { randomUUID } from 'crypto';
 import { getVersion } from './version';
 import { ObsidianAPI } from './utils/obsidian-api';
-import { SecureObsidianAPI, VaultSecurityManager } from './security';
+import { SecureObsidianAPI } from './security';
 import { semanticTools } from './tools/semantic-tools';
 import { Debug } from './utils/debug';
 import { ConnectionPool, PooledRequest } from './utils/connection-pool';
@@ -86,13 +86,45 @@ interface ConnectionPoolStatsResponse {
 }
 
 
+/**
+ * The security baseline every server and session API is built with.
+ *
+ * Permissions are all TRUE on purpose, and must stay that way (ADR-108).
+ * Read-only is enforced by VaultSecurityManager's live predicate, which only
+ * ever ADDS denial — it cannot grant. So a restrictive baseline is a one-way
+ * door: installing presets.readOnly() here (which is what this used to do when
+ * the server booted with read-only on) meant toggling read-only OFF could not
+ * restore writes until the next restart.
+ *
+ * Path validation and .mcpignore blocking are unaffected — those are not
+ * permissions and still apply.
+ */
+export const BASELINE_SECURITY_SETTINGS = {
+  pathValidation: 'strict' as const,  // Always validate paths for security
+  permissions: {
+    read: true,
+    create: true,
+    update: true,
+    delete: true,
+    move: true,
+    rename: true,
+    execute: true
+  },
+  blockedPaths: [],  // .mcpignore will handle blocking
+  logSecurityEvents: false
+};
+
 export class MCPHttpServer {
   private app: express.Application;
   private server?: Server | HttpsServer;
   private mcpServerPool!: MCPServerPool;
   private transports: Map<string, StreamableHTTPServerTransport> = new Map();
   private obsidianApp: App;
-  private obsidianAPI: ObsidianAPI;
+  // Deliberately the narrow type, not ObsidianAPI. Every session's API is built
+  // from this one, and MCPServerPool now refuses to create a session when it is
+  // not a SecureObsidianAPI — so a future assignment of a plain ObsidianAPI here
+  // should fail to compile rather than fail at session creation.
+  private obsidianAPI: SecureObsidianAPI;
   private port: number;
   private isRunning: boolean = false;
   private connectionCount: number = 0;
@@ -127,30 +159,22 @@ export class MCPHttpServer {
     // Always use SecureObsidianAPI with VaultSecurityManager as our firewall
     Debug.log('🔐 Initializing VaultSecurityManager firewall');
     
-    // Configure security rules based on mode
-    let securitySettings;
-    if (plugin?.settings?.readOnlyMode) {
-      Debug.log('🔒 READ-ONLY MODE ACTIVATED - Loading restrictive ruleset');
-      securitySettings = VaultSecurityManager.presets.readOnly();
-    } else {
-      Debug.log('✅ READ-ONLY MODE DEACTIVATED - Loading permissive ruleset');
-      // Minimal security - just path validation and .mcpignore blocking
-      securitySettings = {
-        pathValidation: 'strict' as const,  // Always validate paths for security
-        permissions: {
-          read: true,
-          create: true,
-          update: true,
-          delete: true,
-          move: true,
-          rename: true,
-          execute: true
-        },
-        blockedPaths: [],  // .mcpignore will handle blocking
-        logSecurityEvents: false
-      };
-    }
-    
+    // One baseline ruleset, regardless of read-only (ADR-108). See
+    // BASELINE_SECURITY_SETTINGS above for why it must stay permissive.
+    //
+    // This used to branch on readOnlyMode and install presets.readOnly() when it
+    // was set. That snapshot was the whole bug: read-only became whatever it was
+    // at construction. The live predicate in VaultSecurityManager only ever ADDS
+    // denial, so a readOnly snapshot here could not be un-done by toggling the
+    // setting off — every write stayed denied until the next restart, for exactly
+    // the user who runs read-only by default and flips it off for one edit.
+    //
+    // Read-only is now enforced solely by that predicate, which reads the setting
+    // per call. Baseline permissions stay permissive so the predicate is the only
+    // thing that decides.
+    const securitySettings = BASELINE_SECURITY_SETTINGS;
+    Debug.log(`🔐 Baseline ruleset loaded; read-only currently ${plugin?.settings?.readOnlyMode ? 'ON' : 'OFF'} (live)`);
+
     // Always use SecureObsidianAPI for consistent security layer
     this.obsidianAPI = new SecureObsidianAPI(obsidianApp, undefined, plugin, securitySettings);
     

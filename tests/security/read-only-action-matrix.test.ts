@@ -8,13 +8,16 @@
  * point: the 0.11.42 bypasses existed because `edit` and `bases.create` were
  * never classified as writes anywhere.
  *
- * Each write action is checked twice:
- *   - under read-only  -> must record ZERO vault writes
- *   - under permissive -> must record AT LEAST ONE write (positive control)
+ * Each write action is checked three times:
+ *   - read-only (live predicate)  -> must record ZERO vault writes
+ *   - security layer (preset)     -> ZERO writes, AND the refusal must name the
+ *                                   gate (PERMISSION_DENIED / READ_ONLY_MODE)
+ *   - permissive                  -> AT LEAST ONE write (positive control)
  *
- * The positive control is what stops a vacuous pass. Without it, an action that
- * throws on missing params would record no writes and look "correctly blocked"
- * while testing nothing at all.
+ * The positive control and the named-refusal check are what stop vacuous passes.
+ * Without them, an action that throws on missing params — or one whose error is
+ * swallowed and re-reported as something unrelated, as vault.copy's was — records
+ * no writes and looks "correctly blocked" while testing nothing at all.
  */
 import { SecureObsidianAPI, VaultSecurityManager } from '../../src/security';
 import { createSemanticTools, getActionsForOperation, ALL_OPERATIONS } from '../../src/tools/semantic-tools';
@@ -34,13 +37,13 @@ const OPERATIONS: readonly string[] = ALL_OPERATIONS;
  * Every action's expected effect on the vault. Adding an action to
  * getActionsForOperation() without adding it here fails the coverage test.
  *
- * 'execute' is its own kind, not a synonym for read: opening a file in the
- * Obsidian UI mutates nothing, but it maps to OperationType.EXECUTE and
- * presets.readOnly() sets execute:false, so read-only DOES block it. That is
- * over-blocking, which is the safe direction — recorded here as the actual
- * contract rather than assumed away. Note the Read-only setting description
- * enumerates only "create, update, delete, move, rename", so the copy
- * understates what the mode does.
+ * 'execute' is kept as a distinct kind even though no shipped action maps to it
+ * today. view.open_in_obsidian used to: it was charged as EXECUTE, which
+ * presets.readOnly() denies, so read-only blocked opening a note. Opening mutates
+ * nothing, so openFile is now charged as READ and works under read-only. EXECUTE
+ * survives for executeCommand — unreachable from any tool, and denied under
+ * read-only because the command palette reaches destructive commands. If an
+ * action ever maps to it again, classify it here.
  */
 const ACTION_KIND: Record<string, 'read' | 'write' | 'execute'> = {
   // vault
@@ -67,7 +70,7 @@ const ACTION_KIND: Record<string, 'read' | 'write' | 'execute'> = {
   'view.file': 'read',
   'view.window': 'read',
   'view.active': 'read',
-  'view.open_in_obsidian': 'execute',
+  'view.open_in_obsidian': 'read',
   // workflow / system
   'workflow.suggest': 'read',
   'system.info': 'read',
@@ -185,15 +188,20 @@ function makeApp(writes: Write[]): App {
 /**
  * Invoke one action through the production tool handler.
  *
- * Three modes, and the distinction matters:
+ * Three modes. What they isolate CHANGED with ADR-108: the tool-layer guard no
+ * longer enforces anything, so these no longer separate "tool gate" from
+ * "security gate". They now separate the two ways the security layer can be told
+ * to deny — which is still worth distinguishing:
  *
- *  - 'readOnly'      both gates armed — what a user actually gets
- *  - 'securityLayer' ONLY the security layer armed (plugin.settings.readOnlyMode
- *                    left false, so the tool-layer guard at semantic-tools.ts:142
- *                    never fires). Without this mode the vault.* write assertions
- *                    are satisfied by the legacy tool-layer guard and pass even on
- *                    code where the security layer is bypassed — measured: the
- *                    pre-fix tree failed only on bases.create.
+ *  - 'readOnly'      plugin.settings.readOnlyMode true -> the LIVE predicate
+ *                    denies. What a user toggling the setting actually gets.
+ *  - 'securityLayer' readOnlyMode false + presets.readOnly() -> the SNAPSHOT
+ *                    denies, with the predicate inactive. Keeps the preset path
+ *                    covered so ADR-108's predicate isn't the only thing holding
+ *                    the boundary. Historically this mode existed because the
+ *                    legacy tool-layer guard satisfied the vault.* assertions and
+ *                    hid a bypass; that guard is gone, but the mode still pins
+ *                    the preset path.
  *  - 'permissive'    positive control: the call must really reach a write
  */
 async function invoke(
@@ -201,7 +209,7 @@ async function invoke(
   action: string,
   params: Record<string, unknown>,
   mode: 'readOnly' | 'securityLayer' | 'permissive',
-): Promise<Write[]> {
+): Promise<{ writes: Write[]; text: string }> {
   const writes: Write[] = [];
   const app = makeApp(writes);
   const plugin = { settings: { readOnlyMode: mode === 'readOnly' } };
@@ -214,12 +222,15 @@ async function invoke(
 
   SETUP[`${operation}.${action}`]?.();
 
+  let text = '';
   try {
-    await tool.handler(api, { action, ...params });
-  } catch {
-    // A thrown error is a legitimate outcome; the assertion is on `writes`.
+    text = JSON.stringify(await tool.handler(api, { action, ...params }));
+  } catch (e) {
+    // A thrown error is a legitimate outcome; the assertions are on `writes`
+    // and on the refusal actually naming the gate.
+    text = String(e);
   }
-  return writes;
+  return { writes, text };
 }
 
 describe('read-only enforcement — exhaustive action matrix', () => {
@@ -272,7 +283,7 @@ describe('read-only enforcement — exhaustive action matrix', () => {
     const params = WRITE_PARAMS[key] ?? {};
 
     it('records no vault write under read-only mode', async () => {
-      const writes = await invoke(op, action, params, 'readOnly');
+      const { writes } = await invoke(op, action, params, 'readOnly');
       expect(writes).toEqual([]);
     });
 
@@ -281,15 +292,19 @@ describe('read-only enforcement — exhaustive action matrix', () => {
       // tool-layer guard disarmed, a write reaching the vault here means the
       // action bypasses SecureObsidianAPI — which is precisely how bases.create,
       // vault.move and vault.rename escaped.
-      const writes = await invoke(op, action, params, 'securityLayer');
+      const { writes, text } = await invoke(op, action, params, 'securityLayer');
       expect(writes).toEqual([]);
+      // Not just "no write happened" — the refusal must NAME the gate. An action
+      // that errors early for an unrelated reason records no write either, and
+      // would otherwise look correctly blocked while proving nothing.
+      expect(text).toMatch(/PERMISSION_DENIED|READ_ONLY_MODE/);
     });
 
     if (key in NO_POSITIVE_CONTROL) {
       it.todo(`positive control missing — ${NO_POSITIVE_CONTROL[key]}`);
     } else {
       it('positive control: DOES write when permitted', async () => {
-        const writes = await invoke(op, action, params, 'permissive');
+        const { writes } = await invoke(op, action, params, 'permissive');
         // A failure here means the read-only assertion above is vacuous: the
         // action never reached a write, so blocking it proved nothing.
         expect(writes.length).toBeGreaterThan(0);
@@ -299,8 +314,17 @@ describe('read-only enforcement — exhaustive action matrix', () => {
 
   const executeActions = allActions.filter(a => ACTION_KIND[a.key] === 'execute' && invocable(a.op));
 
-  describe.each(executeActions)('$key (execute)', ({ op, action }) => {
-    it('is blocked under read-only — over-blocking, documented not assumed', async () => {
+  // Empty today: openFile moved to READ, and executeCommand is not tool-reachable.
+  // describe.each throws on an empty table, so this is guarded by a plain `if`
+  // rather than describe.skip — the repo's test contract forbids skipped tests,
+  // and a skipped block would read as coverage that isn't there. The assertion
+  // above is what notices if an execute action ever appears.
+  it('records that no shipped action currently maps to execute', () => {
+    expect(executeActions).toEqual([]);
+  });
+
+  if (executeActions.length) describe.each(executeActions)('$key (execute)', ({ op, action }) => {
+    it('is blocked under read-only', async () => {
       const writes: Write[] = [];
       const api = new SecureObsidianAPI(
         makeApp(writes), undefined, { settings: { readOnlyMode: true } } as never,
@@ -312,7 +336,10 @@ describe('read-only enforcement — exhaustive action matrix', () => {
         content: [{ type: 'text' as const, text: String(e) }],
       }));
 
-      expect(JSON.stringify(res)).toContain('PERMISSION_DENIED');
+      // Surfaced as READ_ONLY_MODE: the security layer denies it as
+      // PERMISSION_DENIED and the tool layer relabels for the caller (ADR-108).
+      // Either code means the gate refused it.
+      expect(JSON.stringify(res)).toMatch(/READ_ONLY_MODE|PERMISSION_DENIED/);
       expect(writes).toEqual([]);
     });
   });

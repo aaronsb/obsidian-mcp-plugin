@@ -17,7 +17,10 @@ export enum OperationType {
 	MOVE = 'move',        // moveFile
 	RENAME = 'rename',    // renameFile
 	COPY = 'copy',        // copyFile
-	EXECUTE = 'execute'   // openFile (opens in Obsidian)
+	// Running an Obsidian command by id. Originally meant openFile, which is now
+	// charged as READ: opening a note mutates nothing, while the command palette
+	// reaches destructive commands, so they cannot share one permission.
+	EXECUTE = 'execute'
 }
 
 /**
@@ -109,11 +112,28 @@ export class VaultSecurityManager {
 	private auditLog: SecurityLogEntry[] = [];
 	private readonly maxLogEntries = 1000;
 	private ignoreManager?: MCPIgnoreManager;
+	private isReadOnly?: () => boolean;
 
-	constructor(app: App, settings: Partial<SecuritySettings> = {}, ignoreManager?: MCPIgnoreManager) {
+	/**
+	 * @param isReadOnly - Live read-only predicate, consulted per call (ADR-108).
+	 *   Passed as a function rather than a boolean on purpose: the settings
+	 *   snapshot taken at construction is what let read-only go stale, blocking
+	 *   `vault` writes via the tool layer while `edit` writes kept working
+	 *   through a permissive security layer until the next server restart.
+	 *   Session-scoped API instances are closure-captured with no registry to
+	 *   push updates to, so pulling from one live source is the only design that
+	 *   cannot miss an instance.
+	 */
+	constructor(
+		app: App,
+		settings: Partial<SecuritySettings> = {},
+		ignoreManager?: MCPIgnoreManager,
+		isReadOnly?: () => boolean
+	) {
 		this.validator = new SecurePathValidator(app);
 		this.settings = { ...DEFAULT_SECURITY_SETTINGS, ...settings };
 		this.ignoreManager = ignoreManager;
+		this.isReadOnly = isReadOnly;
 		Debug.log(`VaultSecurityManager initialized with ignoreManager: ${!!ignoreManager}`);
 	}
 
@@ -135,19 +155,17 @@ export class VaultSecurityManager {
 					);
 				}
 
-				// Return operation as-is without path validation
-				// Cast paths to ValidatedPath since we're bypassing validation
+				// Paths pass through unvalidated — that is what 'disabled' means.
+				// The spread already carries path and targetPath; two `if
+				// (operation.path)` re-assignments used to sit here writing the same
+				// values back. They were pure no-ops, but read as the presence
+				// semantics the strict branch below now uses, which made this look
+				// like a spot someone forgot to update. A false parallel is worse
+				// than none.
 				const result = {
 					...operation,
 					validatedAt: Date.now()
 				};
-
-				if (operation.path) {
-					result.path = operation.path;
-				}
-				if (operation.targetPath) {
-					result.targetPath = operation.targetPath;
-				}
 
 				return result as ValidatedOperation;
 			}
@@ -244,33 +262,20 @@ export class VaultSecurityManager {
 	}
 
 	/**
-	 * Synchronous permission check for operations with no path to validate.
-	 *
-	 * Exists for callers whose base signature is synchronous (executeCommand), so
-	 * they cannot await validateOperation. This is the SAME policy — it delegates
-	 * to isOperationAllowed and logs identically — not a second gate. Anything
-	 * with a path must use validateOperation so path validation runs too.
-	 */
-	assertOperationPermitted(type: OperationType, context?: VaultOperation['context']): void {
-		const operation: VaultOperation = { type, context };
-
-		if (!this.isOperationAllowed(type)) {
-			this.logSecurityEvent(operation, 'blocked', 'PERMISSION_DENIED');
-			throw new SecurityError(
-				`Operation '${type}' is not permitted in current security mode`,
-				'PERMISSION_DENIED'
-			);
-		}
-
-		this.logSecurityEvent(operation, 'allowed');
-	}
-
-	/**
 	 * Checks if an operation type is allowed
 	 */
 	private isOperationAllowed(type: OperationType): boolean {
+		// Live read-only check, ahead of the snapshot (ADR-108). Equivalent to
+		// presets.readOnly() but evaluated per call, so toggling the setting takes
+		// effect immediately in both directions instead of at the next server
+		// start. READ is the only operation read-only permits; EXECUTE is denied
+		// too, matching presets.readOnly().
+		if (this.isReadOnly?.() && type !== OperationType.READ) {
+			return false;
+		}
+
 		const perms = this.settings.permissions;
-		
+
 		switch (type) {
 			case OperationType.READ:
 				return perms.read;
