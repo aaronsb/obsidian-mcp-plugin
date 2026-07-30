@@ -473,14 +473,24 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
         try {
           const sourceFile = await ctx.api.getFile(path);
           return await copyFile(ctx, path, destination, overwrite, sourceFile);
-        } catch {
+        } catch (error) {
+          // A security refusal is not "maybe it's a directory". Retrying as a
+          // directory and then reporting a missing source told a read-only user
+          // their file did not exist — same swallow that hid the move/rename
+          // traversal, with a misleading error instead of a bypass.
+          if (error instanceof SecurityError) {
+            throw error;
+          }
           // If file operation failed, try as directory (this will also go through security validation)
           try {
             // Test if it's a directory by trying to list its contents
             await ctx.api.listFiles(path);
             // If listing succeeds, it's a directory
             return await copyDirectoryRecursive(ctx, path, destination, overwrite);
-          } catch {
+          } catch (dirError) {
+            if (dirError instanceof SecurityError) {
+              throw dirError;
+            }
             // Neither file nor directory worked
             throw new Error(`Source not found or inaccessible: ${path}`);
           }

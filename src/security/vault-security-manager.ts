@@ -261,28 +261,6 @@ export class VaultSecurityManager {
 	}
 
 	/**
-	 * Synchronous permission check for operations with no path to validate.
-	 *
-	 * Exists for callers whose base signature is synchronous (executeCommand), so
-	 * they cannot await validateOperation. This is the SAME policy — it delegates
-	 * to isOperationAllowed and logs identically — not a second gate. Anything
-	 * with a path must use validateOperation so path validation runs too.
-	 */
-	assertOperationPermitted(type: OperationType, context?: VaultOperation['context']): void {
-		const operation: VaultOperation = { type, context };
-
-		if (!this.isOperationAllowed(type)) {
-			this.logSecurityEvent(operation, 'blocked', 'PERMISSION_DENIED');
-			throw new SecurityError(
-				`Operation '${type}' is not permitted in current security mode`,
-				'PERMISSION_DENIED'
-			);
-		}
-
-		this.logSecurityEvent(operation, 'allowed');
-	}
-
-	/**
 	 * Checks if an operation type is allowed
 	 */
 	private isOperationAllowed(type: OperationType): boolean {

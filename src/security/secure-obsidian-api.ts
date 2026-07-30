@@ -202,12 +202,16 @@ export class SecureObsidianAPI extends ObsidianAPI {
 	 * to…"), so an unwrapped executeCommand is a write path around the layer.
 	 * Latent today — only getCommands() is wired to a tool — but wrapped for the
 	 * same reason as the active-file writes above.
+	 *
+	 * Goes through validateOperation like every other write, rather than a
+	 * separate synchronous permission check: one gate function, and no entry
+	 * point that silently cannot validate a path.
 	 */
-	executeCommand(commandId: string): ReturnType<ObsidianAPI['executeCommand']> {
-		this.security.assertOperationPermitted(
-			OperationType.EXECUTE,
-			{ method: 'executeCommand', commandId }
-		);
+	async executeCommand(commandId: string): ReturnType<ObsidianAPI['executeCommand']> {
+		await this.security.validateOperation({
+			type: OperationType.EXECUTE,
+			context: { method: 'executeCommand', commandId }
+		});
 
 		return super.executeCommand(commandId);
 	}
