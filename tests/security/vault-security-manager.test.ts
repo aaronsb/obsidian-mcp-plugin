@@ -277,7 +277,12 @@ describe('VaultSecurityManager', () => {
       });
     });
 
-    test('safeMode preset allows most operations except delete', () => {
+    // execute was true here, and that was correct while EXECUTE meant openFile.
+    // EXECUTE now means running an arbitrary Obsidian command by id, and the
+    // command palette contains "Delete current file" — so under the new meaning
+    // execute:true would let safeMode authorise what its delete:false is for.
+    // The permission's meaning moved, so the expectation moved with it.
+    test('safeMode preset allows reorganisation but neither delete nor execute', () => {
       const safeModeSettings = VaultSecurityManager.presets.safeMode();
       expect(safeModeSettings.permissions).toEqual({
         read: true,
@@ -286,7 +291,7 @@ describe('VaultSecurityManager', () => {
         delete: false,
         move: true,
         rename: true,
-        execute: true
+        execute: false
       });
     });
 
