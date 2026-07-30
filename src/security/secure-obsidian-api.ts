@@ -157,9 +157,16 @@ export class SecureObsidianAPI extends ObsidianAPI {
 	 * Validates BOTH source and destination before a move/rename.
 	 *
 	 * validateOperation already understands targetPath, so the destination goes
-	 * through the same path validator as the source. Before this override the
-	 * router called app.fileManager.renameFile directly and a `../` destination
-	 * relocated files outside the vault root.
+	 * through the same path validator as the source (and the blocked-path check,
+	 * which is why .mcpignore protection now covers move destinations too).
+	 * Before this override the router called app.fileManager.renameFile directly
+	 * and a `../` destination relocated files outside the vault root.
+	 *
+	 * Deliberately typed MOVE for both move and rename: Obsidian models a rename
+	 * as a move (one fileManager.renameFile serves both), and no preset splits
+	 * permissions.move from permissions.rename. If those ever become
+	 * independently configurable, this needs to take the operation type from the
+	 * caller instead.
 	 */
 	async renameFile(path: string, newPath: string): ReturnType<ObsidianAPI['renameFile']> {
 		const validated = await this.security.validateOperation({
