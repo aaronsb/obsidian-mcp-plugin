@@ -12,6 +12,7 @@ import { randomUUID } from 'crypto';
 import { getVersion } from './version';
 import { ObsidianAPI } from './utils/obsidian-api';
 import { SecureObsidianAPI } from './security';
+import { authorizeRequest } from './security/http-auth';
 import { semanticTools } from './tools/semantic-tools';
 import { Debug } from './utils/debug';
 import { ConnectionPool, PooledRequest } from './utils/connection-pool';
@@ -276,63 +277,29 @@ export class MCPHttpServer {
       next();
     });
     
-    // Authentication middleware - check API key
+    // Authentication middleware. The decision itself lives in
+    // security/http-auth.ts as a pure function so every branch is testable —
+    // dangerouslyDisableAuth previously had no test coverage at all because the
+    // logic was only reachable by standing up a server.
     this.app.use((req, res, next) => {
-      // Skip auth for OPTIONS requests (CORS preflight)
-      if (req.method === 'OPTIONS') {
-        return next();
-      }
-      
-      // Check if auth is disabled
-      if (this.plugin?.settings?.dangerouslyDisableAuth === true) {
-        Debug.log('⚠️ Authentication is DISABLED - allowing access without credentials');
+      const decision = authorizeRequest({
+        method: req.method,
+        authHeader: req.headers.authorization,
+        apiKey: this.plugin?.settings?.apiKey,
+        authDisabled: this.plugin?.settings?.dangerouslyDisableAuth
+      });
+
+      if (decision.allow) {
+        if (decision.reason === 'auth-disabled') {
+          Debug.log('⚠️ Authentication is DISABLED - allowing access without credentials');
+        } else if (decision.reason === 'no-key-configured') {
+          Debug.log('🔓 No API key configured, allowing access');
+        }
         return next();
       }
 
-      const apiKey = this.plugin?.settings?.apiKey;
-      if (!apiKey) {
-        // No API key configured, allow access (backward compatibility)
-        Debug.log('🔓 No API key configured, allowing access');
-        return next();
-      }
-      
-      // Check Authorization header for Bearer or Basic Auth
-      const authHeader = req.headers.authorization;
-      Debug.log(`🔐 Auth check - Header present: ${!!authHeader}, API key set: ${!!apiKey}`);
-      
-      if (!authHeader) {
-        Debug.log('❌ Auth failed: Missing Authorization header');
-        res.status(401).json({ error: 'Authentication required' });
-        return;
-      }
-      
-      let authenticated = false;
-      
-      // Check for Bearer token
-      if (authHeader.startsWith('Bearer ')) {
-        const token = authHeader.slice(7);
-        authenticated = (token === apiKey);
-        Debug.log(`🔐 Bearer auth - Token matches: ${authenticated}`);
-      } 
-      // Check for Basic auth
-      else if (authHeader.startsWith('Basic ')) {
-        const base64Credentials = authHeader.slice(6);
-        const credentials = Buffer.from(base64Credentials, 'base64').toString('utf8');
-        const [username, password] = credentials.split(':');
-        authenticated = (password === apiKey);
-        Debug.log(`🔐 Basic auth - Username: ${username}, Password matches: ${authenticated}`);
-      } else {
-        Debug.log('❌ Auth failed: Invalid Authorization header format');
-      }
-      
-      if (!authenticated) {
-        Debug.log('❌ Auth failed: Invalid API key');
-        res.status(401).json({ error: 'Invalid API key' });
-        return;
-      }
-      
-      Debug.log('✅ Auth successful');
-      next();
+      Debug.log(`❌ Auth failed: ${decision.reason}`);
+      res.status(decision.status).json({ error: decision.error });
     });
   }
 
