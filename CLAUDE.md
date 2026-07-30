@@ -224,6 +224,30 @@ Practical application:
 
 Re-run `npm audit` after each merge batch to see what residual exposure remains.
 
+#### The hold covers what ships. Analysis tooling is exempt.
+
+The hold protects **users** from a malicious version reaching them through
+`main.js`. Linters, formatters, type-checkers and test tooling never get bundled,
+so holding them back protects nobody and costs something real: our lint drifts
+from the portal's, and findings then arrive *after* a release is cut instead of
+before. Hold anything that ships. Land analysis tooling as soon as it's green.
+
+Two honest caveats. This is not zero-risk — an ESLint plugin executes on the
+maintainer's machine during `npm run lint`, so the exposure moves from users to
+the developer rather than disappearing.
+
+Second, the mitigating control is weaker than it looks. Install scripts are
+blocked pending approval (`npm install-scripts ls` shows what is waiting), but
+that is **npm 12+ default behaviour, not something this repo enforces** — there is
+no `.npmrc` or `package.json` setting pinning it. On an older npm a new dev
+dependency's `postinstall` runs freely. So the exemption rests on the toolchain
+the installer happens to be using. Approve install scripts one package at a time
+and never with `--all`; if this needs to be guaranteed rather than assumed, that
+means enforcing it in the repo, which is not done today.
+
+Anything with a runtime import path — including a dev dependency that ends up
+bundled — is "what ships" and keeps the hold.
+
 ## Plugin-Specific Guidelines
 
 ### Obsidian Plugin Lifecycle
@@ -597,7 +621,8 @@ npm view eslint-plugin-obsidianmd version
 If they differ, upgrade and re-lint before scanning. A new minor of this plugin
 usually means new rules, and it is cheaper to see them locally than to read them
 off a scorecard. Treat a warning that only the portal can see as a tooling gap,
-not as a portal quirk.
+not as a portal quirk. This upgrade does not wait on the 7-day hold — see the
+analysis-tooling exemption in the supply-chain section above.
 
 **Do not satisfy a rule by faking the implementation.** The
 `prefer-setting-definitions` warning can be silenced with a
