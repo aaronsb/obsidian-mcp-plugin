@@ -120,7 +120,11 @@ export class MCPHttpServer {
   private mcpServerPool!: MCPServerPool;
   private transports: Map<string, StreamableHTTPServerTransport> = new Map();
   private obsidianApp: App;
-  private obsidianAPI: ObsidianAPI;
+  // Deliberately the narrow type, not ObsidianAPI. Every session's API is built
+  // from this one, and MCPServerPool now refuses to create a session when it is
+  // not a SecureObsidianAPI — so a future assignment of a plain ObsidianAPI here
+  // should fail to compile rather than fail at session creation.
+  private obsidianAPI: SecureObsidianAPI;
   private port: number;
   private isRunning: boolean = false;
   private connectionCount: number = 0;
