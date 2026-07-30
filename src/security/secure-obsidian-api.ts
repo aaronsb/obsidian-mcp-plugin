@@ -42,10 +42,22 @@ export class SecureObsidianAPI extends ObsidianAPI {
 		// Read-only is read live off the plugin settings, not captured here
 		// (ADR-108). Reading `plugin.settings.readOnlyMode` inside the closure
 		// rather than dereferencing it now is what makes the toggle take effect
-		// without a server restart.
+		// without a server restart — and it survives loadSettings() replacing the
+		// settings object wholesale, which main.ts does.
+		//
+		// Without a plugin ref there is no setting to read, so read-only CANNOT be
+		// enforced on this instance. Every production call site passes one; a
+		// future one that forgets would silently lose read-only, so say so loudly
+		// rather than leaving it to be discovered.
 		const isReadOnly = plugin
 			? (): boolean => plugin.settings?.readOnlyMode === true
 			: undefined;
+		if (!plugin) {
+			Debug.error(
+				'⚠️ SecureObsidianAPI built without a plugin reference: read-only mode ' +
+				'cannot be enforced on this instance. Path validation still applies.'
+			);
+		}
 
 		this.security = new VaultSecurityManager(app, settings, ignoreManager, isReadOnly);
 		

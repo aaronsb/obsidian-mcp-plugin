@@ -156,7 +156,7 @@ export class MCPHttpServer {
     Debug.log('🔐 Initializing VaultSecurityManager firewall');
     
     // One baseline ruleset, regardless of read-only (ADR-108). See
-    // BASELINE_SECURITY_SETTINGS below for why it must stay permissive.
+    // BASELINE_SECURITY_SETTINGS above for why it must stay permissive.
     //
     // This used to branch on readOnlyMode and install presets.readOnly() when it
     // was set. That snapshot was the whole bug: read-only became whatever it was

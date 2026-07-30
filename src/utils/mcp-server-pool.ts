@@ -152,9 +152,16 @@ export class MCPServerPool extends EventEmitter {
       );
       Debug.log(`🔐 Created secure session API for session ${sessionId}`);
     } else {
-      // Fallback to regular ObsidianAPI
-      sessionAPI = new ObsidianAPI(this.obsidianAPI.getApp(), undefined, this.plugin);
-      Debug.log(`⚠️ Created regular session API for session ${sessionId} (no security)`);
+      // Previously this fell back to a plain ObsidianAPI and logged "(no
+      // security)" — a session with NOTHING between it and vault writes: no
+      // read-only, no path validation, no .mcpignore. Unreachable today because
+      // mcp-server.ts always builds a SecureObsidianAPI, but a silent fail-open
+      // is exactly the shape of the bugs this enforcement work exists to close,
+      // so it fails loudly instead of quietly serving an unguarded session.
+      throw new Error(
+        'Refusing to create a session without the security layer: the parent API ' +
+        'is not a SecureObsidianAPI. This is a wiring bug, not a runtime condition.'
+      );
     }
 
     // Get available tools (filtered by visibility settings)

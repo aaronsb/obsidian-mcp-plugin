@@ -155,19 +155,17 @@ export class VaultSecurityManager {
 					);
 				}
 
-				// Return operation as-is without path validation
-				// Cast paths to ValidatedPath since we're bypassing validation
+				// Paths pass through unvalidated — that is what 'disabled' means.
+				// The spread already carries path and targetPath; two `if
+				// (operation.path)` re-assignments used to sit here writing the same
+				// values back. They were pure no-ops, but read as the presence
+				// semantics the strict branch below now uses, which made this look
+				// like a spot someone forgot to update. A false parallel is worse
+				// than none.
 				const result = {
 					...operation,
 					validatedAt: Date.now()
 				};
-
-				if (operation.path) {
-					result.path = operation.path;
-				}
-				if (operation.targetPath) {
-					result.targetPath = operation.targetPath;
-				}
 
 				return result as ValidatedOperation;
 			}
