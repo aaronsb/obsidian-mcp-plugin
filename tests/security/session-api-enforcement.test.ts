@@ -40,7 +40,11 @@ jest.mock('../../src/security/secure-obsidian-api', () => {
 
 // Imported after the mock so the pool binds to the wrapper.
 import { MCPServerPool } from '../../src/utils/mcp-server-pool';
-import { SecureObsidianAPI } from '../../src/security/secure-obsidian-api';
+// Deliberately the BARREL, matching mcp-server.ts, while mcp-server-pool.ts
+// imports the file directly. The pool's `instanceof SecureObsidianAPI` check now
+// depends on those two specifiers resolving to one module identity, so pairing
+// them here means this test also covers that condition.
+import { SecureObsidianAPI } from '../../src/security';
 import { ObsidianAPI } from '../../src/utils/obsidian-api';
 import { BASELINE_SECURITY_SETTINGS } from '../../src/mcp-server';
 
@@ -84,9 +88,26 @@ describe('session API enforcement', () => {
 
     expect(constructorCalls.length).toBeGreaterThan(0);
     const [, , sessionPlugin] = constructorCalls[0];
-    // Identity, not shape: a copy would read stale settings after a toggle, which
-    // is precisely the staleness ADR-108 removed.
+    // Identity is the strongest and simplest form of the guarantee. Note a
+    // SHALLOW copy would actually still work — `{...plugin}.settings ===
+    // plugin.settings`, so it would see toggles — but a copy of `settings` itself
+    // would go stale, which is the staleness ADR-108 removed. Asserting identity
+    // is stricter than the minimum invariant, deliberately: it costs nothing and
+    // leaves no room for a copy that happens to be shallow today becoming a deep
+    // one later.
     expect(sessionPlugin).toBe(plugin);
+  });
+
+  it('refuses to build a session without a plugin reference', () => {
+    const app = makeApp();
+    const plugin = { settings: { readOnlyMode: true } };
+    const parent = new SecureObsidianAPI(app, undefined, plugin as never, BASELINE_SECURITY_SETTINGS);
+
+    // Omitting the plugin leaves the session API with no setting to read, so
+    // read-only silently would not apply while path validation still would.
+    const pool = new MCPServerPool(parent, 4, undefined);
+
+    expect(() => pool.getOrCreateServer('session-3')).toThrow(/without a plugin reference/);
   });
 
   it('refuses to build a session without the security layer', () => {

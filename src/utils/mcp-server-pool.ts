@@ -143,6 +143,19 @@ export class MCPServerPool extends EventEmitter {
     // Always create SecureObsidianAPI if the main API has security settings
     let sessionAPI: ObsidianAPI | SecureObsidianAPI;
     if (this.obsidianAPI instanceof SecureObsidianAPI) {
+      // Without a plugin reference the session API has no settings to read, so
+      // read-only cannot be enforced on it — while path validation still can,
+      // which is the worst combination: a boundary that looks whole and isn't.
+      // Verified behaviour when absent: edit.append writes while a user believing
+      // read-only is on sees nothing. Same wiring-bug class as the missing
+      // security layer below, so it fails the same way rather than only logging.
+      if (!this.plugin) {
+        throw new Error(
+          'Refusing to create a session without a plugin reference: read-only mode ' +
+          'could not be enforced on it. This is a wiring bug, not a runtime condition.'
+        );
+      }
+
       // Main API is SecureObsidianAPI - create matching secure instance
       sessionAPI = new SecureObsidianAPI(
         this.obsidianAPI.getApp(),

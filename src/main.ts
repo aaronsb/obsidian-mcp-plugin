@@ -318,6 +318,17 @@ export default class ObsidianMCPPlugin extends Plugin {
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MCPPluginSettings>);
 
+		// Coerce the security booleans loaded from data.json.
+		//
+		// loadData() returns whatever is on disk, and data.json is hand-editable.
+		// The security predicate tests `=== true` while the settings toggle renders
+		// with truthiness, so a string "true" would show the toggle ON while
+		// read-only was NOT enforced — belief diverging from reality, which is the
+		// exact shape of the bug this hardening came out of. Normalising here means
+		// UI and enforcement read one value.
+		this.settings.readOnlyMode = this.settings.readOnlyMode === true;
+		this.settings.dangerouslyDisableAuth = this.settings.dangerouslyDisableAuth === true;
+
 		// Generate API key on first load if not present
 		if (!this.settings.apiKey) {
 			this.settings.apiKey = this.generateApiKey();
