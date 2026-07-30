@@ -132,6 +132,24 @@ describe('authorizeRequest', () => {
     });
   });
 
+  /**
+   * data.json is hand-editable and loadData() returns it verbatim, so the
+   * booleans that gate security have to be normalised on load. Without that, the
+   * predicate's `=== true` and the settings toggle's truthiness disagree: the
+   * toggle renders ON while enforcement is off. main.ts coerces both in
+   * loadSettings; this pins the reason.
+   */
+  describe('settings coercion (main.ts loadSettings)', () => {
+    it('a non-boolean authDisabled must not disable auth', () => {
+      for (const bad of ['true', 1, {}, []] as unknown[]) {
+        const d = authorizeRequest({
+          method: 'POST', apiKey: KEY, authDisabled: bad as boolean,
+        });
+        expect(d.allow).toBe(false);
+      }
+    });
+  });
+
   describe('constant-time comparison', () => {
     it('does not throw on length mismatch', () => {
       // timingSafeEqual throws when lengths differ, so the length check has to
