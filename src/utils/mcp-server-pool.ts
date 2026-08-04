@@ -22,6 +22,7 @@ import type { ConnectionPool } from './connection-pool';
 interface PluginWithSettings {
   settings?: {
     readOnlyMode?: boolean;
+    enableWebFetch?: boolean;
     // From SecurePluginRef (for SecureObsidianAPI)
     security?: Partial<import('../security/vault-security-manager').SecuritySettings>;
     // From ObsidianAPIPluginRef (for ObsidianAPI)
@@ -177,10 +178,13 @@ export class MCPServerPool extends EventEmitter {
       );
     }
 
-    // Get available tools (filtered by visibility settings)
+    // Get available tools (filtered by visibility settings). The enableWebFetch
+    // value is a snapshot for enumeration only — enforcement reads it live in
+    // the security layer (ADR-109).
     const availableTools = createSemanticTools(
       this.obsidianAPI,
-      this.plugin?.settings?.toolVisibility
+      this.plugin?.settings?.toolVisibility,
+      this.plugin?.settings?.enableWebFetch === true
     );
 
     // List tools handler

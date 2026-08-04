@@ -21,6 +21,7 @@ interface ObsidianAPIMCPServerInfo {
 export interface ObsidianAPIPluginRef {
   settings?: {
     validation?: Partial<ValidationConfig>;
+    enableWebFetch?: boolean;
     httpEnabled?: boolean;
     httpsEnabled?: boolean;
     httpPort?: number;

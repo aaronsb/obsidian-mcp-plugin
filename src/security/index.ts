@@ -14,6 +14,20 @@ export {
 	type ValidatedOperation
 } from './vault-security-manager';
 
-export { 
-	SecureObsidianAPI 
+export {
+	SecureObsidianAPI
 } from './secure-obsidian-api';
+
+export {
+	validateOutboundUrl,
+	isBlockedAddress,
+	OutboundFetchError,
+	type ValidatedTarget
+} from './url-validator';
+
+export {
+	safeFetch,
+	type SafeFetchResponse,
+	type HopTransport,
+	type HopResponse
+} from './safe-fetch';

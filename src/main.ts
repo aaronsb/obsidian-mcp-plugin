@@ -26,6 +26,7 @@ interface MCPPluginSettings {
 	apiKey: string;
 	dangerouslyDisableAuth: boolean;
 	readOnlyMode: boolean;
+	enableWebFetch: boolean;
 	pathExclusionsEnabled: boolean;
 	enableIgnoreContextMenu: boolean;
 	validation?: Partial<ValidationConfig>;
@@ -77,6 +78,7 @@ const DEFAULT_SETTINGS: MCPPluginSettings = {
 	apiKey: '', // Will be generated on first load
 	dangerouslyDisableAuth: false, // Auth enabled by default
 	readOnlyMode: false, // Read-only mode disabled by default
+	enableWebFetch: false, // ADR-109: outbound web fetch off by default, for everyone
 	pathExclusionsEnabled: false, // Path exclusions disabled by default
 	enableIgnoreContextMenu: false, // Context menu disabled by default
 	validation: {
@@ -328,6 +330,17 @@ export default class ObsidianMCPPlugin extends Plugin {
 		// UI and enforcement read one value.
 		this.settings.readOnlyMode = this.settings.readOnlyMode === true;
 		this.settings.dangerouslyDisableAuth = this.settings.dangerouslyDisableAuth === true;
+		this.settings.enableWebFetch = this.settings.enableWebFetch === true;
+
+		// ADR-109: fetch_web moved from the visibility tree to the dedicated
+		// enableWebFetch setting. A leftover visibility key would be a second
+		// switch for the same capability — with AND semantics nobody chose — so
+		// retire it. The key could only have expressed "off", which is what the
+		// new default already says.
+		if ('system.fetch_web' in this.settings.toolVisibility) {
+			delete this.settings.toolVisibility['system.fetch_web'];
+			await this.saveSettings();
+		}
 
 		// Generate API key on first load if not present
 		if (!this.settings.apiKey) {
@@ -1121,6 +1134,24 @@ class MCPSettingTab extends PluginSettingTab {
 					this.render();
 				}));
 
+		// ADR-109: dedicated gate for the plugin's only outbound capability.
+		// Not a row in the tool-visibility tree — that list answers "which tools
+		// does the agent see", this answers "may the plugin reach the internet".
+		new Setting(containerEl)
+			.setName('Allow outbound web fetch')
+			.setDesc('Lets connected agents fetch web pages (system.fetch_web). Off: the plugin makes no outbound connections at all. On: internal addresses (localhost, local network, cloud metadata) are always blocked, but an agent reading untrusted notes could still be tricked into leaking vault data inside a URL to a public site — read-only mode does not prevent that. Enforcement takes effect immediately; agents see the tool appear on their next connection.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableWebFetch)
+				.onChange(async (value) => {
+					this.plugin.settings.enableWebFetch = value;
+					await this.plugin.saveSettings();
+					if (value) {
+						new Notice('🌐 Outbound web fetch enabled. Internal addresses remain blocked.');
+					} else {
+						new Notice('✅ Outbound web fetch disabled. The plugin makes no outbound connections.');
+					}
+				}));
+
 		// Path Exclusions Setting
 		new Setting(containerEl)
 			.setName('Path exclusions')
@@ -1385,20 +1416,25 @@ class MCPSettingTab extends PluginSettingTab {
 			return visibility[key] !== false;
 		};
 
+		// ADR-109: fetch_web is governed by the dedicated "Allow outbound web
+		// fetch" toggle in the security section, not by this tree.
+		const treeActions = (op: string): string[] =>
+			getActionsForOperation(op).filter(action => !(op === 'system' && action === 'fetch_web'));
+
 		const isOperationFullyEnabled = (op: string): boolean => {
 			if (visibility[op] === false) return false;
-			return getActionsForOperation(op).every(a => isActionEnabled(op, a));
+			return treeActions(op).every(a => isActionEnabled(op, a));
 		};
 
 		const isOperationFullyDisabled = (op: string): boolean => {
 			if (visibility[op] === false) return true;
-			return getActionsForOperation(op).every(a => !isActionEnabled(op, a));
+			return treeActions(op).every(a => !isActionEnabled(op, a));
 		};
 
 		const treeEl = containerEl.createDiv({ cls: 'mcp-tool-tree' });
 
 		for (const operation of ALL_OPERATIONS) {
-			const actions = getActionsForOperation(operation);
+			const actions = treeActions(operation);
 			if (actions.length === 0) continue;
 
 			// Skip dataview if not available

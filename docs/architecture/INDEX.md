@@ -29,6 +29,7 @@ _Server architecture, transport, connection handling, plugin lifecycle_
 | [ADR-106](./core/ADR-106-client-driven-session-re-initialization-via-spec-compliant-http-404.md) | Client-driven session re-initialization via spec-compliant HTTP 404 | Accepted |
 | [ADR-107](./core/ADR-107-network-exposure-modes-as-a-classified-state-machine.md) | Network exposure modes as a classified state machine | Accepted |
 | [ADR-108](./core/ADR-108-consolidate-read-only-enforcement-onto-the-security-layer-and-make-it-live.md) | Consolidate read-only enforcement onto the security layer and make it live | Draft |
+| [ADR-109](./core/ADR-109-outbound-web-fetch-is-off-by-default-and-range-filtered-when-enabled.md) | Outbound web fetch is off by default and range-filtered when enabled | Draft |
 
 ## Tools & API
 _MCP tool design, semantic operations, graph operations, formatters_
