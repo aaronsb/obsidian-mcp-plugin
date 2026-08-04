@@ -87,7 +87,7 @@ interface DataviewResult {
  * Unified semantic tools that consolidate all operations into 5 main verbs
  */
 
-const createSemanticTool = (operation: string, visibility?: ToolVisibility): SemanticTool | null => {
+const createSemanticTool = (operation: string, visibility?: ToolVisibility, webFetchEnabled?: boolean): SemanticTool | null => {
   // Check operation-level toggle
   if (visibility && visibility[operation] === false) return null;
 
@@ -98,9 +98,23 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility): Sem
     if (actions.length === 0) return null;
   }
 
+  // ADR-109: fetch_web is gated by its dedicated setting, not the visibility
+  // tree. Hiding it here is presentation — enforcement is the security-layer
+  // URL validator, which reads the setting live on every call.
+  if (operation === 'system' && webFetchEnabled === false) {
+    actions = actions.filter(action => action !== 'fetch_web');
+    if (actions.length === 0) return null;
+  }
+
+  // Keep the advertised description in step with the action list.
+  let description = getOperationDescription(operation);
+  if (operation === 'system' && !actions.includes('fetch_web')) {
+    description = description.replace(/, fetch_web:[^,]*$/, '');
+  }
+
   return {
   name: operation,
-  description: getOperationDescription(operation),
+  description,
   inputSchema: {
     type: 'object',
     properties: {
@@ -784,7 +798,7 @@ function getParametersForOperation(operation: string): Record<string, unknown> {
 /**
  * Create semantic tools array with optional Dataview support
  */
-export function createSemanticTools(api?: ObsidianAPI, visibility?: ToolVisibility): SemanticTool[] {
+export function createSemanticTools(api?: ObsidianAPI, visibility?: ToolVisibility, webFetchEnabled?: boolean): SemanticTool[] {
   const operations = ['vault', 'edit', 'view', 'workflow', 'system', 'graph', 'bases'];
 
   // Add Dataview if available
@@ -794,7 +808,7 @@ export function createSemanticTools(api?: ObsidianAPI, visibility?: ToolVisibili
 
   // Create tools, filtering by visibility (null = operation fully disabled)
   return operations
-    .map(op => createSemanticTool(op, visibility))
+    .map(op => createSemanticTool(op, visibility, webFetchEnabled))
     .filter((tool): tool is SemanticTool => tool !== null);
 }
 
