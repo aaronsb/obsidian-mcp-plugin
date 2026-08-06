@@ -79,6 +79,43 @@ export class MCPServerPool extends EventEmitter {
   }
 
   /**
+   * Build the currently-visible tool set from live plugin settings.
+   *
+   * Called per request rather than once per session so a settings toggle
+   * applies to sessions that already exist. `enableWebFetch` is passed
+   * explicitly as a boolean — `createSemanticTools` fails closed on an omitted
+   * flag, and this keeps the intent visible at the call site (ADR-109).
+   */
+  private buildTools() {
+    return createSemanticTools(
+      this.obsidianAPI,
+      this.plugin?.settings?.toolVisibility,
+      this.plugin?.settings?.enableWebFetch === true
+    );
+  }
+
+  /**
+   * Tell every live session its tool list changed, so clients re-fetch instead
+   * of holding the list they cached at connection time (#285).
+   *
+   * Best-effort by design: the SDK no-ops on a server with no connected
+   * transport, and one session's failure must not stop the rest — a settings
+   * toggle is a UI action, not a transaction.
+   */
+  notifyToolListChanged(): void {
+    let notified = 0;
+    for (const [sessionId, pooled] of this.servers) {
+      try {
+        pooled.server.sendToolListChanged();
+        notified++;
+      } catch (error: unknown) {
+        Debug.error(`[Session ${sessionId}] tools/list_changed notify failed:`, error);
+      }
+    }
+    Debug.log(`📢 Notified ${notified}/${this.servers.size} session(s) of a tool list change`);
+  }
+
+  /**
    * Get or create an MCP server for a session
    */
   getOrCreateServer(sessionId: string): McpServer {
@@ -131,7 +168,11 @@ export class MCPServerPool extends EventEmitter {
       },
       {
         capabilities: {
-          tools: {},
+          // listChanged advertises that this server pushes
+          // notifications/tools/list_changed when the visible tool set changes
+          // (settings toggles). Without the declaration a spec-compliant client
+          // is entitled to ignore the notification.
+          tools: { listChanged: true },
           resources: {}
         },
         // ADR-107: agent-visible network-exposure warning, only set when 🔴
@@ -178,20 +219,19 @@ export class MCPServerPool extends EventEmitter {
       );
     }
 
-    // Get available tools (filtered by visibility settings). The enableWebFetch
-    // value is a snapshot for enumeration only — enforcement reads it live in
-    // the security layer (ADR-109).
-    const availableTools = createSemanticTools(
-      this.obsidianAPI,
-      this.plugin?.settings?.toolVisibility,
-      this.plugin?.settings?.enableWebFetch === true
-    );
-
-    // List tools handler
+    // List tools handler. The list is built per request, not captured here.
+    //
+    // It used to be a `const availableTools` closed over by both handlers, which
+    // froze a session's tool surface at creation: toggling a tool off left every
+    // live session advertising and dispatching it until the session was evicted
+    // or the client reconnected. That is the stale-snapshot shape ADR-108
+    // removed from permission state, in the sibling control — same fix here, and
+    // the reason a `tools/list_changed` notification is worth sending at all
+    // (a client that re-fetched a snapshot would just receive it again).
     server.setRequestHandler(ListToolsRequestSchema, () => {
       Debug.log(`📋 [Session ${sessionId}] Listing available tools`);
       return {
-        tools: availableTools.map(tool => ({
+        tools: this.buildTools().map(tool => ({
           name: tool.name,
           description: tool.description,
           inputSchema: tool.inputSchema
@@ -204,7 +244,7 @@ export class MCPServerPool extends EventEmitter {
       const { name, arguments: args } = request.params;
       Debug.log(`🔧 [Session ${sessionId}] Executing tool: ${name}`, args);
 
-      const tool = availableTools.find(t => t.name === name);
+      const tool = this.buildTools().find(t => t.name === name);
       if (!tool) {
         return {
           content: [{
