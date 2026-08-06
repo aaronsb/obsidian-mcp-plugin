@@ -1145,6 +1145,10 @@ class MCPSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.enableWebFetch = value;
 					await this.plugin.saveSettings();
+					// Enforcement is already live (the validator reads the setting per
+					// call); this tells connected agents the tool surface moved, so they
+					// re-fetch instead of working from the list they cached at connect.
+					this.plugin.mcpServer?.notifyToolListChanged();
 					if (value) {
 						new Notice('🌐 Outbound web fetch enabled. Internal addresses remain blocked.');
 					} else {
@@ -1476,6 +1480,7 @@ class MCPSettingTab extends PluginSettingTab {
 							visibility[`${operation}.${action}`] = value;
 						}
 						await this.plugin.saveSettings();
+						this.plugin.mcpServer?.notifyToolListChanged();
 						this.render(); // Re-render for updated states
 					});
 				});
@@ -1512,6 +1517,7 @@ class MCPSettingTab extends PluginSettingTab {
 							}
 
 							await this.plugin.saveSettings();
+							this.plugin.mcpServer?.notifyToolListChanged();
 							this.render(); // Re-render for parent state update
 						}));
 			}

@@ -729,6 +729,17 @@ export class MCPHttpServer {
   }
 
   /**
+   * Tell live MCP sessions their tool list changed (#285).
+   *
+   * Called from the settings UI when a toggle changes which tools are visible.
+   * Safe before the pool exists (server not started yet) — there is nothing to
+   * notify in that case.
+   */
+  notifyToolListChanged(): void {
+    this.mcpServerPool?.notifyToolListChanged();
+  }
+
+  /**
    * Get connection pool statistics
    */
   getConnectionPoolStats(): ConnectionPoolStatsResponse {
