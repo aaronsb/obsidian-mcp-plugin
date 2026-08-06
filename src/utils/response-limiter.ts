@@ -200,6 +200,51 @@ function limitArrayResponse(arr: unknown[], config: ResponseLimiterConfig): unkn
 }
 
 /**
+ * Shrink a value to fit a character budget, truncating long strings wherever
+ * they sit — top level, inside an array, or nested in an object.
+ *
+ * The MCP tool-result shape puts an entire payload in one key as
+ * `[{type:'text', text:'…'}]`, so a limiter that can only accept or reject
+ * whole keys has exactly one move on a large page: drop everything. This gives
+ * it a third option — return a shortened version of the same shape.
+ */
+function truncateToBudget(value: unknown, budgetChars: number): unknown {
+  if (budgetChars <= 0) return undefined;
+
+  if (typeof value === 'string') {
+    return value.length <= budgetChars ? value : truncateContent(value, budgetChars);
+  }
+
+  if (Array.isArray(value)) {
+    const out: unknown[] = [];
+    let remaining = budgetChars;
+    for (const item of value) {
+      const shrunk = truncateToBudget(item, remaining);
+      if (shrunk === undefined) break;
+      out.push(shrunk);
+      remaining -= JSON.stringify(shrunk)?.length ?? 0;
+      if (remaining <= 0) break;
+    }
+    return out;
+  }
+
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    let remaining = budgetChars;
+    for (const [k, v] of Object.entries(value)) {
+      const shrunk = truncateToBudget(v, remaining);
+      if (shrunk === undefined) break;
+      out[k] = shrunk;
+      remaining -= JSON.stringify(shrunk)?.length ?? 0;
+      if (remaining <= 0) break;
+    }
+    return out;
+  }
+
+  return value;
+}
+
+/**
  * Limit object responses
  */
 function limitObjectResponse(obj: Record<string, unknown>, config: ResponseLimiterConfig): Record<string, unknown> {
@@ -219,11 +264,22 @@ function limitObjectResponse(obj: Record<string, unknown>, config: ResponseLimit
     const entryTokens = estimateTokens(entryStr);
 
     if (currentTokens + entryTokens > config.maxTokens) {
-      // Try to add a truncation notice
-      if (currentTokens + 50 < config.maxTokens) {
-        limited._truncated = true;
+      // Shrink the value to whatever budget is left rather than dropping the
+      // key. Dropping it produced responses like `{_truncated: true}` with no
+      // payload at all, which downstream formatters rendered as the literal
+      // string "undefined" (#293) — a successful-looking call carrying nothing.
+      // Reserve headroom for the marker and the key name itself.
+      const remainingTokens = config.maxTokens - currentTokens - estimateTokens(key) - 20;
+      const shrunk = remainingTokens > 0 ? truncateToBudget(value, remainingTokens * 4) : undefined;
+      if (shrunk !== undefined) {
+        limited[key] = shrunk;
+        currentTokens += estimateTokens(JSON.stringify(shrunk));
       }
-      break;
+      limited._truncated = true;
+      // Keep going: a later key may still be small enough to fit, and the key
+      // order here is priority-first, so stopping would discard cheap
+      // high-value fields because one big one arrived ahead of them.
+      continue;
     }
 
     limited[key] = value;

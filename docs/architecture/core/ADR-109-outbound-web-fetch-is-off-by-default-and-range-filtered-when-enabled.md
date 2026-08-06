@@ -1,5 +1,5 @@
 ---
-status: Draft
+status: Accepted
 date: 2026-08-04
 deciders:
   - aaronsb
@@ -103,7 +103,30 @@ blocked-range policy.**
      does, which is a reason for it, not a filter deficiency. The toggle's
      settings copy states both risks so enabling is informed consent.
 
-## Consequences
+## Verification
+
+Accepted on evidence from the running plugin (0.12.4, loopback bind), not from
+reasoning alone. Against the live MCP endpoint, with the setting on:
+
+- Public fetches work and convert to markdown; an `http://` URL that redirects
+  to `https://` follows and returns content, confirming the per-hop path.
+- Refused, each with the resolved address named in the error:
+  `localhost` (via `::1`), `127.0.0.1`, `2130706433`, `017700000001`,
+  `[::1]`, `[::ffff:127.0.0.1]`, `169.254.169.254`, `192.168.1.1`,
+  `10.0.0.1`, and `file://`. The decimal and octal forms are the cases a
+  hostname string comparison passes.
+- The toggle takes effect without a reconnect, confirming the live predicate.
+- With the setting on, the server's own `tools/list` advertises
+  `["info", "commands", "fetch_web"]`.
+
+Two findings came out of that testing rather than out of review. The
+enumeration filter defaulted **open** when its flag was omitted — unreachable
+from the pool, which always passes an explicit boolean, but fixed to fail
+closed and now covered by tests. And an MCP client caches `tools/list` from
+its first connection, which makes a stale client schema and a broken filter
+indistinguishable from the client side; the enumeration claim can only be
+settled server-side. Anything asserting what agents can discover should be
+tested against the function, not the client.
 
 ### Positive
 
