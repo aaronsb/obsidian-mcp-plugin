@@ -101,7 +101,12 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility, webF
   // ADR-109: fetch_web is gated by its dedicated setting, not the visibility
   // tree. Hiding it here is presentation — enforcement is the security-layer
   // URL validator, which reads the setting live on every call.
-  if (operation === 'system' && webFetchEnabled === false) {
+  //
+  // Fail closed on an omitted flag rather than testing `=== false`: a caller
+  // that forgets to thread the setting should advertise less, not more. The
+  // pool always passes an explicit boolean, so this changes nothing in
+  // production — it removes a default-open path before something grows into it.
+  if (operation === 'system' && webFetchEnabled !== true) {
     actions = actions.filter(action => action !== 'fetch_web');
     if (actions.length === 0) return null;
   }
