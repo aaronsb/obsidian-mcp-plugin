@@ -176,7 +176,12 @@ describe('Response Limiter', () => {
 
       expect(limited.error).toBe('test error');
       expect(limited.message).toBe('important message');
-      expect(limited.data).toBeUndefined(); // Should be excluded due to size
+      // Shortened, NOT dropped. This assertion used to require
+      // `limited.data` to be undefined, which pinned the defect behind #293 in
+      // place: an oversized value vanished entirely and downstream formatters
+      // rendered the missing key as the literal string "undefined".
+      expect(typeof limited.data).toBe('string');
+      expect((limited.data as string).length).toBeLessThan(100000);
       expect(limited._truncated).toBe(true);
     });
 

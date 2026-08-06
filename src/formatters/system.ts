@@ -286,10 +286,12 @@ export function formatEditResult(response: EditResponse): string {
  * Format system.fetch_web response
  */
 export interface WebFetchResponse {
-  content: string;
+  content?: string;
   title?: string;
   url?: string;
   contentType?: string;
+  /** Set by the response limiter when the payload was shortened to fit. */
+  _truncated?: boolean;
   metadata?: {
     fetchedAt?: string;
     statusCode?: number;
@@ -300,11 +302,20 @@ export function formatWebFetch(response: WebFetchResponse): string {
   const lines: string[] = [];
 
   // Extract content string — handle MCP content array format [{type:'text', text:'...'}]
-  const content: string = typeof response.content === 'string'
-    ? response.content
-    : Array.isArray(response.content)
-      ? (response.content as Array<{type: string; text: string}>)[0]?.text ?? JSON.stringify(response.content)
-      : String(response.content);
+  //
+  // A missing body is reported, never stringified. `String(undefined)` yields
+  // the word "undefined", which reads as page content and hides the fact that
+  // nothing arrived (#293). The limiter no longer drops the key, but a
+  // formatter that fails legibly is the reason a limiter regression would be
+  // noticed rather than served.
+  const rawContent: unknown = response.content;
+  const content: string = typeof rawContent === 'string'
+    ? rawContent
+    : Array.isArray(rawContent)
+      ? (rawContent as Array<{type: string; text: string}>)[0]?.text ?? JSON.stringify(rawContent)
+      : rawContent === undefined || rawContent === null
+        ? '_(no content returned — the response was truncated before it reached the formatter)_'
+        : JSON.stringify(rawContent);
 
   const title = response.title || 'Web Content';
   lines.push(header(1, `Fetched: ${title}`));
@@ -332,6 +343,11 @@ export function formatWebFetch(response: WebFetchResponse): string {
     lines.push(`... (${content.length - maxLength} more characters)`);
   } else {
     lines.push(content);
+  }
+
+  if (response._truncated) {
+    lines.push('');
+    lines.push('_(response shortened to fit the size limit — request a narrower range with `maxLength`/`startIndex` for the rest)_');
   }
 
   lines.push(summaryFooter());
