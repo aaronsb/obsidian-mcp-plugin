@@ -91,36 +91,88 @@ describe('tool list liveness', () => {
   });
 
   describe('notifyToolListChanged', () => {
+    /** Stand in for a session's transport state and capture what it sent. */
+    const stubSession = (
+      pool: MCPServerPool,
+      id: string,
+      opts: { connected?: boolean; send?: () => Promise<void> } = {}
+    ) => {
+      const server = pool.getOrCreateServer(id);
+      const w = server as unknown as {
+        isConnected: () => boolean;
+        server: { sendToolListChanged: () => Promise<void> };
+      };
+      w.isConnected = () => opts.connected ?? true;
+      if (opts.send) w.server.sendToolListChanged = opts.send;
+      return w;
+    };
+
     it('notifies every live session', () => {
       const { pool } = makePool({ enableWebFetch: false, toolVisibility: {} });
       const sent: string[] = [];
 
       for (const id of ['s1', 's2', 's3']) {
-        const server = pool.getOrCreateServer(id);
-        (server as unknown as { sendToolListChanged: () => void }).sendToolListChanged =
-          () => sent.push(id);
+        stubSession(pool, id, { send: () => { sent.push(id); return Promise.resolve(); } });
       }
 
       pool.notifyToolListChanged();
       expect(sent).toEqual(['s1', 's2', 's3']);
     });
 
-    it('keeps going when one session throws', () => {
+    it('skips sessions with no live transport', () => {
+      const { pool } = makePool({ enableWebFetch: false, toolVisibility: {} });
+      const sent: string[] = [];
+
+      stubSession(pool, 'live', { send: () => { sent.push('live'); return Promise.resolve(); } });
+      stubSession(pool, 'dead', {
+        connected: false,
+        send: () => { sent.push('dead'); return Promise.resolve(); }
+      });
+
+      pool.notifyToolListChanged();
+      expect(sent).toEqual(['live']);
+    });
+
+    it('keeps going when one session throws synchronously', () => {
       // A settings toggle is a UI action, not a transaction: one dead session
       // must not deprive the others of the notification.
       const { pool } = makePool({ enableWebFetch: false, toolVisibility: {} });
       const sent: string[] = [];
 
       for (const id of ['ok-1', 'boom', 'ok-2']) {
-        const server = pool.getOrCreateServer(id);
-        (server as unknown as { sendToolListChanged: () => void }).sendToolListChanged = () => {
-          if (id === 'boom') throw new Error('transport gone');
-          sent.push(id);
-        };
+        stubSession(pool, id, {
+          send: () => {
+            if (id === 'boom') throw new Error('transport gone');
+            sent.push(id);
+            return Promise.resolve();
+          }
+        });
       }
 
       expect(() => pool.notifyToolListChanged()).not.toThrow();
       expect(sent).toEqual(['ok-1', 'ok-2']);
+    });
+
+    it('handles a transport that REJECTS rather than throwing', async () => {
+      // The realistic failure: the send is async, so a half-dead socket rejects
+      // later. A try/catch alone never sees it and node reports an unhandled
+      // rejection. Nothing may escape to the process.
+      const { pool } = makePool({ enableWebFetch: false, toolVisibility: {} });
+      const unhandled: unknown[] = [];
+      const onUnhandled = (reason: unknown) => unhandled.push(reason);
+      process.on('unhandledRejection', onUnhandled);
+
+      try {
+        stubSession(pool, 'rejects', { send: () => Promise.reject(new Error('socket closed')) });
+        stubSession(pool, 'fine', { send: () => Promise.resolve() });
+
+        expect(() => pool.notifyToolListChanged()).not.toThrow();
+        // Let any unhandled rejection surface before asserting none did.
+        await new Promise(resolve => setImmediate(resolve));
+        expect(unhandled).toEqual([]);
+      } finally {
+        process.off('unhandledRejection', onUnhandled);
+      }
     });
 
     it('is a no-op with no sessions', () => {
