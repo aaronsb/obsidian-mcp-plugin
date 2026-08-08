@@ -105,8 +105,19 @@ export class MCPServerPool extends EventEmitter {
   notifyToolListChanged(): void {
     let notified = 0;
     for (const [sessionId, pooled] of this.servers) {
+      // Skip sessions with no live transport. McpServer.sendToolListChanged()
+      // makes this check itself, but it returns void and drops the promise the
+      // underlying send returns — so a transport that rejects (client tab
+      // closed, half-dead socket) surfaces as an unhandled rejection instead of
+      // a log line. Going through the non-deprecated `.server` accessor, which
+      // is what this file already uses to register handlers, hands back the
+      // promise so the failure can be caught. The isConnected() guard has to
+      // come with it, since the low-level call throws on a disconnected server.
+      if (!pooled.server.isConnected()) continue;
       try {
-        pooled.server.sendToolListChanged();
+        void pooled.server.server.sendToolListChanged().catch((error: unknown) => {
+          Debug.error(`[Session ${sessionId}] tools/list_changed send failed:`, error);
+        });
         notified++;
       } catch (error: unknown) {
         Debug.error(`[Session ${sessionId}] tools/list_changed notify failed:`, error);
