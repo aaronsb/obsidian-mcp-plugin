@@ -1,5 +1,7 @@
 # Semantic Notes Vault MCP
 
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2Faaronsb%2Fobsidian-mcp-plugin.svg)](https://mcptoplist.com/server/glama%2Faaronsb%2Fobsidian-mcp-plugin)
+
 ![GitHub stars](https://img.shields.io/github/stars/aaronsb/obsidian-mcp-plugin?style=social)
 ![GitHub forks](https://img.shields.io/github/forks/aaronsb/obsidian-mcp-plugin?style=social)
 ![Downloads](https://img.shields.io/github/downloads/aaronsb/obsidian-mcp-plugin/total?color=blue)
