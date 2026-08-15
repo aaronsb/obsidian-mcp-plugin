@@ -6,6 +6,147 @@ import { ObsidianImageFile } from '../types/obsidian';
 import { DataviewTool, isDataviewToolAvailable } from './dataview-tool';
 import { formatResponse } from '../formatters';
 
+/**
+ * Per-action parameter validation for destructive vault actions.
+ *
+ * The input schema is assembled per OPERATION, not per action —
+ * `getParametersForOperation(operation)` returns the union of every parameter
+ * any action of that tool might take. So `mode`, `overwrite`, `path1` and the
+ * rest are schema-valid on every `vault` call regardless of which action is
+ * requested, and each handler simply reads the parameters it needs and ignores
+ * the rest.
+ *
+ * That silence is affordable on a read. It is not affordable on a write. An
+ * ignored parameter means the caller believes something untrue about the
+ * command they invoked, and on a destructive action that belief gets acted on
+ * before anyone can notice it was wrong. Two real cases:
+ *
+ *   vault.update + mode: 'append'    -> file replaced. The caller wanted
+ *                                       edit.append and did not know it existed.
+ *   vault.update + overwrite: false  -> file replaced, despite an explicit
+ *                                       instruction not to. `overwrite` belongs
+ *                                       to move/copy.
+ *
+ * Both returned success. Neither left a diff. This rejects instead, and names
+ * the action the parameter actually belongs to, so a wrong assumption becomes a
+ * signpost rather than a silent overwrite.
+ *
+ * Deliberately narrow: only the destructive `vault` actions are gated. Read
+ * paths are left permissive, where a stray parameter costs nothing and a false
+ * positive would break working callers.
+ */
+const DESTRUCTIVE_ACTION_PARAMS: Record<string, readonly string[]> = {
+  'vault.update': ['path', 'content'],
+  'vault.create': ['path', 'content'],
+  'vault.delete': ['path'],
+};
+
+/** Accepted on every action, so never counted as inapplicable. */
+const UNIVERSAL_PARAMS: readonly string[] = ['action', 'raw'];
+
+/**
+ * Where a misplaced parameter actually belongs, keyed by parameter name.
+ * Covers every `vault` parameter plus the `edit` parameters a caller reaching
+ * for a partial edit is most likely to send by mistake.
+ */
+const PARAM_OWNER_HINTS: Record<string, string> = {
+  // The two that motivated this check.
+  mode: "'mode' applies to vault.concatenate (joining two FILES via path1/path2) and to edit.at_line (before/after/replace). To append TEXT to a file use edit.append; for partial replacement use edit.patch or edit.window.",
+  overwrite: "'overwrite' applies to vault.move and vault.copy. vault.update always replaces the entire file contents. To modify part of a file use edit.patch or edit.window.",
+
+  // vault: move / copy / rename
+  destination: "'destination' applies to vault.move, vault.copy and vault.combine.",
+  newName: "'newName' applies to vault.rename.",
+
+  // vault: concatenate / combine
+  path1: "'path1' and 'path2' apply to vault.concatenate.",
+  path2: "'path1' and 'path2' apply to vault.concatenate.",
+  paths: "'paths' applies to vault.combine.",
+  separator: "'separator' applies to vault.combine and vault.concatenate.",
+  includeFilenames: "'includeFilenames' applies to vault.combine.",
+  sortBy: "'sortBy' and 'sortOrder' apply to vault.combine.",
+  sortOrder: "'sortBy' and 'sortOrder' apply to vault.combine.",
+
+  // vault: split
+  splitBy: "'splitBy' applies to vault.split.",
+  level: "'level' applies to vault.split with splitBy='heading'.",
+  delimiter: "'delimiter' applies to vault.split with splitBy='delimiter'.",
+  linesPerFile: "'linesPerFile' applies to vault.split with splitBy='lines'.",
+  maxSize: "'maxSize' applies to vault.split with splitBy='size'.",
+  outputDirectory: "'outputDirectory' and 'outputPattern' apply to vault.split.",
+  outputPattern: "'outputDirectory' and 'outputPattern' apply to vault.split.",
+
+  // vault: search / list / read
+  query: "'query' applies to vault.search and vault.fragments.",
+  ranked: "'ranked' applies to vault.search.",
+  searchStrategy: "'searchStrategy' applies to vault.search.",
+  includeSnippets: "'includeSnippets' applies to vault.search.",
+  snippetLength: "'snippetLength' applies to vault.search.",
+  includeContent: "'includeContent' applies to vault.search.",
+  directory: "'directory' applies to vault.list.",
+  page: "'page' and 'pageSize' apply to paginated reads: vault.list, vault.search, vault.read.",
+  pageSize: "'page' and 'pageSize' apply to paginated reads: vault.list, vault.search, vault.read.",
+  returnFullFile: "'returnFullFile' applies to vault.read.",
+  strategy: "'strategy' applies to vault.fragments.",
+  maxFragments: "'maxFragments' applies to vault.fragments.",
+
+  // edit parameters, included because a caller trying to modify part of a file
+  // is exactly the caller most likely to land on a destructive vault action.
+  oldText: "'oldText' and 'newText' belong to edit.window (find/replace with fuzzy matching).",
+  newText: "'oldText' and 'newText' belong to edit.window (find/replace with fuzzy matching).",
+  fuzzyThreshold: "'fuzzyThreshold' belongs to edit.window.",
+  operation: "'operation' belongs to edit.patch (append/prepend/replace against a heading, block, or frontmatter field).",
+  target: "'target' and 'targetType' belong to edit.patch.",
+  targetType: "'target' and 'targetType' belong to edit.patch.",
+  lineNumber: "'lineNumber' belongs to edit.at_line.",
+};
+
+/**
+ * Returns an error result if `args` carries parameters that do not apply to the
+ * requested destructive action, or null to proceed.
+ *
+ * Each rejected parameter is reported individually under `rejected`, so a
+ * caller that sent several gets a hint per parameter rather than one blob.
+ */
+function rejectInapplicableParams(
+  operation: string,
+  args: ToolArgs,
+): MCPToolResult | null {
+  const key = `${operation}.${args.action}`;
+  const allowed = DESTRUCTIVE_ACTION_PARAMS[key];
+  if (!allowed) return null;
+
+  const inapplicable = Object.keys(args).filter(
+    k => !allowed.includes(k) && !UNIVERSAL_PARAMS.includes(k),
+  );
+  if (inapplicable.length === 0) return null;
+
+  const rejected = inapplicable.map(name => ({
+    parameter: name,
+    hint: PARAM_OWNER_HINTS[name]
+      ?? `'${name}' is not a parameter of ${key}. Remove it, or call the action it belongs to.`,
+  }));
+
+  const named = inapplicable.map(k => `'${k}'`).join(', ');
+  const subject = inapplicable.length === 1
+    ? `Parameter ${named} does not apply`
+    : `Parameters ${named} do not apply`;
+
+  return {
+    content: [{
+      type: 'text' as const,
+      text: JSON.stringify({
+        error: {
+          code: 'INVALID_PARAMETERS',
+          message: `${subject} to ${key}. Rejected rather than silently ignored, because ${key} is destructive. Accepted parameters: ${allowed.join(', ')}.`,
+          rejected,
+        },
+      }, null, 2),
+    }],
+    isError: true,
+  };
+}
+
 /** MCP content item for text responses */
 interface MCPTextContent {
   type: 'text';
@@ -168,6 +309,11 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility, webF
         }]
       };
     }
+
+    // An inapplicable parameter on a destructive action is a signal that the
+    // caller has the wrong command. Refuse before the write, not after.
+    const paramError = rejectInapplicableParams(operation, args);
+    if (paramError) return paramError;
 
     // Read-only mode is NOT enforced here (ADR-108). It is enforced once, in
     // VaultSecurityManager.validateOperation, which now reads the setting live.
