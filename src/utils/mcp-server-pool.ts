@@ -53,13 +53,15 @@ interface PooledServer {
  * this response is a still-open SSE stream with no bytes to send until the
  * tool resolves — the exact case it never catches).
  *
- * 30s reuses this project's existing request-timeout convention (see
- * ConnectionPool's `requestTimeout` default in connection-pool.ts / its call
- * site in mcp-server.ts) rather than inventing a new number. Exported so
- * tests can drive fake timers against the exact value instead of a
- * duplicated magic number.
+ * 120s matches the HTTP server's per-request `requestTimeout` set in
+ * mcp-server.ts's start(). A tool call is one HTTP request, so a tighter
+ * ceiling here would fail legitimately slow calls (large-vault search, graph
+ * traversal, base export) that the layer above was deliberately configured to
+ * allow. ConnectionPool's 30s `requestTimeout` governs a dispatch path tool
+ * calls do not go through. Exported so tests can drive fake timers against
+ * the exact value instead of a duplicated magic number.
  */
-export const TOOL_CALL_TIMEOUT_MS = 30000;
+export const TOOL_CALL_TIMEOUT_MS = 120_000;
 
 export class MCPServerPool extends EventEmitter {
   private servers: Map<string, PooledServer> = new Map();

@@ -15,7 +15,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { App } from 'obsidian';
 import { MCPServerPool } from '../src/utils/mcp-server-pool';
-import { ObsidianAPI } from '../src/utils/obsidian-api';
+import { SecureObsidianAPI } from '../src/security/secure-obsidian-api';
 import { TOOL_CALL_TIMEOUT_MS } from '../src/utils/mcp-server-pool';
 import type { SemanticTool } from '../src/tools/semantic-tools';
 
@@ -48,6 +48,11 @@ jest.mock('../src/tools/semantic-tools', () => ({
   ] satisfies SemanticTool[]
 }));
 
+// The SDK client gives up on a request after 60s by default, which is shorter
+// than the server-side ceiling under test. Give the hung calls room so the
+// error observed is the server's, not the client's.
+const HUNG_CALL_OPTS = { timeout: TOOL_CALL_TIMEOUT_MS * 2 };
+
 async function connectedClient(pool: MCPServerPool, sessionId: string) {
   const mcpServer = pool.getOrCreateServer(sessionId);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -71,8 +76,11 @@ describe('MCPServerPool tool-call timeout (#268)', () => {
     okHandler = jest.fn().mockResolvedValue({ content: [{ type: 'text', text: 'fine' }] });
     hangHandler = jest.fn(() => new Promise(() => { /* never resolves */ }));
 
-    const obsidianAPI = new ObsidianAPI(mockApp);
-    pool = new MCPServerPool(obsidianAPI, 32);
+    // The pool refuses a session without the security layer and a plugin
+    // reference (read-only mode is read live from plugin.settings).
+    const plugin = { settings: { readOnlyMode: false } };
+    const obsidianAPI = new SecureObsidianAPI(mockApp, undefined, plugin as never);
+    pool = new MCPServerPool(obsidianAPI, 32, plugin as never);
   });
 
   afterEach(() => {
@@ -98,7 +106,7 @@ describe('MCPServerPool tool-call timeout (#268)', () => {
     jest.useFakeTimers();
     try {
       const client = await connectedClient(pool, 'session-hang');
-      const callPromise = client.callTool({ name: 'hang', arguments: {} });
+      const callPromise = client.callTool({ name: 'hang', arguments: {} }, undefined, HUNG_CALL_OPTS);
 
       // Negative check: just before the deadline, nothing has settled yet —
       // this is not a zero-delay stub, it genuinely waits out the window.
@@ -127,7 +135,7 @@ describe('MCPServerPool tool-call timeout (#268)', () => {
     try {
       const client = await connectedClient(pool, 'session-recover');
 
-      const hungCall = client.callTool({ name: 'hang', arguments: {} });
+      const hungCall = client.callTool({ name: 'hang', arguments: {} }, undefined, HUNG_CALL_OPTS);
       await jest.advanceTimersByTimeAsync(TOOL_CALL_TIMEOUT_MS);
       const hungResult = await hungCall;
       expect(hungResult.isError).toBe(true);
