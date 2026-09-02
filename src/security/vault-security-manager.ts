@@ -209,6 +209,21 @@ export class VaultSecurityManager {
 						'PATH_NOT_ALLOWED'
 					);
 				}
+
+				// .mcpignore `readonly:` rules (#275). COPY only reads its source, so
+				// it is the one non-READ operation allowed through here; its
+				// destination is checked below.
+				if (
+					operation.type !== OperationType.READ &&
+					operation.type !== OperationType.COPY &&
+					this.isPathReadOnly(operation.path)
+				) {
+					this.logSecurityEvent(operation, 'blocked', 'PATH_READ_ONLY');
+					throw new SecurityError(
+						`Path '${operation.path}' is read-only (.mcpignore readonly: rule); '${operation.type}' is not permitted`,
+						'PATH_READ_ONLY'
+					);
+				}
 			}
 
 			// Step 4: Validate target path for move/rename operations
@@ -230,6 +245,15 @@ export class VaultSecurityManager {
 					throw new SecurityError(
 						`Access to target path '${validatedTargetPath}' is not allowed`,
 						'TARGET_PATH_NOT_ALLOWED'
+					);
+				}
+
+				// A target path is always written to, whatever the operation.
+				if (this.isPathReadOnly(operation.targetPath)) {
+					this.logSecurityEvent(operation, 'blocked', 'TARGET_PATH_READ_ONLY');
+					throw new SecurityError(
+						`Target path '${operation.targetPath}' is read-only (.mcpignore readonly: rule)`,
+						'TARGET_PATH_READ_ONLY'
 					);
 				}
 			}
@@ -334,6 +358,14 @@ export class VaultSecurityManager {
 		Debug.log(`🔍 blockedPaths pattern match result for "${path}": ${isBlockedBySettings}`);
 		
 		return isBlockedBySettings;
+	}
+
+	/**
+	 * Checks .mcpignore `readonly:` rules (#275). Only the ignore manager knows
+	 * them; there is no settings-side equivalent.
+	 */
+	private isPathReadOnly(path: string): boolean {
+		return !!this.ignoreManager?.getEnabled() && this.ignoreManager.isReadOnly(path);
 	}
 
 	/**
