@@ -8,6 +8,11 @@ updates:
       day: "monday"
       time: "09:00"
     open-pull-requests-limit: 10
+    ignore:
+      # @types/node tracks the Node major CI builds with (setup-node in
+      # .github/workflows). Bump both together, by hand.
+      - dependency-name: "@types/node"
+        versions: [">=25"]
     # Group all patch and minor updates together
     groups:
       development-dependencies:

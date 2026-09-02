@@ -33,7 +33,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
 
       # No dependency install: scorecard.mjs + scorecard-gate.mjs use only
       # Node builtins (fetch, fs, child_process). Keeps this fast and off
