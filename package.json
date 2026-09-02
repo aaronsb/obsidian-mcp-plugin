@@ -53,7 +53,7 @@
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "expression-eval": "5.0.1",
-    "minimatch": "^10.2.5",
+    "minimatch": "^10.2.6",
     "node-forge": "^1.4.0",
     "turndown": "^7.2.4",
     "yaml": "2.9.0",
