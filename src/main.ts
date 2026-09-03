@@ -1,5 +1,5 @@
 import { App, Plugin, PluginSettingTab, Setting, Notice, TFolder, setIcon, Modal, TextComponent, ButtonComponent, FileSystemAdapter } from 'obsidian';
-import type { SettingDefinition, SettingDefinitionGroup, SettingDefinitionItem } from 'obsidian';
+import type { SettingDefinition, SettingDefinitionGroup, SettingDefinitionItem, SettingDefinitionPage } from 'obsidian';
 import { MCPHttpServer } from './mcp-server';
 import { getVersion } from './version';
 import { Debug } from './utils/debug';
@@ -644,17 +644,92 @@ class MCPSettingTab extends PluginSettingTab {
 	// flip a `visible`/`disabled` predicate call refreshDomState().
 
 	getSettingDefinitions(): SettingDefinitionItem[] {
+		// Two inline blocks a new user needs first, then one row per area. Each
+		// row's displayValue answers the usual glance question without opening
+		// it, and the two rows that can be in a dangerous state carry a warning
+		// badge so the danger is visible from the top.
 		return [
 			this.gettingStartedGroup(),
 			this.connectionStatusGroup(),
-			this.serverGroup(),
-			this.networkGroup(),
-			this.httpsGroup(),
-			this.authGroup(),
-			this.securityGroup(),
-			...this.toolVisibilityGroups(),
-			this.interfaceGroup(),
+			this.serverNetworkPage(),
+			this.authPage(),
+			this.securityPage(),
+			this.toolVisibilityPage(),
+			this.interfacePage(),
 		];
+	}
+
+	// ── Pages ────────────────────────────────────────────────────────────
+
+	private serverNetworkPage(): SettingDefinitionPage {
+		return {
+			type: 'page',
+			name: 'Server & network',
+			desc: 'Protocols, ports, bind address, HTTPS and certificates.',
+			displayValue: () => {
+				const s = this.plugin.settings;
+				const parts: string[] = [];
+				if (s.httpEnabled) parts.push(`HTTP :${s.httpPort}`);
+				if (s.httpsEnabled) parts.push(`HTTPS :${s.httpsPort}`);
+				const bind = s.bindMode === 'custom' ? (s.customBindHost || 'custom') : s.bindMode;
+				parts.push(bind);
+				return parts.join(' · ');
+			},
+			status: () => this.networkVerdict().class === 'jail' ? 'warning' : null,
+			items: [this.serverGroup(), this.networkGroup(), this.httpsGroup()],
+		};
+	}
+
+	private authPage(): SettingDefinitionPage {
+		return {
+			type: 'page',
+			name: 'Authentication',
+			desc: 'API key for MCP clients.',
+			displayValue: () => this.plugin.settings.dangerouslyDisableAuth ? 'disabled' : 'API key set',
+			status: () => this.plugin.settings.dangerouslyDisableAuth ? 'warning' : null,
+			items: [this.authGroup()],
+		};
+	}
+
+	private securityPage(): SettingDefinitionPage {
+		return {
+			type: 'page',
+			name: 'Security',
+			desc: 'Read-only mode, outbound web fetch, and .mcpignore path rules.',
+			displayValue: () => {
+				const s = this.plugin.settings;
+				return [
+					`read-only ${s.readOnlyMode ? 'on' : 'off'}`,
+					`web fetch ${s.enableWebFetch ? 'on' : 'off'}`,
+					`exclusions ${s.pathExclusionsEnabled ? 'on' : 'off'}`,
+				].join(' · ');
+			},
+			items: [this.securityGroup()],
+		};
+	}
+
+	private interfacePage(): SettingDefinitionPage {
+		return {
+			type: 'page',
+			name: 'Interface',
+			desc: 'Status bar and logging.',
+			displayValue: () => {
+				const s = this.plugin.settings;
+				return `status bar ${s.showConnectionStatus ? 'on' : 'off'} · debug ${s.debugLogging ? 'on' : 'off'}`;
+			},
+			items: [this.interfaceGroup()],
+		};
+	}
+
+	/** ADR-107 exposure verdict from the current settings. */
+	private networkVerdict() {
+		const s = this.plugin.settings;
+		return classifyFromSettings({
+			httpsEnabled: s.httpsEnabled,
+			bindMode: s.bindMode,
+			customBindHost: s.customBindHost,
+			userSuppliedCert: !!(s.certificateConfig?.certPath && s.certificateConfig?.keyPath)
+		});
 	}
 
 	getControlValue(key: string): unknown {
@@ -1045,39 +1120,65 @@ class MCPSettingTab extends PluginSettingTab {
 		};
 	}
 
-	private toolVisibilityGroups(): SettingDefinitionGroup[] {
-		const intro: SettingDefinitionGroup = {
-			type: 'group',
-			heading: 'Tool visibility',
-			items: [{
-				name: 'Tool visibility',
-				desc: 'Control which mcp tools are visible to connecting agents. Disabled tools are hidden from the tool list — agents cannot discover or call them. Changes take effect on the next agent connection.',
-				aliases: ['hide tools', 'disable tools'],
-				render: (setting) => { setting.settingEl.addClass('mcp-tool-tree-desc'); },
-			}],
+	/** Operations that have a row in the tree: at least one action, and a served plugin. */
+	private treeOperations(): string[] {
+		return ALL_OPERATIONS.filter(op => this.treeActions(op).length > 0);
+	}
+
+	private isOperationAvailable(operation: string): boolean {
+		// Dataview only shows when the plugin is there to serve it.
+		return operation !== 'dataview' || new PluginDetector(this.app).isPluginEnabled('dataview');
+	}
+
+	/**
+	 * One page for the whole tree, one nested page per operation. The row for
+	 * each operation carries its enabled count, so the state of ~50 toggles is
+	 * readable from eight rows.
+	 */
+	private toolVisibilityPage(): SettingDefinitionPage {
+		const visibleTotals = () => {
+			let enabled = 0, total = 0;
+			for (const op of this.treeOperations()) {
+				if (!this.isOperationAvailable(op)) continue;
+				const actions = this.treeActions(op);
+				total += actions.length;
+				enabled += actions.filter(a => this.isActionEnabled(op, a)).length;
+			}
+			return { enabled, total };
 		};
 
-		const groups: SettingDefinitionGroup[] = [intro];
-		for (const operation of ALL_OPERATIONS) {
-			const actions = this.treeActions(operation);
-			if (actions.length === 0) continue;
+		return {
+			type: 'page',
+			name: 'Tool visibility',
+			desc: 'Which mcp tools connecting agents can see. Hidden tools cannot be discovered or called. Changes take effect on the next agent connection.',
+			displayValue: () => {
+				const { enabled, total } = visibleTotals();
+				return `${enabled}/${total} actions visible`;
+			},
+			items: this.treeOperations().map(operation => this.operationPage(operation)),
+		};
+	}
 
-			const enabledCount = actions.filter(a => this.isActionEnabled(operation, a)).length;
-			const desc = getOperationDescription(operation).replace(/^[^\s]+\s/, ''); // strip leading emoji
+	private operationPage(operation: string): SettingDefinitionPage {
+		const actions = this.treeActions(operation);
+		const desc = getOperationDescription(operation).replace(/^[^\s]+\s/, ''); // strip leading emoji
+		const enabledCount = () => actions.filter(a => this.isActionEnabled(operation, a)).length;
 
-			groups.push({
+		return {
+			type: 'page',
+			name: operation,
+			desc,
+			displayValue: () => `${enabledCount()}/${actions.length} visible`,
+			visible: () => this.isOperationAvailable(operation),
+			items: [{
 				type: 'group',
-				heading: operation,
+				heading: `${operation} actions`,
 				cls: 'mcp-tool-tree',
-				// Dataview only shows when the plugin is there to serve it.
-				visible: operation === 'dataview'
-					? () => new PluginDetector(this.app).isPluginEnabled('dataview')
-					: true,
 				items: [
 					{
 						name: `All ${operation} actions`,
-						desc: `${desc} (${enabledCount}/${actions.length} enabled)`,
-						aliases: [operation],
+						desc: 'Show or hide every action below at once.',
+						aliases: [operation, 'hide tools', 'disable tools'],
 						control: { type: 'toggle', key: `${TOOL_VISIBILITY_PREFIX}${operation}` },
 					},
 					...actions.map((action): SettingDefinition => ({
@@ -1085,9 +1186,8 @@ class MCPSettingTab extends PluginSettingTab {
 						control: { type: 'toggle', key: `${TOOL_VISIBILITY_PREFIX}${operation}.${action}` },
 					})),
 				],
-			});
-		}
-		return groups;
+			}],
+		};
 	}
 
 	private interfaceGroup(): SettingDefinitionGroup {
@@ -1172,13 +1272,7 @@ class MCPSettingTab extends PluginSettingTab {
 
 	private renderNetworkBadge(containerEl: HTMLElement): void {
 		// ADR-107: live verdict badge
-		const s = this.plugin.settings;
-		const verdict = classifyFromSettings({
-			httpsEnabled: s.httpsEnabled,
-			bindMode: s.bindMode,
-			customBindHost: s.customBindHost,
-			userSuppliedCert: !!(s.certificateConfig?.certPath && s.certificateConfig?.keyPath)
-		});
+		const verdict = this.networkVerdict();
 		const badgeEmoji = verdict.class === 'ok' ? '🟢' : verdict.class === 'warn' ? '🟡' : '🔴';
 		const badgeLabel = verdict.class === 'ok' ? 'OK' : verdict.class === 'warn' ? 'WARN' : 'INSECURE';
 		const badgeEl = containerEl.createDiv({ cls: `mcp-network-badge mcp-network-badge-${verdict.class}` });
