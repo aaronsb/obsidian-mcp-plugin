@@ -1159,7 +1159,7 @@ class MCPSettingTab extends PluginSettingTab {
 		// Path Exclusions Setting
 		new Setting(containerEl)
 			.setName('Path exclusions')
-			.setDesc('Exclude files and directories from mcp operations using .gitignore-style patterns')
+			.setDesc('Exclude files and directories from mcp operations using .gitignore-style patterns. Prefix a pattern with readonly: to keep it readable but refuse writes.')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.pathExclusionsEnabled)
 				.onChange(async (value) => {

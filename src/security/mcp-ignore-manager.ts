@@ -13,16 +13,30 @@ interface IgnoreRule {
 }
 
 /**
+ * Prefix that marks a line as a read-only rule rather than an exclusion (#275).
+ * `readonly:docs/**` exposes the subtree to reads and refuses every write to it;
+ * `!readonly:docs/scratch.md` re-opens one path for writing. The prefix sits
+ * after the negation so `!readonly:` reads as "not read-only".
+ */
+const READONLY_PREFIX = 'readonly:';
+
+/**
  * MCPIgnoreManager - Handles .mcpignore file-based path exclusions
  *
  * Uses .gitignore-style patterns to exclude files and directories from MCP operations.
  * Patterns are stored in .mcpignore at the vault root (like .gitignore)
+ *
+ * Two rule sets live in the file. Exclusion rules hide a path from every
+ * operation. Read-only rules (`readonly:` prefix) leave the path visible and
+ * readable but refuse writes. An exclusion always wins over a read-only rule:
+ * a path that is hidden cannot be read, so whether it may be written is moot.
  */
 export class MCPIgnoreManager {
   private app: App;
   private ignorePath: string;
   private patterns: string[] = [];
   private rules: IgnoreRule[] = [];
+  private readonlyRules: IgnoreRule[] = [];
   private isEnabled: boolean = false;
   private lastModified: number = 0;
 
@@ -72,6 +86,7 @@ export class MCPIgnoreManager {
       // File doesn't exist or can't be read - no exclusions
       this.patterns = [];
       this.rules = [];
+      this.readonlyRules = [];
       this.lastModified = 0;
       Debug.log('MCPIgnore: No .mcpignore file found, no exclusions active');
     }
@@ -122,6 +137,7 @@ export class MCPIgnoreManager {
   private parseIgnoreContent(content: string): void {
     const validPatterns: string[] = [];
     const rules: IgnoreRule[] = [];
+    const readonlyRules: IgnoreRule[] = [];
 
     for (const line of content.split('\n')) {
       const trimmed = line.trim();
@@ -134,7 +150,13 @@ export class MCPIgnoreManager {
       // Negation is handled here rather than by Minimatch: the pattern is rewritten
       // below, so the '!' would not survive to reach it anyway.
       const negate = trimmed.startsWith('!');
-      const body = negate ? trimmed.slice(1) : trimmed;
+      let body = negate ? trimmed.slice(1) : trimmed;
+
+      // `readonly:` is stripped after `!` so both `readonly:x` and `!readonly:x` work.
+      const readonly = body.startsWith(READONLY_PREFIX);
+      if (readonly) {
+        body = body.slice(READONLY_PREFIX.length);
+      }
       if (!body) {
         continue;
       }
@@ -149,7 +171,7 @@ export class MCPIgnoreManager {
         }));
 
         validPatterns.push(trimmed);
-        rules.push({ negate, matchers });
+        (readonly ? readonlyRules : rules).push({ negate, matchers });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         Debug.log(`MCPIgnore: Invalid pattern "${trimmed}": ${message}`);
@@ -158,6 +180,25 @@ export class MCPIgnoreManager {
 
     this.patterns = validPatterns;
     this.rules = rules;
+    this.readonlyRules = readonlyRules;
+  }
+
+  /**
+   * Last matching rule wins, so a later negation can undo an earlier match.
+   */
+  private lastMatchWins(rules: IgnoreRule[], normalizedPath: string): boolean {
+    let matched = false;
+    for (const rule of rules) {
+      if (rule.matchers.some(matcher => matcher.match(normalizedPath))) {
+        matched = !rule.negate;
+      }
+    }
+    return matched;
+  }
+
+  private normalize(path: string): string {
+    // Remove leading slash, use forward slashes
+    return path.replace(/^\/+/, '').replace(/\\/g, '/');
   }
 
   /**
@@ -170,20 +211,31 @@ export class MCPIgnoreManager {
       return false;
     }
 
-    // Normalize path (remove leading slash, use forward slashes)
-    const normalizedPath = path.replace(/^\/+/, '').replace(/\\/g, '/');
-
-    // Last matching rule wins, so a later negation can re-include an earlier exclusion.
-    let excluded = false;
-
-    for (const rule of this.rules) {
-      if (rule.matchers.some(matcher => matcher.match(normalizedPath))) {
-        excluded = !rule.negate;
-      }
-    }
+    const normalizedPath = this.normalize(path);
+    const excluded = this.lastMatchWins(this.rules, normalizedPath);
 
     Debug.log(`🔍 MCPIgnore: "${normalizedPath}" excluded = ${excluded}`);
     return excluded;
+  }
+
+  /**
+   * Check if a path is exposed read-only (#275). Reads proceed; the security
+   * layer refuses create/update/delete/move/rename and any move/copy *into* it.
+   *
+   * Independent of isExcluded(): callers check exclusion first, so an excluded
+   * path never gets this far. Copying *out of* a read-only path is a read of the
+   * source and is allowed.
+   */
+  isReadOnly(path: string): boolean {
+    if (!this.isEnabled || this.readonlyRules.length === 0) {
+      return false;
+    }
+
+    const normalizedPath = this.normalize(path);
+    const readonly = this.lastMatchWins(this.readonlyRules, normalizedPath);
+
+    Debug.log(`🔍 MCPIgnore: "${normalizedPath}" readonly = ${readonly}`);
+    return readonly;
   }
 
   /**
@@ -199,12 +251,14 @@ export class MCPIgnoreManager {
   getStats(): {
     enabled: boolean;
     patternCount: number;
+    readonlyPatternCount: number;
     lastModified: number;
     filePath: string;
   } {
     return {
       enabled: this.isEnabled,
       patternCount: this.patterns.length,
+      readonlyPatternCount: this.readonlyRules.length,
       lastModified: this.lastModified,
       filePath: this.ignorePath
     };
@@ -282,6 +336,15 @@ export class MCPIgnoreManager {
 # !private/shared-notes.md
 # !work/public-docs/
 # !**/*.public.md
+
+# === READ-ONLY PATHS ===
+# Prefix a pattern with readonly: to keep it visible and readable while
+# refusing every write (create, update, delete, move, rename, and moves or
+# copies into it). Same pattern syntax as above. Exclusions win over read-only:
+# a hidden path stays hidden. Use !readonly: to re-open a path for writing.
+# readonly:sources/**        # agents may read raw sources, never edit them
+# readonly:architecture.md   # one file
+# !readonly:sources/notes/   # except this folder, which stays writable
 
 # === YOUR PATTERNS BELOW ===
 # Add your custom exclusion patterns here
