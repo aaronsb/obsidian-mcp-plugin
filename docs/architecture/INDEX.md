@@ -40,6 +40,7 @@ _MCP tool design, semantic operations, graph operations, formatters_
 | [ADR-201](./tools/ADR-201-replace-new-function-with-a-sandboxed-expression-evaluator-for-bases.md) | Replace new Function with a sandboxed expression evaluator for Bases | Accepted |
 | [ADR-202](./tools/ADR-202-split-semantic-router-monolith-into-per-operation-modules.md) | Split semantic router monolith into per-operation modules | Accepted |
 | [ADR-203](./tools/ADR-203-faithful-by-default-content-reads-concise-by-default-tool-results.md) | Faithful-by-default content reads; concise-by-default tool results | Accepted |
+| [ADR-204](./tools/ADR-204-gated-command-palette-execution.md) | Gated command-palette execution | Accepted |
 
 ## Delivery
 _Build, release, versioning, community plugin submission_
