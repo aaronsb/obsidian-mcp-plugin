@@ -248,6 +248,11 @@ input.mcp-api-key-input {
     background: var(--interactive-success);
 }
 
+/* A declarative `render` row repurposed as a full-width block (#224) */
+.mcp-setting-block {
+    display: block;
+}
+
 /* Tool Visibility Tree */
 .mcp-tool-tree-desc {
     margin-bottom: 12px;

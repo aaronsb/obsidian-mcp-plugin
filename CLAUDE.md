@@ -591,12 +591,14 @@ at the first Error, so clearing one can reveal the next.
 
 Patterns that worked (the 0.11.32 → 0.11.33 cleanup):
 
-- **`PluginSettingTab.display()` deprecated (1.13.0)** → keep `display()` as the
-  supported cross-version fallback, move its body to a non-deprecated
-  `render()`, and call `render()` from internal re-renders (#227).
-- **`ButtonComponent.setWarning()` deprecated; `setDestructive()` needs 1.13.0 >
-  our `minAppVersion` 1.6.6** → apply the style class directly:
-  `setClass('mod-warning')` (#229).
+- **`PluginSettingTab.display()` deprecated (1.13.0)** → superseded. Since
+  0.12.7 `minAppVersion` is 1.13.0 and the tab is declarative: every setting
+  is a `control` item in `getSettingDefinitions()`, custom blocks are named
+  `render` items, side effects live in a `setControlValue` override, and
+  re-renders call `update()` (#224). `display()` no longer exists in source.
+- **`ButtonComponent.setWarning()` deprecated** → `setDestructive()` (1.13.0),
+  now that `minAppVersion` allows it (#224; the interim `setClass('mod-warning')`
+  workaround from #229 is gone).
 - **Global `setTimeout`/`setInterval` and `globalThis`** → `window.*` /
   `window.console`, and alias `window` → `globalThis` in `tests/setup.ts` so the
   node test env resolves them (#227).
@@ -609,9 +611,10 @@ Patterns that worked (the 0.11.32 → 0.11.33 cleanup):
 
 Allowed: a *described* disable of a non-forbidden rule (e.g.
 `no-require-imports`, `no-control-regex` with `-- reason`) passes review — the
-ban is that specific rule set, not all directives. To raise `minAppVersion` and
-adopt the 1.13.0 APIs outright (`getSettingDefinitions`, `setDestructive`), see
-#224.
+ban is that specific rule set, not all directives. `minAppVersion` is 1.13.0
+(#224), so the 1.13.0 APIs are available outright; `obsidianmd/no-unsupported-api`
+reads that field from `manifest.json`, and `MIN_OBSIDIAN` in the Makefile feeds
+`versions.json` at release — keep the two equal.
 
 ### Keep `eslint-plugin-obsidianmd` current, or local lint lies
 

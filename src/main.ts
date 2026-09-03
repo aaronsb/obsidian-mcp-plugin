@@ -1,4 +1,5 @@
 import { App, Plugin, PluginSettingTab, Setting, Notice, TFolder, setIcon, Modal, TextComponent, ButtonComponent, FileSystemAdapter } from 'obsidian';
+import type { SettingDefinition, SettingDefinitionGroup, SettingDefinitionItem } from 'obsidian';
 import { MCPHttpServer } from './mcp-server';
 import { getVersion } from './version';
 import { Debug } from './utils/debug';
@@ -596,6 +597,30 @@ export default class ObsidianMCPPlugin extends Plugin {
 	}
 }
 
+/** Control keys under this prefix address `settings.toolVisibility`. */
+const TOOL_VISIBILITY_PREFIX = 'toolVisibility.';
+
+/** Read a dotted path (`certificateConfig.certPath`) off a settings object. */
+function readPath(obj: unknown, path: string): unknown {
+	return path.split('.').reduce<unknown>((cur, seg) =>
+		cur !== null && typeof cur === 'object' ? (cur as Record<string, unknown>)[seg] : undefined, obj);
+}
+
+/** Write a dotted path, creating intermediate objects as needed. */
+function writePath(obj: Record<string, unknown>, path: string, value: unknown): void {
+	const segs = path.split('.');
+	const last = segs.pop()!;
+	let cur = obj;
+	for (const seg of segs) {
+		const next = cur[seg];
+		if (next === null || typeof next !== 'object') {
+			cur[seg] = {};
+		}
+		cur = cur[seg] as Record<string, unknown>;
+	}
+	cur[last] = value;
+}
+
 class MCPSettingTab extends PluginSettingTab {
 	plugin: ObsidianMCPPlugin;
 	private easterEggClicks = 0;
@@ -606,210 +631,553 @@ class MCPSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	// Obsidian's settings entry point. PluginSettingTab.display() is deprecated
-	// since 1.13.0 in favor of the declarative getSettingDefinitions() API, but
-	// display() remains the supported fallback for plugins that still target
-	// older Obsidian versions. Keep it as a thin wrapper; the imperative render
-	// lives in render(), which internal refreshes call directly so they don't
-	// reference the deprecated method. Declarative migration tracked in #224.
-	display(): void {
-		this.render();
+	// ── Declarative settings (Obsidian 1.13.0, #224) ─────────────────────
+	//
+	// Every plugin setting is a `control` item, so Obsidian's settings search
+	// finds each one. Blocks that are not a single value — the status grid,
+	// connect-a-client, the .mcpignore file manager, the API key row with its
+	// buttons — are named `render` items, so search still lands on them.
+	//
+	// Obsidian calls this on every display(), so descriptions that quote live
+	// state (ports, counts) are current whenever the tab opens. Mid-session
+	// changes that alter text or structure call update(); changes that only
+	// flip a `visible`/`disabled` predicate call refreshDomState().
+
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			this.gettingStartedGroup(),
+			this.connectionStatusGroup(),
+			this.serverGroup(),
+			this.networkGroup(),
+			this.httpsGroup(),
+			this.authGroup(),
+			this.securityGroup(),
+			...this.toolVisibilityGroups(),
+			this.interfaceGroup(),
+		];
 	}
 
-	private render(): void {
-		const {containerEl} = this;
-
-		containerEl.empty();
-
-		// Connect / Getting Started Section — the first thing a user needs:
-		// what this does plus the one-click bundle and client config. Kept at the
-		// top so connection details aren't buried beneath the config sections.
-		this.createProtocolInfoSection(containerEl);
-
-		// Connection Status Section
-		this.createConnectionStatusSection(containerEl);
-
-		// Server Configuration Section
-		this.createServerConfigSection(containerEl);
-
-		// Network Binding Section (ADR-107)
-		this.createNetworkBindingSection(containerEl);
-
-		// HTTPS Configuration Section
-		this.createHTTPSConfigSection(containerEl);
-
-		// Authentication Section
-		this.createAuthenticationSection(containerEl);
-
-		// Security Section
-		this.createSecuritySection(containerEl);
-
-		// Tool Visibility Section
-		this.createToolVisibilitySection(containerEl);
-
-		// UI Options Section
-		this.createUIOptionsSection(containerEl);
+	getControlValue(key: string): unknown {
+		if (key.startsWith(TOOL_VISIBILITY_PREFIX)) {
+			const rest = key.slice(TOOL_VISIBILITY_PREFIX.length);
+			// `op.action` is one key; a bare `op` is the parent row, on unless
+			// every action is off.
+			return rest.includes('.')
+				? this.plugin.settings.toolVisibility[rest] !== false
+				: !this.isOperationFullyDisabled(rest);
+		}
+		return readPath(this.plugin.settings, key);
 	}
 
-	private createConnectionStatusSection(containerEl: HTMLElement): void {
-		const statusEl = containerEl.createDiv('mcp-status-section');
-		new Setting(statusEl).setName("Connection status").setHeading();
-		
-		const info = this.plugin.getMCPServerInfo();
-		if (info) {
-			const statusGrid = statusEl.createDiv('mcp-status-grid');
-			
-			const createStatusItem = (label: string, value: string, colorClass?: string) => {
-				const item = statusGrid.createDiv();
-				item.createEl('strong', {text: `${label}: `});
-				const valueEl = item.createSpan({text: value});
-				if (colorClass) valueEl.classList.add('mcp-status-value', colorClass);
-			};
-			
-			createStatusItem('Status', info.running ? 'Running' : 'Stopped', 
-				info.running ? 'success' : 'error');
-			createStatusItem('Port', (info.httpsEnabled ? info.httpsPort : info.httpPort).toString());
-			createStatusItem('Vault', info.vaultName);
-			if (info.vaultPath) {
-				createStatusItem('Path', info.vaultPath.length > 50 ? '...' + info.vaultPath.slice(-47) : info.vaultPath);
-			}
-			// Version with easter egg trigger
-			const versionItem = statusGrid.createDiv();
-			versionItem.createEl('strong', {text: 'Version: '});
-			const versionEl = versionItem.createSpan({text: info.version, cls: 'mcp-version-easter-egg'});
-			versionEl.addEventListener('click', () => this.handleEasterEggClick());
-			createStatusItem('Tools', info.toolsCount.toString());
-			createStatusItem('Resources', info.resourcesCount.toString());
-			createStatusItem('Connections', info.connections.toString());
-			
-			// Show pool stats
-			if (info.poolStats?.enabled && info.poolStats.stats) {
-				const poolStats = info.poolStats.stats;
-				createStatusItem('Active Sessions', `${poolStats.activeConnections}/${poolStats.maxConnections}`);
-				createStatusItem('Pool Utilization', `${Math.round(poolStats.utilization * 100)}%`, 
-					poolStats.utilization > 0.8 ? 'warning' : 'success');
-				if (poolStats.queuedRequests > 0) {
-					createStatusItem('Queued Requests', poolStats.queuedRequests.toString(), 'warning');
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		if (key.startsWith(TOOL_VISIBILITY_PREFIX)) {
+			await this.setToolVisibility(key.slice(TOOL_VISIBILITY_PREFIX.length), value === true);
+			return;
+		}
+		writePath(this.plugin.settings as unknown as Record<string, unknown>, key, value);
+		await this.plugin.saveSettings();
+		await this.afterChange(key, value);
+	}
+
+	/**
+	 * Side effects that used to live in each control's onChange. Persisting is
+	 * done by the time this runs.
+	 */
+	private async afterChange(key: string, value: unknown): Promise<void> {
+		const s = this.plugin.settings;
+		switch (key) {
+			case 'httpEnabled':
+				if (this.plugin.mcpServer?.isServerRunning()) {
+					await this.plugin.stopMCPServer();
+					await this.plugin.startMCPServer();
+				} else if (value === true) {
+					await this.plugin.startMCPServer();
 				}
-			}
-		} else {
-			statusEl.createDiv({text: 'Server not running', cls: 'mcp-status-offline'});
+				this.update();
+				break;
+
+			case 'httpsEnabled':
+				s.certificateConfig.enabled = value === true;
+				await this.plugin.saveSettings();
+				this.update();
+				if (this.plugin.mcpServer?.isServerRunning()) {
+					new Notice('Restarting server with new protocol settings...');
+					await this.plugin.stopMCPServer();
+					await this.plugin.startMCPServer();
+				} else if (value === true) {
+					await this.plugin.startMCPServer();
+				}
+				break;
+
+			case 'httpsPort':
+				await this.noticeIfPortInUse(value as number, 'HTTPS');
+				break;
+
+			case 'bindMode':
+				if (value !== 'custom') {
+					s.customBindHost = '';
+					await this.plugin.saveSettings();
+				}
+				this.update();
+				await this.restartIfRunning('bind address');
+				break;
+
+			case 'certificateConfig.autoGenerate':
+			case 'certificateConfig.certPath':
+			case 'certificateConfig.keyPath':
+				// The auto-generate note and the network verdict read these.
+				this.update();
+				break;
+
+			case 'dangerouslyDisableAuth':
+				new Notice(value === true
+					? '⚠️ authentication disabled! Your vault is accessible without credentials.'
+					: '✅ Authentication enabled. API key required for access.');
+				this.update();
+				break;
+
+			case 'readOnlyMode':
+				// Effective immediately, no restart (ADR-108): the security layer
+				// reads this setting live per operation.
+				if (value === true) {
+					Debug.log('🔒 READ-ONLY MODE ENABLED via settings - effective immediately');
+					new Notice('🔒 Read-only mode enabled. Write operations are blocked.');
+				} else {
+					Debug.log('✅ READ-ONLY MODE DISABLED via settings - effective immediately');
+					new Notice('✅ Read-only mode disabled. All operations are allowed.');
+				}
+				this.update();
+				break;
+
+			case 'enableWebFetch':
+				// Enforcement is already live (the validator reads the setting per
+				// call); this tells connected agents the tool surface moved.
+				this.plugin.mcpServer?.notifyToolListChanged();
+				new Notice(value === true
+					? '🌐 Outbound web fetch enabled. Internal addresses remain blocked.'
+					: '✅ Outbound web fetch disabled. The plugin makes no outbound connections.');
+				break;
+
+			case 'pathExclusionsEnabled':
+				if (this.plugin.ignoreManager) {
+					this.plugin.ignoreManager.setEnabled(value === true);
+					if (value === true) {
+						await this.plugin.ignoreManager.loadIgnoreFile();
+						Debug.log('✅ Path exclusions enabled');
+						new Notice('✅ Path exclusions enabled');
+					} else {
+						Debug.log('🔓 Path exclusions disabled');
+						new Notice('🔓 Path exclusions disabled');
+					}
+				}
+				this.update();
+				break;
+
+			case 'enableIgnoreContextMenu':
+				if (value === true) {
+					this.plugin.registerContextMenu();
+					new Notice('✅ Context menu enabled - restart required for full effect');
+				} else {
+					new Notice('🔓 Context menu disabled - restart required for full effect');
+				}
+				break;
+
+			case 'showConnectionStatus':
+				this.plugin.updateStatusBar();
+				break;
+
+			case 'debugLogging':
+				Debug.setDebugMode(value === true);
+				break;
 		}
 	}
 
-	private createServerConfigSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName("Server configuration").setHeading();
+	// ── Groups ───────────────────────────────────────────────────────────
 
-		new Setting(containerEl)
-			.setName('Enable HTTP server')
-			.setDesc('Enable HTTP server on port ' + this.plugin.settings.httpPort + (this.plugin.settings.httpsEnabled ? ' (can be disabled when HTTPS is enabled)' : ' (required - at least one protocol must be enabled)'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.httpEnabled)
-				.setDisabled(!this.plugin.settings.httpsEnabled) // Can only disable HTTP if HTTPS is enabled
-				.onChange(async (value) => {
-					// Prevent disabling both protocols
-					if (!value && !this.plugin.settings.httpsEnabled) {
-						new Notice('Cannot disable HTTP when HTTPS is disabled. Enable HTTPS first.');
-						toggle.setValue(true);
-						return;
-					}
-					
-					this.plugin.settings.httpEnabled = value;
-					await this.plugin.saveSettings();
-					
-					// Restart server with new settings
-					if (this.plugin.mcpServer?.isServerRunning()) {
-						await this.plugin.stopMCPServer();
-						await this.plugin.startMCPServer();
-					} else if (value) {
-						await this.plugin.startMCPServer();
-					}
-					
-					// Update the status display
-					this.render();
-				}));
-
-		const portSetting = new Setting(containerEl)
-			.setName('Server port')
-			.setDesc('Port for the server (default: 3001)')
-			.addText(text => {
-				let pendingPort = this.plugin.settings.httpPort;
-				let hasChanges = false;
-				
-				text.setPlaceholder('3001')
-					.setValue(this.plugin.settings.httpPort.toString())
-					.onChange((value) => {
-						const port = parseInt(value);
-						if (!isNaN(port) && port > 0 && port < 65536) {
-							pendingPort = port;
-							hasChanges = (port !== this.plugin.settings.httpPort);
-
-							// Update button visibility and port validation
-							this.updatePortApplyButton(portSetting, hasChanges, pendingPort);
-							void this.checkPortAvailability(port, portSetting);
-						} else {
-							hasChanges = false;
-							this.updatePortApplyButton(portSetting, false, pendingPort);
-						}
-					});
-				
-				return text;
-			})
-			.addButton(button => {
-				button.setButtonText('Apply')
-					.setClass('mod-cta')
-					.onClick(async () => {
-						const textComponent = portSetting.components.find((c): c is TextComponent => c instanceof TextComponent);
-						const newPort = parseInt(textComponent?.inputEl.value ?? '');
-						
-						if (!isNaN(newPort) && newPort > 0 && newPort < 65536) {
-							const oldPort = this.plugin.settings.httpPort;
-							this.plugin.settings.httpPort = newPort;
-							await this.plugin.saveSettings();
-							
-							// Auto-restart server if port changed and server is running
-							if (oldPort !== newPort && this.plugin.mcpServer?.isServerRunning()) {
-								new Notice(`Restarting MCP server on port ${newPort}...`);
-								await this.plugin.stopMCPServer();
-								await this.plugin.startMCPServer();
-								window.setTimeout(() => this.refreshConnectionStatus(), 500);
-							}
-							
-							// Hide apply button
-							button.buttonEl.classList.add('mcp-hidden');
-							portSetting.setDesc('Port for HTTP mcp server (default: 3001)');
-						}
-					});
-				
-				// Initially hide the apply button
-				button.buttonEl.classList.add('mcp-hidden');
-				return button;
-			});
-		
-		// Don't check port availability on load - only when changed or server starts
-		// This avoids detecting our own running server as a conflict
-
-		new Setting(containerEl)
-			.setName('Auto-detect port conflicts')
-			.setDesc('Automatically detect and warn about port conflicts')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.autoDetectPortConflicts)
-				.onChange(async (value) => {
-					this.plugin.settings.autoDetectPortConflicts = value;
-					await this.plugin.saveSettings();
-				}));
+	private gettingStartedGroup(): SettingDefinitionGroup {
+		return {
+			type: 'group',
+			heading: 'Getting started — connect a client',
+			items: [{
+				name: 'Connect a client',
+				desc: 'Claude Desktop bundle, Claude Code command, and JSON config for other MCP clients.',
+				aliases: ['mcpb', 'claude desktop', 'claude code', 'json config', 'api key'],
+				render: (setting) => this.createProtocolInfoSection(this.asBlock(setting)),
+			}],
+		};
 	}
-	
-	private createNetworkBindingSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName("Network binding").setHeading();
 
+	private connectionStatusGroup(): SettingDefinitionGroup {
+		return {
+			type: 'group',
+			heading: 'Connection status',
+			items: [{
+				name: 'Server status',
+				desc: 'Running state, port, vault, version, tools, and live connection counts.',
+				aliases: ['connections', 'sessions', 'pool'],
+				render: (setting) => this.createConnectionStatusSection(this.asBlock(setting)),
+			}],
+		};
+	}
+
+	private serverGroup(): SettingDefinitionGroup {
+		const s = this.plugin.settings;
+		return {
+			type: 'group',
+			heading: 'Server configuration',
+			items: [
+				{
+					name: 'Enable HTTP server',
+					desc: `Enable HTTP server on port ${s.httpPort}` + (s.httpsEnabled
+						? ' (can be disabled when HTTPS is enabled)'
+						: ' (required - at least one protocol must be enabled)'),
+					control: {
+						type: 'toggle',
+						key: 'httpEnabled',
+						// HTTP can only go off while HTTPS carries the server.
+						disabled: () => !this.plugin.settings.httpsEnabled,
+					},
+				},
+				{
+					name: 'Server port',
+					desc: 'Port for the server (default: 3001)',
+					aliases: ['http port'],
+					render: (setting) => this.renderHttpPortRow(setting),
+				},
+				{
+					name: 'Auto-detect port conflicts',
+					desc: 'Automatically detect and warn about port conflicts',
+					control: { type: 'toggle', key: 'autoDetectPortConflicts' },
+				},
+			],
+		};
+	}
+
+	private networkGroup(): SettingDefinitionGroup {
+		return {
+			type: 'group',
+			heading: 'Network binding',
+			items: [
+				{
+					name: 'Network exposure',
+					desc: 'Live verdict on the combined bind address, HTTPS, and certificate state (ADR-107).',
+					searchable: false,
+					render: (setting) => this.renderNetworkBadge(this.asBlock(setting)),
+				},
+				{
+					name: 'Bind address',
+					desc: 'Which network interface the mcp server listens on. Loopback only is recommended.',
+					aliases: ['interface', 'loopback', 'listen'],
+					control: {
+						type: 'dropdown',
+						key: 'bindMode',
+						options: {
+							loopback: 'Loopback only — local machine',
+							all: 'All interfaces — anyone on the network can attempt to connect',
+							custom: 'Custom address…',
+						},
+					},
+				},
+				{
+					name: 'All interfaces caution',
+					searchable: false,
+					visible: () => this.plugin.settings.bindMode === 'all',
+					render: (setting) => {
+						const caution = this.asBlock(setting).createDiv({ cls: 'mcp-network-caution' });
+						caution.createEl('strong', { text: '⚠ All interfaces selected. ' });
+						caution.createSpan({
+							text: this.plugin.settings.httpsEnabled
+								? 'Encrypted via HTTPS — clients must trust the certificate. Use a real (non-self-signed) cert for public networks.'
+								: 'API key and document text will be sent in cleartext over the network. Enable HTTPS or switch to loopback.'
+						});
+					},
+				},
+				{
+					name: 'Custom bind address',
+					desc: 'IPv4/IPv6/hostname to bind to. Typing a loopback address auto-switches to loopback; typing a wildcard auto-switches to all interfaces.',
+					visible: () => this.plugin.settings.bindMode === 'custom',
+					render: (setting) => this.renderCustomBindHostRow(setting),
+				},
+			],
+		};
+	}
+
+	private httpsGroup(): SettingDefinitionGroup {
+		const s = this.plugin.settings;
+		const httpsOn = () => this.plugin.settings.httpsEnabled;
+		return {
+			type: 'group',
+			heading: 'Secure transport',
+			items: [
+				{
+					name: 'Enable HTTPS server',
+					desc: `Enable HTTPS server on port ${s.httpsPort}` + (s.httpEnabled
+						? ' (optional when HTTP is enabled)'
+						: ' (required - cannot be disabled when HTTP is disabled)'),
+					aliases: ['tls', 'ssl'],
+					control: {
+						type: 'toggle',
+						key: 'httpsEnabled',
+						disabled: () => !this.plugin.settings.httpEnabled && this.plugin.settings.httpsEnabled,
+					},
+				},
+				{
+					name: 'Secure port',
+					desc: 'Port for secure connections (default: 3443)',
+					aliases: ['https port'],
+					visible: httpsOn,
+					control: {
+						type: 'number',
+						key: 'httpsPort',
+						placeholder: '3443',
+						min: 1,
+						max: 65535,
+						step: 1,
+						validate: (port) => Number.isInteger(port) && port > 0 && port < 65536
+							? undefined
+							: 'Port must be a whole number between 1 and 65535',
+					},
+				},
+				{
+					name: 'Auto-generate certificate',
+					desc: s.certificateConfig.autoGenerate === false
+						? '📝 Note: Custom certificates should have a valid CA signing chain for seamless client connections'
+						: 'Automatically generate a self-signed certificate if none exists',
+					aliases: ['self-signed'],
+					visible: httpsOn,
+					control: { type: 'toggle', key: 'certificateConfig.autoGenerate', defaultValue: false },
+				},
+				{
+					name: 'Certificate path',
+					desc: 'Path to custom certificate file (.crt) - leave empty for auto-generated',
+					visible: httpsOn,
+					control: { type: 'text', key: 'certificateConfig.certPath', placeholder: 'Leave empty for auto-generated', defaultValue: '' },
+				},
+				{
+					name: 'Key path',
+					desc: 'Path to private key file (.key) - leave empty for auto-generated',
+					visible: httpsOn,
+					control: { type: 'text', key: 'certificateConfig.keyPath', placeholder: 'Leave empty for auto-generated', defaultValue: '' },
+				},
+				{
+					name: 'Minimum TLS version',
+					desc: 'Minimum TLS version to accept',
+					visible: httpsOn,
+					control: {
+						type: 'dropdown',
+						key: 'certificateConfig.minTLSVersion',
+						defaultValue: 'TLSv1.2',
+						options: { 'TLSv1.2': 'TLS 1.2', 'TLSv1.3': 'TLS 1.3' },
+					},
+				},
+				{
+					name: 'Certificate status',
+					desc: 'Validity of the certificate the server will present.',
+					aliases: ['expiry'],
+					visible: httpsOn,
+					render: (setting) => this.renderCertificateStatus(this.asBlock(setting)),
+				},
+			],
+		};
+	}
+
+	private authGroup(): SettingDefinitionGroup {
+		return {
+			type: 'group',
+			heading: 'Authentication',
+			items: [
+				{
+					name: 'Authentication key',
+					desc: 'Secure key for authenticating mcp clients. Stored in the plugin settings file — anyone with access to your vault can read it. Bearer token (recommended) and basic authentication are both accepted.',
+					aliases: ['api key', 'token', 'regenerate'],
+					render: (setting) => this.renderApiKeyRow(setting),
+				},
+				{
+					name: 'Disable authentication',
+					desc: '⚠️ dangerous: disable authentication entirely. Only use for testing or if you fully trust your local environment.',
+					control: { type: 'toggle', key: 'dangerouslyDisableAuth' },
+				},
+			],
+		};
+	}
+
+	private securityGroup(): SettingDefinitionGroup {
+		const exclusionsOn = () => this.plugin.settings.pathExclusionsEnabled;
+		return {
+			type: 'group',
+			heading: 'Security',
+			items: [
+				{
+					name: 'Read-only mode',
+					desc: 'Blocks every operation that changes the vault. Reads, searches, graph queries and opening notes still work. Takes effect immediately — no restart needed.',
+					control: { type: 'toggle', key: 'readOnlyMode' },
+				},
+				{
+					// ADR-109: dedicated gate for the plugin's only outbound capability.
+					// Not a row in the tool-visibility tree — that list answers "which
+					// tools does the agent see", this answers "may the plugin reach the
+					// internet".
+					name: 'Allow outbound web fetch',
+					desc: 'Lets connected agents fetch web pages (system.fetch_web). Off: the plugin makes no outbound connections at all. On: internal addresses (localhost, local network, cloud metadata) are always blocked, but an agent reading untrusted notes could still be tricked into leaking vault data inside a URL to a public site — read-only mode does not prevent that. Enforcement takes effect immediately; agents see the tool appear on their next connection.',
+					aliases: ['fetch_web', 'internet'],
+					control: { type: 'toggle', key: 'enableWebFetch' },
+				},
+				{
+					name: 'Path exclusions',
+					desc: 'Exclude files and directories from mcp operations using .gitignore-style patterns. Prefix a pattern with readonly: to keep it readable but refuse writes.',
+					aliases: ['.mcpignore', 'ignore', 'readonly'],
+					control: { type: 'toggle', key: 'pathExclusionsEnabled' },
+				},
+				{
+					name: 'Enable right-click context menu',
+					desc: 'Add "add to .mcpignore" option to file/folder context menus',
+					visible: exclusionsOn,
+					control: { type: 'toggle', key: 'enableIgnoreContextMenu' },
+				},
+				{
+					name: '.mcpignore file management',
+					desc: 'Open, reveal, create, or reload the .mcpignore file.',
+					aliases: ['exclusion patterns', 'template'],
+					visible: exclusionsOn,
+					render: (setting) => this.createPathExclusionManagement(this.asBlock(setting)),
+				},
+			],
+		};
+	}
+
+	private toolVisibilityGroups(): SettingDefinitionGroup[] {
+		const intro: SettingDefinitionGroup = {
+			type: 'group',
+			heading: 'Tool visibility',
+			items: [{
+				name: 'Tool visibility',
+				desc: 'Control which mcp tools are visible to connecting agents. Disabled tools are hidden from the tool list — agents cannot discover or call them. Changes take effect on the next agent connection.',
+				aliases: ['hide tools', 'disable tools'],
+				render: (setting) => { setting.settingEl.addClass('mcp-tool-tree-desc'); },
+			}],
+		};
+
+		const groups: SettingDefinitionGroup[] = [intro];
+		for (const operation of ALL_OPERATIONS) {
+			const actions = this.treeActions(operation);
+			if (actions.length === 0) continue;
+
+			const enabledCount = actions.filter(a => this.isActionEnabled(operation, a)).length;
+			const desc = getOperationDescription(operation).replace(/^[^\s]+\s/, ''); // strip leading emoji
+
+			groups.push({
+				type: 'group',
+				heading: operation,
+				cls: 'mcp-tool-tree',
+				// Dataview only shows when the plugin is there to serve it.
+				visible: operation === 'dataview'
+					? () => new PluginDetector(this.app).isPluginEnabled('dataview')
+					: true,
+				items: [
+					{
+						name: `All ${operation} actions`,
+						desc: `${desc} (${enabledCount}/${actions.length} enabled)`,
+						aliases: [operation],
+						control: { type: 'toggle', key: `${TOOL_VISIBILITY_PREFIX}${operation}` },
+					},
+					...actions.map((action): SettingDefinition => ({
+						name: `${operation}.${action}`,
+						control: { type: 'toggle', key: `${TOOL_VISIBILITY_PREFIX}${operation}.${action}` },
+					})),
+				],
+			});
+		}
+		return groups;
+	}
+
+	private interfaceGroup(): SettingDefinitionGroup {
+		return {
+			type: 'group',
+			heading: 'Interface',
+			items: [
+				{
+					name: 'Show connection status',
+					desc: 'Show mcp server status in the status bar',
+					aliases: ['status bar'],
+					control: { type: 'toggle', key: 'showConnectionStatus' },
+				},
+				{
+					name: 'Debug logging',
+					desc: 'Enable detailed debug logging in console',
+					control: { type: 'toggle', key: 'debugLogging' },
+				},
+			],
+		};
+	}
+
+	// ── Tool visibility helpers ──────────────────────────────────────────
+
+	// ADR-109: fetch_web is governed by the dedicated "Allow outbound web
+	// fetch" toggle in the security section, not by this tree.
+	private treeActions(op: string): string[] {
+		return getActionsForOperation(op).filter(action => !(op === 'system' && action === 'fetch_web'));
+	}
+
+	private isActionEnabled(op: string, action: string): boolean {
+		return this.plugin.settings.toolVisibility[`${op}.${action}`] !== false;
+	}
+
+	private isOperationFullyDisabled(op: string): boolean {
+		const visibility = this.plugin.settings.toolVisibility;
+		if (visibility[op] === false) return true;
+		return this.treeActions(op).every(a => !this.isActionEnabled(op, a));
+	}
+
+	/** `rest` is `op` (cascade to every action) or `op.action` (one leaf). */
+	private async setToolVisibility(rest: string, value: boolean): Promise<void> {
+		const visibility = this.plugin.settings.toolVisibility;
+		const dot = rest.indexOf('.');
+
+		if (dot < 0) {
+			visibility[rest] = value;
+			for (const action of this.treeActions(rest)) {
+				visibility[`${rest}.${action}`] = value;
+			}
+		} else {
+			const operation = rest.slice(0, dot);
+			visibility[rest] = value;
+
+			// The operation-level key follows the aggregate of its actions.
+			const actions = this.treeActions(operation);
+			const allNowDisabled = actions.every(a => visibility[`${operation}.${a}`] === false);
+			if (allNowDisabled) {
+				visibility[operation] = false;
+			} else {
+				delete visibility[operation]; // all on, or mixed = not explicitly false
+			}
+		}
+
+		await this.plugin.saveSettings();
+		this.plugin.mcpServer?.notifyToolListChanged();
+		this.update(); // parent counts and states
+	}
+
+	// ── Render items ─────────────────────────────────────────────────────
+
+	/**
+	 * Turn a definition's row into a full-width container for a custom block.
+	 * The name/desc stay in the definition for search; the row itself is
+	 * replaced by whatever the block draws.
+	 */
+	private asBlock(setting: Setting): HTMLElement {
+		setting.settingEl.empty();
+		setting.settingEl.addClass('mcp-setting-block');
+		return setting.settingEl;
+	}
+
+	private renderNetworkBadge(containerEl: HTMLElement): void {
 		// ADR-107: live verdict badge
+		const s = this.plugin.settings;
 		const verdict = classifyFromSettings({
-			httpsEnabled: this.plugin.settings.httpsEnabled,
-			bindMode: this.plugin.settings.bindMode,
-			customBindHost: this.plugin.settings.customBindHost,
-			userSuppliedCert: !!(this.plugin.settings.certificateConfig?.certPath
-				&& this.plugin.settings.certificateConfig?.keyPath)
+			httpsEnabled: s.httpsEnabled,
+			bindMode: s.bindMode,
+			customBindHost: s.customBindHost,
+			userSuppliedCert: !!(s.certificateConfig?.certPath && s.certificateConfig?.keyPath)
 		});
 		const badgeEmoji = verdict.class === 'ok' ? '🟢' : verdict.class === 'warn' ? '🟡' : '🔴';
 		const badgeLabel = verdict.class === 'ok' ? 'OK' : verdict.class === 'warn' ? 'WARN' : 'INSECURE';
@@ -823,182 +1191,135 @@ class MCPSettingTab extends PluginSettingTab {
 				cls: 'mcp-network-badge-hint'
 			});
 		}
+	}
 
-		new Setting(containerEl)
-			.setName('Bind address')
-			.setDesc('Which network interface the mcp server listens on. Loopback only is recommended.')
-			.addDropdown(dropdown => dropdown
-				.addOption('loopback', 'Loopback only — local machine')
-				.addOption('all', 'All interfaces — anyone on the network can attempt to connect')
-				.addOption('custom', 'Custom address…')
-				.setValue(this.plugin.settings.bindMode)
-				.onChange(async (value: string) => {
-					const mode = value as BindMode;
-					this.plugin.settings.bindMode = mode;
-					if (mode !== 'custom') {
-						this.plugin.settings.customBindHost = '';
-					}
-					await this.plugin.saveSettings();
-					this.render();
-					await this.restartIfRunning('bind address');
-				}));
-
-		if (this.plugin.settings.bindMode === 'all') {
-			const caution = containerEl.createDiv({ cls: 'mcp-network-caution' });
-			caution.createEl('strong', { text: '⚠ All interfaces selected. ' });
-			caution.createSpan({
-				text: this.plugin.settings.httpsEnabled
-					? 'Encrypted via HTTPS — clients must trust the certificate. Use a real (non-self-signed) cert for public networks.'
-					: 'API key and document text will be sent in cleartext over the network. Enable HTTPS or switch to loopback.'
+	private renderCustomBindHostRow(setting: Setting): void {
+		if (this.plugin.settings.customBindHost.trim() === '') {
+			setting.descEl.createDiv({
+				cls: 'mcp-network-caution',
+				text: 'No custom address entered yet — server will fall back to loopback (127.0.0.1) until you enter one.'
 			});
 		}
-
-		if (this.plugin.settings.bindMode === 'custom') {
-			if (this.plugin.settings.customBindHost.trim() === '') {
-				const empty = containerEl.createDiv({ cls: 'mcp-network-caution' });
-				empty.createSpan({ text: 'No custom address entered yet — server will fall back to loopback (127.0.0.1) until you enter one.' });
-			}
-			new Setting(containerEl)
-				.setName('Custom bind address')
-				.setDesc('IPv4/IPv6/hostname to bind to. Typing a loopback address auto-switches to loopback; typing a wildcard auto-switches to all interfaces.')
-				.addText(text => text
-					.setPlaceholder('e.g. 192.168.1.50')
-					.setValue(this.plugin.settings.customBindHost)
-					.onChange((value) => {
-						this.plugin.settings.customBindHost = value;
-					})
-					.inputEl.addEventListener('blur', () => {
-						void (async () => {
-							const normalized = normalizeBindInput('custom', this.plugin.settings.customBindHost);
-							this.plugin.settings.bindMode = normalized.mode;
-							this.plugin.settings.customBindHost = normalized.customHost;
-							await this.plugin.saveSettings();
-							this.render();
-							await this.restartIfRunning('bind address');
-						})();
-					}));
-		}
-	}
-
-	private async restartIfRunning(changedThing: string): Promise<void> {
-		if (this.plugin.mcpServer?.isServerRunning()) {
-			new Notice(`Restarting server with new ${changedThing}...`);
-			await this.plugin.stopMCPServer();
-			await this.plugin.startMCPServer();
-		}
-	}
-
-	private createHTTPSConfigSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName("Secure transport").setHeading();
-		
-		new Setting(containerEl)
-			.setName('Enable HTTPS server')
-			.setDesc('Enable HTTPS server on port ' + this.plugin.settings.httpsPort + (this.plugin.settings.httpEnabled ? ' (optional when HTTP is enabled)' : ' (required - cannot be disabled when HTTP is disabled)'))
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.httpsEnabled)
-				.setDisabled(!this.plugin.settings.httpEnabled && this.plugin.settings.httpsEnabled) // Can't disable HTTPS if HTTP is disabled
-				.onChange(async (value) => {
-					// Prevent disabling both protocols
-					if (!value && !this.plugin.settings.httpEnabled) {
-						new Notice('Cannot disable HTTPS when HTTP is disabled. Enable HTTP first.');
-						toggle.setValue(true);
-						return;
-					}
-					
-					this.plugin.settings.httpsEnabled = value;
-					this.plugin.settings.certificateConfig.enabled = value;
+		setting.addText(text => text
+			.setPlaceholder('e.g. 192.168.1.50')
+			.setValue(this.plugin.settings.customBindHost)
+			.onChange((value) => {
+				this.plugin.settings.customBindHost = value;
+			})
+			// Normalise on blur, not per keystroke: a partially typed address
+			// must not flip the bind mode under the user's cursor.
+			.inputEl.addEventListener('blur', () => {
+				void (async () => {
+					const normalized = normalizeBindInput('custom', this.plugin.settings.customBindHost);
+					this.plugin.settings.bindMode = normalized.mode;
+					this.plugin.settings.customBindHost = normalized.customHost;
 					await this.plugin.saveSettings();
-					
-					// Show/hide HTTPS settings and update HTTP toggle state
-					this.render();
-					
-					// Restart server if running
-					if (this.plugin.mcpServer?.isServerRunning()) {
-						new Notice('Restarting server with new protocol settings...');
-						await this.plugin.stopMCPServer();
-						await this.plugin.startMCPServer();
-					} else if (value && (this.plugin.settings.httpEnabled || this.plugin.settings.httpsEnabled)) {
-						await this.plugin.startMCPServer();
-					}
-				}));
-		
-		if (this.plugin.settings.httpsEnabled) {
-			const httpsPortSetting = new Setting(containerEl)
-				.setName('Secure port')
-				.setDesc('Port for secure connections (default: 3443)')
-				.addText(text => text
-					.setPlaceholder('3443')
-					.setValue(this.plugin.settings.httpsPort.toString())
-					.onChange((value) => {
-						const port = parseInt(value);
-						if (!isNaN(port) && port > 0 && port < 65536) {
-							this.plugin.settings.httpsPort = port;
-							void this.plugin.saveSettings();
-							// Check port availability for HTTPS
-							void this.checkHttpsPortAvailability(port, httpsPortSetting);
-						}
-					}));
-			
-			// Don't check HTTPS port availability on load - only when changed or server starts
-			// This avoids detecting our own running server as a conflict
-			
-			new Setting(containerEl)
-				.setName('Auto-generate certificate')
-				.setDesc(this.plugin.settings.certificateConfig.autoGenerate === false ? 
-					'📝 Note: Custom certificates should have a valid CA signing chain for seamless client connections' :
-					'Automatically generate a self-signed certificate if none exists')
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.certificateConfig.autoGenerate || false)
-					.onChange(async (value) => {
-						this.plugin.settings.certificateConfig.autoGenerate = value;
-						await this.plugin.saveSettings();
-						// Refresh the display to update the description
-						this.render();
-					}));
-			
-			new Setting(containerEl)
-				.setName('Certificate path')
-				.setDesc('Path to custom certificate file (.crt) - leave empty for auto-generated')
-				.addText(text => text
-					.setPlaceholder('Leave empty for auto-generated')
-					.setValue(this.plugin.settings.certificateConfig.certPath || '')
-					.onChange(async (value) => {
-						this.plugin.settings.certificateConfig.certPath = value || undefined;
-						await this.plugin.saveSettings();
-						// Refresh display to update configuration examples
-						this.render();
-					}));
-			
-			new Setting(containerEl)
-				.setName('Key path')
-				.setDesc('Path to private key file (.key) - leave empty for auto-generated')
-				.addText(text => text
-					.setPlaceholder('Leave empty for auto-generated')
-					.setValue(this.plugin.settings.certificateConfig.keyPath || '')
-					.onChange(async (value) => {
-						this.plugin.settings.certificateConfig.keyPath = value || undefined;
-						await this.plugin.saveSettings();
-					}));
-			
-			new Setting(containerEl)
-				.setName('Minimum TLS version')
-				.setDesc('Minimum TLS version to accept')
-				.addDropdown(dropdown => dropdown
-					.addOption('TLSv1.2', 'TLS 1.2')
-					.addOption('TLSv1.3', 'TLS 1.3')
-					.setValue(this.plugin.settings.certificateConfig.minTLSVersion || 'TLSv1.2')
-					.onChange(async (value) => {
-						this.plugin.settings.certificateConfig.minTLSVersion = value as 'TLSv1.2' | 'TLSv1.3';
-						await this.plugin.saveSettings();
-					}));
-			
-			// Certificate status
-			const statusEl = containerEl.createDiv('mcp-cert-status');
-			new Setting(statusEl).setName("Certificate status").setHeading();
+					this.update();
+					await this.restartIfRunning('bind address');
+				})();
+			}));
+	}
 
-			// Check certificate status asynchronously
-			void import('./utils/certificate-manager').then(module => {
-				const certManager = new module.CertificateManager(this.app);
+	private renderHttpPortRow(setting: Setting): void {
+		setting.addText(text => {
+			let pendingPort = this.plugin.settings.httpPort;
+			let hasChanges = false;
+
+			text.setPlaceholder('3001')
+				.setValue(this.plugin.settings.httpPort.toString())
+				.onChange((value) => {
+					const port = parseInt(value);
+					if (!isNaN(port) && port > 0 && port < 65536) {
+						pendingPort = port;
+						hasChanges = (port !== this.plugin.settings.httpPort);
+
+						// Update button visibility and port validation
+						this.updatePortApplyButton(setting, hasChanges, pendingPort);
+						void this.checkPortAvailability(port, setting);
+					} else {
+						hasChanges = false;
+						this.updatePortApplyButton(setting, false, pendingPort);
+					}
+				});
+
+			return text;
+		})
+		.addButton(button => {
+			button.setButtonText('Apply')
+				.setClass('mod-cta')
+				.onClick(async () => {
+					const textComponent = setting.components.find((c): c is TextComponent => c instanceof TextComponent);
+					const newPort = parseInt(textComponent?.inputEl.value ?? '');
+
+					if (!isNaN(newPort) && newPort > 0 && newPort < 65536) {
+						const oldPort = this.plugin.settings.httpPort;
+						this.plugin.settings.httpPort = newPort;
+						await this.plugin.saveSettings();
+
+						// Auto-restart server if port changed and server is running
+						if (oldPort !== newPort && this.plugin.mcpServer?.isServerRunning()) {
+							new Notice(`Restarting MCP server on port ${newPort}...`);
+							await this.plugin.stopMCPServer();
+							await this.plugin.startMCPServer();
+							window.setTimeout(() => this.refreshConnectionStatus(), 500);
+						}
+
+						// Hide apply button
+						button.buttonEl.classList.add('mcp-hidden');
+						setting.setDesc('Port for HTTP mcp server (default: 3001)');
+					}
+				});
+
+			// Initially hide the apply button
+			button.buttonEl.classList.add('mcp-hidden');
+			return button;
+		});
+
+		// Don't check port availability on load - only when changed or server starts
+		// This avoids detecting our own running server as a conflict
+	}
+
+	private renderApiKeyRow(setting: Setting): void {
+		setting
+			.addText(text => {
+				const input = text
+					.setPlaceholder('API key will be shown here')
+					.setValue(this.plugin.settings.apiKey)
+					.setDisabled(true);
+				input.inputEl.classList.add('mcp-api-key-input', 'mcp-monospace-input');
+				return input;
+			})
+			.addButton(button => button
+				.setButtonText('Copy')
+				.setTooltip('Copy API key to clipboard')
+				.onClick(async () => {
+					await navigator.clipboard.writeText(this.plugin.settings.apiKey);
+					new Notice('API key copied to clipboard');
+				}))
+			.addButton(button => button
+				.setButtonText('Regenerate')
+				.setTooltip('Generate a new API key')
+				.setDestructive()
+				.onClick(() => {
+					new ConfirmationModal(
+						this.app,
+						'Are you sure you want to regenerate the API key? This will invalidate the current key and require updating all MCP clients.',
+						async () => {
+							this.plugin.settings.apiKey = this.plugin.generateApiKey();
+							await this.plugin.saveSettings();
+							new Notice('API key regenerated. Update your mcp clients with the new key.');
+							this.update();
+						}
+					).open();
+				}));
+	}
+
+	private renderCertificateStatus(containerEl: HTMLElement): void {
+		const statusEl = containerEl.createDiv('mcp-cert-status');
+
+		// Check certificate status asynchronously
+		void import('./utils/certificate-manager').then(module => {
+			const certManager = new module.CertificateManager(this.app);
 			if (certManager.hasDefaultCertificate()) {
 				const paths = certManager.getDefaultPaths();
 				const loaded = certManager.loadCertificate(paths.certPath, paths.keyPath);
@@ -1023,188 +1344,59 @@ class MCPSettingTab extends PluginSettingTab {
 					cls: 'setting-item-description mcp-security-note'
 				});
 			}
-			});
-		}
-	}
-	
-	private createAuthenticationSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName("Authentication").setHeading();
-		
-		new Setting(containerEl)
-			.setName('Authentication key')
-			.setDesc('Secure key for authenticating mcp clients')
-			.addText(text => {
-				const input = text
-					.setPlaceholder('API key will be shown here')
-					.setValue(this.plugin.settings.apiKey)
-					.setDisabled(true);
-				
-				// Add classes for styling
-				input.inputEl.classList.add('mcp-api-key-input', 'mcp-monospace-input');
-				
-				return input;
-			})
-			.addButton(button => button
-				.setButtonText('Copy')
-				.setTooltip('Copy API key to clipboard')
-				.onClick(async () => {
-					await navigator.clipboard.writeText(this.plugin.settings.apiKey);
-					new Notice('API key copied to clipboard');
-				}))
-			.addButton(button => button
-				.setButtonText('Regenerate')
-				.setTooltip('Generate a new API key')
-				// Apply the destructive-button style directly. setWarning() is
-				// deprecated (1.13.0) and setDestructive() requires 1.13.0 > our
-				// minAppVersion 1.6.6; 'mod-warning' is the class both apply and is
-				// available on all supported versions. Full 1.13.0 adoption: #224.
-				.setClass('mod-warning')
-				.onClick(() => {
-					new ConfirmationModal(
-						this.app,
-						'Are you sure you want to regenerate the API key? This will invalidate the current key and require updating all MCP clients.',
-						async () => {
-							this.plugin.settings.apiKey = this.plugin.generateApiKey();
-							await this.plugin.saveSettings();
-							new Notice('API key regenerated. Update your mcp clients with the new key.');
-							this.render();
-						}
-					).open();
-				}));
-		
-		// Add a note about security
-		containerEl.createEl('p', {
-			text: 'Note: the API key is stored in the plugin settings file. Anyone with access to your vault can read it.',
-			cls: 'setting-item-description mcp-security-note'
 		});
-		
-		// Add note about auth methods
-		containerEl.createEl('p', {
-			text: 'Supports both bearer token (recommended) and basic authentication.',
-			cls: 'setting-item-description mcp-security-note'
-		});
-		
-		// Add dangerous disable auth toggle
-		new Setting(containerEl)
-			.setName('Disable authentication')
-			.setDesc('⚠️ dangerous: disable authentication entirely. Only use for testing or if you fully trust your local environment.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.dangerouslyDisableAuth)
-				.onChange(async (value) => {
-					this.plugin.settings.dangerouslyDisableAuth = value;
-					await this.plugin.saveSettings();
-					
-					// Show warning if disabling auth
-					if (value) {
-						new Notice('⚠️ authentication disabled! Your vault is accessible without credentials.');
-					} else {
-						new Notice('✅ Authentication enabled. API key required for access.');
-					}
-					
-					// Refresh display to update examples
-					this.render();
-				}));
 	}
 
-	private createSecuritySection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName("Security").setHeading();
-		
-		new Setting(containerEl)
-			.setName('Read-only mode')
-			.setDesc('Blocks every operation that changes the vault. Reads, searches, graph queries and opening notes still work. Takes effect immediately — no restart needed.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.readOnlyMode)
-				.onChange(async (value) => {
-					this.plugin.settings.readOnlyMode = value;
-					await this.plugin.saveSettings();
-					
-					// Effective immediately, no restart (ADR-108): the security layer
-					// reads this setting live per operation. The notices below used to
-					// claim writes were blocked while the running server still held a
-					// permissive ruleset until restart — the claim is now true.
-					if (value) {
-						Debug.log('🔒 READ-ONLY MODE ENABLED via settings - effective immediately');
-						new Notice('🔒 Read-only mode enabled. Write operations are blocked.');
-					} else {
-						Debug.log('✅ READ-ONLY MODE DISABLED via settings - effective immediately');
-						new Notice('✅ Read-only mode disabled. All operations are allowed.');
-					}
-					
-					// Refresh display to update examples
-					this.render();
-				}));
+	private createConnectionStatusSection(containerEl: HTMLElement): void {
+		const statusEl = containerEl.createDiv('mcp-status-section');
 
-		// ADR-109: dedicated gate for the plugin's only outbound capability.
-		// Not a row in the tool-visibility tree — that list answers "which tools
-		// does the agent see", this answers "may the plugin reach the internet".
-		new Setting(containerEl)
-			.setName('Allow outbound web fetch')
-			.setDesc('Lets connected agents fetch web pages (system.fetch_web). Off: the plugin makes no outbound connections at all. On: internal addresses (localhost, local network, cloud metadata) are always blocked, but an agent reading untrusted notes could still be tricked into leaking vault data inside a URL to a public site — read-only mode does not prevent that. Enforcement takes effect immediately; agents see the tool appear on their next connection.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableWebFetch)
-				.onChange(async (value) => {
-					this.plugin.settings.enableWebFetch = value;
-					await this.plugin.saveSettings();
-					// Enforcement is already live (the validator reads the setting per
-					// call); this tells connected agents the tool surface moved, so they
-					// re-fetch instead of working from the list they cached at connect.
-					this.plugin.mcpServer?.notifyToolListChanged();
-					if (value) {
-						new Notice('🌐 Outbound web fetch enabled. Internal addresses remain blocked.');
-					} else {
-						new Notice('✅ Outbound web fetch disabled. The plugin makes no outbound connections.');
-					}
-				}));
+		const info = this.plugin.getMCPServerInfo();
+		if (info) {
+			const statusGrid = statusEl.createDiv('mcp-status-grid');
 
-		// Path Exclusions Setting
-		new Setting(containerEl)
-			.setName('Path exclusions')
-			.setDesc('Exclude files and directories from mcp operations using .gitignore-style patterns. Prefix a pattern with readonly: to keep it readable but refuse writes.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.pathExclusionsEnabled)
-				.onChange(async (value) => {
-					this.plugin.settings.pathExclusionsEnabled = value;
-					await this.plugin.saveSettings();
-					
-					if (this.plugin.ignoreManager) {
-						this.plugin.ignoreManager.setEnabled(value);
-						if (value) {
-							await this.plugin.ignoreManager.loadIgnoreFile();
-							Debug.log('✅ Path exclusions enabled');
-							new Notice('✅ Path exclusions enabled');
-						} else {
-							Debug.log('🔓 Path exclusions disabled');
-							new Notice('🔓 Path exclusions disabled');
-						}
-					}
-					
-					// Refresh display to show/hide file management options
-					this.render();
-				}));
+			const createStatusItem = (label: string, value: string, colorClass?: string) => {
+				const item = statusGrid.createDiv();
+				item.createEl('strong', {text: `${label}: `});
+				const valueEl = item.createSpan({text: value});
+				if (colorClass) valueEl.classList.add('mcp-status-value', colorClass);
+			};
 
-		// Show context menu toggle if path exclusions are enabled
-		if (this.plugin.settings.pathExclusionsEnabled) {
-			new Setting(containerEl)
-				.setName('Enable right-click context menu')
-				.setDesc('Add "add to .mcpignore" option to file/folder context menus')
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.enableIgnoreContextMenu)
-					.onChange(async (value) => {
-						this.plugin.settings.enableIgnoreContextMenu = value;
-						await this.plugin.saveSettings();
-						
-						if (value) {
-							this.plugin.registerContextMenu();
-							new Notice('✅ Context menu enabled - restart required for full effect');
-						} else {
-							new Notice('🔓 Context menu disabled - restart required for full effect');
-						}
-					}));
+			createStatusItem('Status', info.running ? 'Running' : 'Stopped',
+				info.running ? 'success' : 'error');
+			createStatusItem('Port', (info.httpsEnabled ? info.httpsPort : info.httpPort).toString());
+			createStatusItem('Vault', info.vaultName);
+			if (info.vaultPath) {
+				createStatusItem('Path', info.vaultPath.length > 50 ? '...' + info.vaultPath.slice(-47) : info.vaultPath);
+			}
+			// Version with easter egg trigger
+			const versionItem = statusGrid.createDiv();
+			versionItem.createEl('strong', {text: 'Version: '});
+			const versionEl = versionItem.createSpan({text: info.version, cls: 'mcp-version-easter-egg'});
+			versionEl.addEventListener('click', () => this.handleEasterEggClick());
+			createStatusItem('Tools', info.toolsCount.toString());
+			createStatusItem('Resources', info.resourcesCount.toString());
+			createStatusItem('Connections', info.connections.toString());
+
+			// Show pool stats
+			if (info.poolStats?.enabled && info.poolStats.stats) {
+				const poolStats = info.poolStats.stats;
+				createStatusItem('Active Sessions', `${poolStats.activeConnections}/${poolStats.maxConnections}`);
+				createStatusItem('Pool Utilization', `${Math.round(poolStats.utilization * 100)}%`,
+					poolStats.utilization > 0.8 ? 'warning' : 'success');
+				if (poolStats.queuedRequests > 0) {
+					createStatusItem('Queued Requests', poolStats.queuedRequests.toString(), 'warning');
+				}
+			}
+		} else {
+			statusEl.createDiv({text: 'Server not running', cls: 'mcp-status-offline'});
 		}
+	}
 
-		// Show file management options if path exclusions are enabled
-		if (this.plugin.settings.pathExclusionsEnabled) {
-			this.createPathExclusionManagement(containerEl);
+	private async restartIfRunning(changedThing: string): Promise<void> {
+		if (this.plugin.mcpServer?.isServerRunning()) {
+			new Notice(`Restarting server with new ${changedThing}...`);
+			await this.plugin.stopMCPServer();
+			await this.plugin.startMCPServer();
 		}
 	}
 
@@ -1353,7 +1545,7 @@ class MCPSettingTab extends PluginSettingTab {
 						// Force reload to ensure fresh state
 						await this.plugin.ignoreManager!.forceReload();
 						new Notice('📄 Default .mcpignore template created');
-						this.render(); // Refresh to update status
+						this.update(); // Refresh to update status
 					} catch (error) {
 						Debug.log('Failed to create .mcpignore template:', error);
 						new Notice('❌ Failed to create template');
@@ -1370,7 +1562,7 @@ class MCPSettingTab extends PluginSettingTab {
 					try {
 						await this.plugin.ignoreManager!.forceReload();
 						new Notice('🔄 Exclusion patterns reloaded');
-						this.render(); // Refresh to update status
+						this.update(); // Refresh to update status
 					} catch (error) {
 						Debug.log('Failed to reload patterns:', error);
 						new Notice('❌ Failed to reload patterns');
@@ -1403,152 +1595,6 @@ class MCPSettingTab extends PluginSettingTab {
 				cls: 'setting-item-description mcp-security-note'
 			});
 		}
-	}
-
-	private createToolVisibilitySection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName("Tool visibility").setHeading();
-
-		containerEl.createEl('p', {
-			text: 'Control which mcp tools are visible to connecting agents. Disabled tools are hidden from the tool list — agents cannot discover or call them. Changes take effect on the next agent connection.',
-			cls: 'setting-item-description mcp-tool-tree-desc'
-		});
-
-		const visibility = this.plugin.settings.toolVisibility;
-
-		const isActionEnabled = (op: string, action: string): boolean => {
-			const key = `${op}.${action}`;
-			return visibility[key] !== false;
-		};
-
-		// ADR-109: fetch_web is governed by the dedicated "Allow outbound web
-		// fetch" toggle in the security section, not by this tree.
-		const treeActions = (op: string): string[] =>
-			getActionsForOperation(op).filter(action => !(op === 'system' && action === 'fetch_web'));
-
-		const isOperationFullyEnabled = (op: string): boolean => {
-			if (visibility[op] === false) return false;
-			return treeActions(op).every(a => isActionEnabled(op, a));
-		};
-
-		const isOperationFullyDisabled = (op: string): boolean => {
-			if (visibility[op] === false) return true;
-			return treeActions(op).every(a => !isActionEnabled(op, a));
-		};
-
-		const treeEl = containerEl.createDiv({ cls: 'mcp-tool-tree' });
-
-		for (const operation of ALL_OPERATIONS) {
-			const actions = treeActions(operation);
-			if (actions.length === 0) continue;
-
-			// Skip dataview if not available
-			if (operation === 'dataview') {
-				const detector = new PluginDetector(this.app);
-				if (!detector.isPluginEnabled('dataview')) continue;
-			}
-
-			const enabledCount = actions.filter(a => isActionEnabled(operation, a)).length;
-			const allEnabled = isOperationFullyEnabled(operation);
-			const allDisabled = isOperationFullyDisabled(operation);
-
-			// Collapse container for children
-			const groupEl = treeEl.createDiv();
-			const childrenEl = groupEl.createDiv();
-			if (allDisabled) childrenEl.addClass('mcp-hidden');
-
-			// Parent toggle
-			const desc = getOperationDescription(operation).replace(/^[^\s]+\s/, ''); // strip leading emoji
-			new Setting(groupEl)
-				.setClass('mcp-tool-parent')
-				.setName(`${operation} (${enabledCount}/${actions.length})`)
-				.setDesc(desc)
-				.addToggle(toggle => {
-					// Set initial state
-					if (!allEnabled && !allDisabled) {
-						// Indeterminate: mixed state
-						toggle.setValue(true);
-						const checkboxEl = (toggle as unknown as { toggleEl: HTMLElement }).toggleEl;
-						if (checkboxEl) checkboxEl.classList.add('is-indeterminate');
-					} else {
-						toggle.setValue(!allDisabled);
-					}
-
-					toggle.onChange(async (value) => {
-						// Cascade to all children
-						visibility[operation] = value;
-						for (const action of actions) {
-							visibility[`${operation}.${action}`] = value;
-						}
-						await this.plugin.saveSettings();
-						this.plugin.mcpServer?.notifyToolListChanged();
-						this.render(); // Re-render for updated states
-					});
-				});
-
-			// Move parent toggle before children container
-			groupEl.insertBefore(groupEl.lastElementChild!, childrenEl);
-
-			// Child toggles
-			for (const action of actions) {
-				new Setting(childrenEl)
-					.setClass('mcp-tool-child')
-					.setName(action)
-					.addToggle(toggle => toggle
-						.setValue(isActionEnabled(operation, action))
-						.onChange(async (value) => {
-							visibility[`${operation}.${action}`] = value;
-
-							// Update operation-level key based on aggregate
-							const allNowEnabled = actions.every(a => {
-								const k = `${operation}.${a}`;
-								return a === action ? value : visibility[k] !== false;
-							});
-							const allNowDisabled = actions.every(a => {
-								const k = `${operation}.${a}`;
-								return a === action ? !value : visibility[k] === false;
-							});
-
-							if (allNowEnabled) {
-								delete visibility[operation];
-							} else if (allNowDisabled) {
-								visibility[operation] = false;
-							} else {
-								delete visibility[operation]; // mixed = not explicitly false
-							}
-
-							await this.plugin.saveSettings();
-							this.plugin.mcpServer?.notifyToolListChanged();
-							this.render(); // Re-render for parent state update
-						}));
-			}
-		}
-	}
-
-	private createUIOptionsSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName("Interface").setHeading();
-
-		new Setting(containerEl)
-			.setName('Show connection status')
-			.setDesc('Show mcp server status in the status bar')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showConnectionStatus)
-				.onChange(async (value) => {
-					this.plugin.settings.showConnectionStatus = value;
-					await this.plugin.saveSettings();
-					this.plugin.updateStatusBar();
-				}));
-
-		new Setting(containerEl)
-			.setName('Debug logging')
-			.setDesc('Enable detailed debug logging in console')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.debugLogging)
-				.onChange(async (value) => {
-					this.plugin.settings.debugLogging = value;
-					Debug.setDebugMode(value);
-					await this.plugin.saveSettings();
-				}));
-
 	}
 
 	private createProtocolInfoSection(containerEl: HTMLElement): void {
@@ -1809,31 +1855,20 @@ class MCPSettingTab extends PluginSettingTab {
 				setting.setDesc('Port for HTTP mcp server (default: 3001)');
 		}
 	}
-	
-	private async checkHttpsPortAvailability(port: number, setting: Setting): Promise<void> {
+
+	private async noticeIfPortInUse(port: number, label: string): Promise<void> {
 		if (!this.plugin.settings.autoDetectPortConflicts) return;
-		
 		const status = await this.plugin.checkPortConflict(port);
-		
-		switch (status) {
-			case 'available':
-				setting.setDesc("Port for HTTPS mcp server (default: 3443) ✅ available");
-				break;
-			case 'this-server':
-				setting.setDesc("Port for HTTPS mcp server (default: 3443) 🟢 this server");
-				break;
-			case 'in-use':
-				setting.setDesc(`Port for HTTPS MCP server (default: 3443) ⚠️ Port ${port} in use`);
-				break;
-			default:
-				setting.setDesc('Port for HTTPS mcp server (default: 3443)');
+		if (status === 'in-use') {
+			new Notice(`⚠️ ${label} port ${port} is already in use`);
 		}
 	}
 
+
 	refreshConnectionStatus(): void {
-		// Simply refresh the entire settings display to ensure accurate data
-		// This is more reliable than trying to manually update DOM elements
-		this.render();
+		// Re-store definitions so the status grid and connect-a-client block
+		// redraw with current server info.
+		this.update();
 	}
 
 	private updatePortApplyButton(setting: Setting, hasChanges: boolean, pendingPort: number): void {

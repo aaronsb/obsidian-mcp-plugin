@@ -1,7 +1,7 @@
 .PHONY: help build dev test coverage coverage-map coverage-gate lint lint-fix check clean install \
        release-patch release-minor release-major release publish promote sync-version mcpb scorecard set-description
 
-MIN_OBSIDIAN := 1.6.6
+MIN_OBSIDIAN := 1.13.0
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
