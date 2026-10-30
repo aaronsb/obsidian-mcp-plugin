@@ -29,6 +29,7 @@
 
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { stripFindingKey } from './scorecard-findings.mjs';
 
 function argValue(name) {
   const i = process.argv.indexOf(name);
@@ -63,19 +64,12 @@ function ratio(score) {
 // ("**Direct Filesystem Access**: …"). Neutral sentences ("… scan not
 // available.", "… attestation.") are not regressions when they appear.
 //
-// Findings are compared by title, never as raw strings (#315). The portal
-// keys each rendered finding "<severity>:<index>:" and the scraper reads
-// that key with the text, so live findings arrive as
-// "medium:0:**Direct Filesystem Access**: …" while the baseline holds the
-// bare form. Severity and position are not identity: drop the key, then
-// take the bold title before the first colon.
-const KEY_PREFIX = /^[a-z]+:\d+:/i;
-
+// Findings are compared by title, never as raw strings (#315). scorecard.mjs
+// strips the portal's "<severity>:<index>:" key prefix, but a baseline or
+// live capture taken before that fix can still carry it, so the gate strips
+// it too, then takes the bold title before the first colon.
 function findingTitle(finding) {
-  const m = String(finding)
-    .trim()
-    .replace(KEY_PREFIX, '')
-    .match(/^\*\*\s*([^*]+?)\s*\*\*\s*:/);
+  const m = stripFindingKey(finding).match(/^\*\*\s*([^*]+?)\s*\*\*\s*:/);
   return m ? m[1].replace(/\s+/g, ' ') : null;
 }
 
