@@ -40,7 +40,7 @@ export interface SecuritySettings {
 		delete: boolean;    // D in CRUD
 		move: boolean;      // Special operations
 		rename: boolean;
-		execute: boolean;   // Opening files in Obsidian
+		execute: boolean;   // Running Obsidian commands (system.execute, ADR-204)
 	};
 	
 	// Advanced options

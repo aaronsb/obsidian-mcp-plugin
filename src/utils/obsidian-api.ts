@@ -1,4 +1,4 @@
-import { App, TFile, TFolder, TAbstractFile, Command, apiVersion, getAllTags } from 'obsidian';
+import { App, TFile, TFolder, TAbstractFile, Command, Notice, apiVersion, getAllTags } from 'obsidian';
 import { ObsidianConfig, ObsidianFile, ObsidianFileResponse } from '../types/obsidian';
 import { paginateFiles } from './response-limiter';
 import { isImageFile as checkIsImageFile, processImageResponse, IMAGE_PROCESSING_PRESETS } from './image-handler';
@@ -10,6 +10,8 @@ import { Debug } from './debug';
 import { BasesAPI } from './bases-api';
 import { BaseYAML, BaseQueryResult as BasesQueryResult } from '../types/bases-yaml';
 import { InputValidator, ValidationException, ValidationConfig } from '../validation/input-validator';
+import { SecurityError } from '../security/path-validator';
+import { commandRegistry, listCommands, normalizeAllowlist } from './obsidian-commands';
 
 /** MCP server info used by ObsidianAPI */
 interface ObsidianAPIMCPServerInfo {
@@ -26,26 +28,39 @@ export interface ObsidianAPIPluginRef {
     httpsEnabled?: boolean;
     httpPort?: number;
     httpsPort?: number;
+    // ADR-204: read per call by executeCommand, so a settings change applies
+    // to the next call without a restart.
+    commandExecutionAllowlist?: unknown;
+    notifyOnCommandExecution?: boolean;
   };
   ignoreManager?: MCPIgnoreManager;
   mcpServer?: ObsidianAPIMCPServerInfo;
   manifest?: { dir?: string };
 }
 
-/** Internal Obsidian App interface exposing the command registry */
-interface AppInternal extends App {
-  commands?: {
-    commands?: Record<string, ObsidianCommand>;
-    executeCommandById?(id: string): boolean;
-  };
+/**
+ * Outcome of a dispatched command (ADR-204).
+ *
+ * `success` means Obsidian dispatched the command: `executeCommandById`
+ * returned true, which happens when the callback is invoked. It does NOT mean
+ * the command finished. A command that opens a dialog reports success while the
+ * dialog waits for the user.
+ */
+export interface CommandExecutionResult {
+  /** True when Obsidian dispatched the command. Not completion. */
+  success: boolean;
+  commandId: string;
+  /** A dialog appeared after dispatch and is waiting for the user. */
+  awaitingUserInteraction: boolean;
+  /** Present when the caller should not read `success` at face value. */
+  warning?: string;
 }
 
-/** Internal Obsidian command structure */
-interface ObsidianCommand {
-  id: string;
-  name: string;
-  icon?: string;
-}
+/** Dialogs and suggesters that wait on a human (ADR-204 dialog detection). */
+const DIALOG_SELECTOR = '.modal-container, .prompt';
+
+/** How long to wait after dispatch before looking for a new dialog. */
+const COMMAND_SETTLE_MS = 100;
 
 /** Structured patch parameters for vault file operations */
 export interface PatchParams {
@@ -981,39 +996,70 @@ export class ObsidianAPI {
   }
 
   getCommands(): Command[] {
-    const appInternal = this.app as unknown as AppInternal;
-    const commands = appInternal.commands?.commands;
-    if (!commands) {
-      return [];
-    }
-
-    return Object.values(commands).map((cmd: ObsidianCommand) => ({
-      id: cmd.id,
-      name: cmd.name,
-      icon: cmd.icon
-    }));
+    return listCommands(this.app);
   }
 
   /**
-   * Run an Obsidian command by id.
+   * Run an Obsidian command by id — the `system.execute` action (ADR-204).
    *
-   * `async` purely so SecureObsidianAPI's override can await validateOperation,
-   * keeping a single gate function rather than adding a synchronous entry point
-   * that cannot validate paths. Nothing calls this yet — only getCommands() is
-   * wired to a tool — so widening the signature costs nothing today.
+   * Enforcement order: the tool layer refuses unless the user opted in to
+   * system.execute; SecureObsidianAPI's override validates OperationType.EXECUTE
+   * (denied in readOnly and safeMode); this method then refuses any id not on
+   * `commandExecutionAllowlist` before touching executeCommandById. The
+   * allowlist is read on every call, and a missing plugin reference allows
+   * nothing.
    *
-   * It needs the gate because the command palette contains mutators ("Delete
-   * current file", "Move file to…"), making an unguarded executeCommand a write
-   * path around the security layer.
+   * Dispatch is not completion. Dialogs open before dispatch are noted, and a
+   * new one present after a short settle is reported as
+   * `awaitingUserInteraction`. A detected dialog is only reported: confirming
+   * or dismissing a dialog the agent cannot read could confirm a destructive
+   * action.
+   *
+   * @throws SecurityError with code COMMAND_NOT_ALLOWED when the id is not on
+   *   the allowlist. Nothing runs.
    */
-  async executeCommand(commandId: string) {
-    await Promise.resolve();
-    const appInternal = this.app as unknown as AppInternal;
-    const success = appInternal.commands?.executeCommandById?.(commandId);
-    return {
-      success: !!success,
-      commandId
-    };
+  async executeCommand(commandId: string): Promise<CommandExecutionResult> {
+    const settings = this.plugin?.settings;
+    if (!normalizeAllowlist(settings?.commandExecutionAllowlist).includes(commandId)) {
+      throw new SecurityError(
+        `Command '${commandId}' is not on the command allowlist. Only the user can add it, in the plugin's settings.`,
+        'COMMAND_NOT_ALLOWED'
+      );
+    }
+
+    const registry = commandRegistry(this.app);
+    if (settings?.notifyOnCommandExecution !== false) {
+      const name = registry?.commands?.[commandId]?.name ?? commandId;
+      new Notice(`An agent is running the command "${name}".`);
+    }
+
+    const before = this.openDialogs();
+    const success = registry?.executeCommandById?.(commandId) === true;
+    if (!success) {
+      return {
+        success: false,
+        commandId,
+        awaitingUserInteraction: false,
+        warning: 'Obsidian did not run the command. It is not registered, or it is not available right now (for example, an editor command with no note open).'
+      };
+    }
+
+    await new Promise<void>(resolve => window.setTimeout(resolve, COMMAND_SETTLE_MS));
+    const appeared = [...this.openDialogs()].some(el => !before.has(el));
+    return appeared
+      ? {
+          success: true,
+          commandId,
+          awaitingUserInteraction: true,
+          warning: 'The command opened a dialog that is waiting for the user. It has not finished, and the plugin does not answer dialogs.'
+        }
+      : { success: true, commandId, awaitingUserInteraction: false };
+  }
+
+  /** Dialogs open right now. Empty where there is no DOM. */
+  private openDialogs(): Set<Element> {
+    if (typeof activeDocument === 'undefined') return new Set();
+    return new Set(Array.from(activeDocument.querySelectorAll(DIALOG_SELECTOR)));
   }
 
   // Helper methods

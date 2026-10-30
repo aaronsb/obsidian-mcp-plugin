@@ -283,6 +283,34 @@ export function formatEditResult(response: EditResponse): string {
 }
 
 /**
+ * Format system.execute response (ADR-204). Says "dispatched", never "done":
+ * Obsidian reports a command as run when its callback is invoked.
+ */
+export interface SystemExecuteResponse {
+  success: boolean;
+  commandId: string;
+  awaitingUserInteraction: boolean;
+  warning?: string;
+}
+
+export function formatSystemExecute(response: SystemExecuteResponse): string {
+  const lines: string[] = [];
+
+  lines.push(header(1, response.success ? 'Command Dispatched' : 'Command Not Dispatched'));
+  lines.push('');
+  lines.push(response.success
+    ? `Dispatched \`${response.commandId}\`. This means Obsidian started the command; it does not confirm that it finished.`
+    : `Obsidian did not dispatch \`${response.commandId}\`.`);
+  if (response.warning) {
+    lines.push('');
+    lines.push(`Warning: ${response.warning}`);
+  }
+  lines.push(summaryFooter());
+
+  return joinLines(lines);
+}
+
+/**
  * Format system.fetch_web response
  */
 export interface WebFetchResponse {

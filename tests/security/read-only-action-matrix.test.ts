@@ -37,13 +37,11 @@ const OPERATIONS: readonly string[] = ALL_OPERATIONS;
  * Every action's expected effect on the vault. Adding an action to
  * getActionsForOperation() without adding it here fails the coverage test.
  *
- * 'execute' is kept as a distinct kind even though no shipped action maps to it
- * today. view.open_in_obsidian used to: it was charged as EXECUTE, which
- * presets.readOnly() denies, so read-only blocked opening a note. Opening mutates
- * nothing, so openFile is now charged as READ and works under read-only. EXECUTE
- * survives for executeCommand — unreachable from any tool, and denied under
- * read-only because the command palette reaches destructive commands. If an
- * action ever maps to it again, classify it here.
+ * 'execute' is a distinct kind: it runs an Obsidian command, which can reach
+ * destructive commands, so read-only denies it. system.execute (ADR-204) is the
+ * one action of this kind. view.open_in_obsidian used to be charged as EXECUTE,
+ * which made read-only block opening a note; opening mutates nothing, so
+ * openFile is now charged as READ.
  */
 const ACTION_KIND: Record<string, 'read' | 'write' | 'execute'> = {
   // vault
@@ -77,6 +75,7 @@ const ACTION_KIND: Record<string, 'read' | 'write' | 'execute'> = {
   'system.info': 'read',
   'system.commands': 'read',
   'system.fetch_web': 'read',
+  'system.execute': 'execute',
   // graph — all analysis
   'graph.traverse': 'read',
   'graph.neighbors': 'read',
@@ -316,25 +315,24 @@ describe('read-only enforcement — exhaustive action matrix', () => {
 
   const executeActions = allActions.filter(a => ACTION_KIND[a.key] === 'execute' && invocable(a.op));
 
-  // Empty today: openFile moved to READ, and executeCommand is not tool-reachable.
-  // describe.each throws on an empty table, so this is guarded by a plain `if`
-  // rather than describe.skip — the repo's test contract forbids skipped tests,
-  // and a skipped block would read as coverage that isn't there. The assertion
-  // above is what notices if an execute action ever appears.
-  it('records that no shipped action currently maps to execute', () => {
-    expect(executeActions).toEqual([]);
+  it('records which shipped actions map to execute', () => {
+    expect(executeActions.map(a => a.key)).toEqual(['system.execute']);
   });
 
-  if (executeActions.length) describe.each(executeActions)('$key (execute)', ({ op, action }) => {
+  describe.each(executeActions)('$key (execute)', ({ op, action, key }) => {
     it('is blocked under read-only', async () => {
       const writes: Write[] = [];
+      // Opted in and allowlisted, so read-only is the only gate left to refuse:
+      // otherwise the opt-in or allowlist refusal would satisfy this test while
+      // the permission gate went untested.
+      const plugin = { settings: { readOnlyMode: true, commandExecutionAllowlist: ['editor:save-file'] } };
       const api = new SecureObsidianAPI(
-        makeApp(writes), undefined, { settings: { readOnlyMode: true } } as never,
+        makeApp(writes), undefined, plugin as never,
         VaultSecurityManager.presets.readOnly(),
       );
-      const tool = createSemanticTools(api)!.find(t => t.name === op)!;
+      const tool = createSemanticTools(api, { [key]: true })!.find(t => t.name === op)!;
 
-      const res = await tool.handler(api, { action, path: 'note.md' }).catch(e => ({
+      const res = await tool.handler(api, { action, commandId: 'editor:save-file' }).catch(e => ({
         content: [{ type: 'text' as const, text: String(e) }],
       }));
 

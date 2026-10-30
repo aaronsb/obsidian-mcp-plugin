@@ -213,15 +213,30 @@ const VISIBILITY_ALIASES: Record<string, readonly string[]> = {
   'vault.update': ['vault.replace'],
 };
 
+/**
+ * Actions that are off unless their key is explicitly `true` — the inverse of
+ * ADR-101's "missing key means enabled". `system.execute` runs Obsidian
+ * commands, so an upgrade or an empty visibility map must not expose it
+ * (ADR-204). Every visibility read goes through isActionVisible, so the
+ * registration gate, the dispatch re-check and the settings tree all honour
+ * this set.
+ */
+export const OPT_IN_ACTIONS: ReadonlySet<string> = new Set(['system.execute']);
+
 /** Every visibility key that governs `operation.action`, its own key first. */
 export function visibilityKeysFor(operation: string, action: string): string[] {
   const key = `${operation}.${action}`;
   return [key, ...(VISIBILITY_ALIASES[key] ?? [])];
 }
 
-/** An action is enabled unless any key that governs it is explicitly false. */
+/**
+ * An action is enabled unless any key that governs it is explicitly false. An
+ * opt-in action is enabled only when its own key is explicitly true.
+ */
 export function isActionVisible(visibility: ToolVisibility, operation: string, action: string): boolean {
-  return visibilityKeysFor(operation, action).every(k => visibility[k] !== false);
+  const [key, ...aliases] = visibilityKeysFor(operation, action);
+  const own = OPT_IN_ACTIONS.has(key) ? visibility[key] === true : visibility[key] !== false;
+  return own && aliases.every(k => visibility[k] !== false);
 }
 
 /**
@@ -269,6 +284,9 @@ export function applyVisibilityToggle(visibility: ToolVisibility, key: string, v
   if (dot < 0) {
     visibility[key] = value;
     for (const action of visibilityTreeActions(key)) {
+      // "Show every action" must not opt in to an opt-in action; only its own
+      // row can. Hiding still cascades, so a later "show all" leaves it off.
+      if (value && OPT_IN_ACTIONS.has(`${key}.${action}`)) continue;
       for (const k of visibilityKeysFor(key, action)) visibility[k] = value;
     }
     return visibility;
@@ -316,15 +334,17 @@ interface DataviewResult {
  */
 
 const createSemanticTool = (operation: string, visibility?: ToolVisibility, webFetchEnabled?: boolean): SemanticTool | null => {
+  // An omitted map filters as an empty one: every default-on action stays,
+  // and opt-in actions stay off. A caller that forgets to pass visibility must
+  // not be the way system.execute gets exposed.
+  const vis: ToolVisibility = visibility ?? {};
+
   // Check operation-level toggle
-  if (visibility && visibility[operation] === false) return null;
+  if (vis[operation] === false) return null;
 
   // Filter actions based on visibility
-  let actions = getActionsForOperation(operation);
-  if (visibility) {
-    actions = actions.filter(action => isActionVisible(visibility, operation, action));
-    if (actions.length === 0) return null;
-  }
+  let actions = getActionsForOperation(operation).filter(action => isActionVisible(vis, operation, action));
+  if (actions.length === 0) return null;
 
   // ADR-109: fetch_web is gated by its dedicated setting, not the visibility
   // tree. Hiding it here is presentation — enforcement is the security-layer
@@ -339,11 +359,10 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility, webF
     if (actions.length === 0) return null;
   }
 
-  // Keep the advertised description in step with the action list.
-  let description = getOperationDescription(operation);
-  if (operation === 'system' && !actions.includes('fetch_web')) {
-    description = description.replace(/, fetch_web:[^,]*$/, '');
-  }
+  // Keep the advertised description and parameters in step with the action list.
+  const description = operation === 'system' ? describeSystem(actions) : getOperationDescription(operation);
+  const parameters = getParametersForOperation(operation);
+  if (operation === 'system' && !actions.includes('execute')) delete parameters.commandId;
 
   return {
   name: operation,
@@ -361,7 +380,7 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility, webF
         description: 'Return raw JSON instead of formatted markdown (use when you need complete metadata or structured data for processing)',
         default: false
       },
-      ...getParametersForOperation(operation)
+      ...parameters
     },
     required: ['action']
   },
@@ -379,9 +398,12 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility, webF
     // so switching a whole operation off left every live MCP session with full
     // access to it until eviction or restart. Same staleness class as the
     // read-only bug in ADR-108, in the sibling control.
-    if (visibility && (visibility[operation] === false ||
-        !isActionVisible(visibility, operation, args.action))) {
-      const operationDisabled = visibility[operation] === false;
+    //
+    // For an opt-in action (system.execute) this is the dispatch half of its
+    // enumeration gate: `vis` is the live settings map, so switching the action
+    // off refuses the next call on a session that already listed it.
+    if (vis[operation] === false || !isActionVisible(vis, operation, args.action)) {
+      const operationDisabled = vis[operation] === false;
       return {
         content: [{
           type: 'text' as const,
@@ -625,12 +647,24 @@ export function getOperationDescription(operation: string): string {
     edit: '✏️ Edit files - window: find/replace with fuzzy matching, append: add to end, patch: modify headings/blocks/frontmatter or replace exact text, at_line: insert at line number, from_buffer: reuse previous window content',
     view: '👁️ View content - file: entire document, window: ~20 lines around point, active: current editor file, open_in_obsidian: launch in app',
     workflow: '💡 Get contextual suggestions for next actions based on current state',
-    system: 'ℹ️ System operations - info: server details, commands: available actions, fetch_web: retrieve and process web content',
+    system: describeSystem(getActionsForOperation('system')),
     graph: '🕸️ Graph navigation — follow the vault\'s own links. Use this to EXPAND from a note you already found rather than running another search: search ranks by term frequency, so it cannot reach a note that covers the topic in different words, but a link to it usually exists. BLIND SPOT (the mirror of search\'s): traversal only reaches what someone actually linked. A note can be genuinely relevant and simply unlinked — no amount of traversal will find it. So the two are complements, not substitutes: scan broadly with `vault.search` to catch the unlinked, then follow links from the hits to catch the differently-worded. Trust neither alone. Actions — neighbors: immediate links of a note (start here); traverse: multi-hop exploration; search-traverse: scan-and-follow in one call, but it returns SNIPPETS per node and prunes on scoreThreshold, so use it to discover WHICH notes matter, then read them — do not treat its snippets as the whole argument; path: how two notes connect; backlinks/forwardlinks: directional links (backlinks are how you find what depends on a note — its own text does not know); statistics: link counts (call with no sourcePath for vault-wide density); tag-analysis/shared-tags: tag structure.',
     dataview: '📊 Dataview operations - query: execute DQL queries (LIST FROM "folder", TABLE field FROM #tag WHERE condition), list: get pages with metadata and frontmatter, metadata: extract complete page metadata, validate: check DQL syntax, status: plugin availability. Supports LIST, TABLE, TASK, CALENDAR queries with WHERE filters, sorting, grouping.',
     bases: '🗃️ Bases operations - list: show all .base files, read: get YAML config, create: new base with views/filters/formulas, query: execute filters on vault notes, view: get table/card view data, evaluate: test formulas, export: CSV/JSON/Markdown. Bases use YAML format with expression-based filters like status == "active" and file.hasTag("project")'
   };
   return descriptions[operation] || 'Unknown operation';
+}
+
+/** One clause per system action, so the advertised text lists only what is enumerated. */
+const SYSTEM_ACTION_DESCRIPTIONS: Record<string, string> = {
+  info: 'info: server details',
+  commands: 'commands: Obsidian commands (id and name)',
+  fetch_web: 'fetch_web: retrieve and process web content',
+  execute: 'execute: run an Obsidian command by commandId. Only commands the user allowlisted run, and success means the command was dispatched, not that it finished. A command that opens a dialog returns awaitingUserInteraction: true',
+};
+
+function describeSystem(actions: readonly string[]): string {
+  return `ℹ️ System operations - ${actions.map(a => SYSTEM_ACTION_DESCRIPTIONS[a] ?? a).join('; ')}`;
 }
 
 export function getActionsForOperation(operation: string): string[] {
@@ -639,7 +673,7 @@ export function getActionsForOperation(operation: string): string[] {
     edit: ['window', 'append', 'patch', 'at_line', 'from_buffer'],
     view: ['file', 'window', 'active', 'open_in_obsidian'],
     workflow: ['suggest'],
-    system: ['info', 'commands', 'fetch_web'],
+    system: ['info', 'commands', 'fetch_web', 'execute'],
     graph: ['traverse', 'neighbors', 'path', 'statistics', 'backlinks', 'forwardlinks', 'search-traverse', 'advanced-traverse', 'tag-traverse', 'tag-analysis', 'shared-tags'],
     dataview: ['query', 'list', 'metadata', 'validate', 'status'],
     bases: ['list', 'read', 'create', 'query', 'view', 'export']
@@ -865,6 +899,10 @@ function getParametersForOperation(operation: string): Record<string, unknown> {
       url: {
         type: 'string',
         description: 'URL to fetch and convert to markdown'
+      },
+      commandId: {
+        type: 'string',
+        description: 'Exact Obsidian command id to run (execute), as listed by the commands action. Ids not on the user\'s allowlist are refused.'
       }
     },
     graph: {

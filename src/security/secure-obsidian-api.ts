@@ -212,8 +212,9 @@ export class SecureObsidianAPI extends ObsidianAPI {
 	/**
 	 * The command palette contains mutators ("Delete current file", "Move file
 	 * to…"), so an unwrapped executeCommand is a write path around the layer.
-	 * Latent today — only getCommands() is wired to a tool — but wrapped for the
-	 * same reason as the active-file writes above.
+	 * Reached from `system.execute` (ADR-204), where this is the permission
+	 * gate: EXECUTE is denied in readOnly and safeMode. The allowlist in the
+	 * base method runs only after this passes.
 	 *
 	 * Goes through validateOperation like every other write, rather than a
 	 * separate synchronous permission check: one gate function, and no entry

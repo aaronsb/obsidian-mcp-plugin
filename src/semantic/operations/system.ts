@@ -6,7 +6,7 @@
  * instance as before. A new system action is one more case in the switch.
  */
 import { RouterContext } from './router-context';
-import { Params } from './shared';
+import { Params, requireParamStr } from './shared';
 
 export async function executeSystemOperation(ctx: RouterContext, action: string, params: Params): Promise<unknown> {
   switch (action) {
@@ -14,6 +14,10 @@ export async function executeSystemOperation(ctx: RouterContext, action: string,
       return ctx.api.getServerInfo();
     case 'commands':
       return ctx.api.getCommands();
+    case 'execute':
+      // Gates (ADR-204): the tool layer already refused unless the user opted
+      // in; the API checks the EXECUTE permission, then the allowlist.
+      return ctx.api.executeCommand(requireParamStr(params, 'commandId', 'system.execute'));
     case 'fetch_web': {
       // Import fetch tool dynamically
       const { fetchTool } = await import('../../tools/fetch.js');
