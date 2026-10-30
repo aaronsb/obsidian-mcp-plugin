@@ -767,23 +767,23 @@ export class ObsidianAPI {
 
   private patchFrontmatter(content: string, field: string, operation: string, patchContent: string): string {
     const lines = content.split('\n');
-    let inFrontmatter = false;
-    let frontmatterStart = -1;
+
+    // Frontmatter exists only when the first line is '---'. A '---' further
+    // down is a horizontal rule in the body, not a frontmatter boundary.
+    const frontmatterStart = lines[0].trim() === '---' ? 0 : -1;
     let frontmatterEnd = -1;
-    
-    // Find frontmatter boundaries
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].trim() === '---') {
-        if (!inFrontmatter) {
-          inFrontmatter = true;
-          frontmatterStart = i;
-        } else {
+    if (frontmatterStart === 0) {
+      for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim() === '---') {
           frontmatterEnd = i;
           break;
         }
       }
+      if (frontmatterEnd === -1) {
+        throw new Error("Frontmatter opened with '---' on the first line is never closed; add the closing '---' line before patching it.");
+      }
     }
-    
+
     // If no frontmatter exists, create it
     if (frontmatterStart === -1) {
       lines.unshift('---', `${field}: ${patchContent}`, '---', '');
