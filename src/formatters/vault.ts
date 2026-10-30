@@ -1,5 +1,5 @@
 /**
- * Vault operation formatters (list, read, create, update, delete, etc.)
+ * Vault operation formatters (list, read, create, replace, delete, etc.)
  */
 
 import {
@@ -329,16 +329,25 @@ export interface FileWriteResponse {
   success: boolean;
   created?: boolean;
   size?: number;
+  /** Set on responses from a deprecated action name (vault.update, #326). */
+  deprecation?: string;
 }
 
-export function formatFileWrite(response: FileWriteResponse, action: 'create' | 'update'): string {
+const WRITE_VERBS = { create: 'Created', replace: 'Replaced', update: 'Updated' } as const;
+
+export function formatFileWrite(response: FileWriteResponse, action: keyof typeof WRITE_VERBS): string {
   const lines: string[] = [];
 
-  const verb = action === 'create' ? 'Created' : 'Updated';
+  const verb = WRITE_VERBS[action];
   const icon = response.success ? '✓' : '✗';
 
   lines.push(header(1, `${icon} ${verb}: ${response.path}`));
   lines.push('');
+
+  if (response.deprecation) {
+    lines.push(`> ⚠️ ${response.deprecation}`);
+    lines.push('');
+  }
 
   if (response.success) {
     lines.push(`Successfully ${verb.toLowerCase()} file.`);

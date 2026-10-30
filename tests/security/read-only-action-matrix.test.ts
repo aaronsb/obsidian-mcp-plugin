@@ -52,6 +52,7 @@ const ACTION_KIND: Record<string, 'read' | 'write' | 'execute'> = {
   'vault.search': 'read',
   'vault.fragments': 'read',
   'vault.create': 'write',
+  'vault.replace': 'write',
   'vault.update': 'write',
   'vault.delete': 'write',
   'vault.move': 'write',
@@ -107,6 +108,7 @@ const ACTION_KIND: Record<string, 'read' | 'write' | 'execute'> = {
 /** Params sufficient for each write action to actually attempt a vault write. */
 const WRITE_PARAMS: Record<string, Record<string, unknown>> = {
   'vault.create': { path: 'new.md', content: 'x' },
+  'vault.replace': { path: 'note.md', content: 'x' },
   'vault.update': { path: 'note.md', content: 'x' },
   'vault.delete': { path: 'note.md' },
   'vault.move': { path: 'note.md', destination: 'moved/note.md' },
