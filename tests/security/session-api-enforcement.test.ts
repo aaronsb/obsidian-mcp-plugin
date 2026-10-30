@@ -60,7 +60,7 @@ function mkFile(p: string): TFile {
 function makeApp(): App {
   return {
     vault: {
-      adapter: { basePath: '/test/vault' },
+      configDir: '.obsidian', adapter: { basePath: '/test/vault' },
       getAbstractFileByPath: (p: string) => (p === 'note.md' ? mkFile(p) : null),
       read: async () => 'body\n',
       cachedRead: async () => 'body\n',

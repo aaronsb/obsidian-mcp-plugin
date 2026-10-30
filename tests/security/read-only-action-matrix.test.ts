@@ -167,7 +167,7 @@ function mkFile(p: string): TFile {
 function makeApp(writes: Write[]): App {
   return {
     vault: {
-      adapter: { basePath: '/test/vault' },
+      configDir: '.obsidian', adapter: { basePath: '/test/vault' },
       getAbstractFileByPath: (p: string) => (EXISTING.includes(p) ? mkFile(p) : null),
       read: async () => '# Heading\nbody\n',
       cachedRead: async () => '# Heading\nbody\n',

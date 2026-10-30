@@ -46,7 +46,7 @@ function makeApp(existing: string[], writes: Write[]): App {
   const has = (p: string) => existing.includes(p);
   return {
     vault: {
-      adapter: { basePath: '/test/vault' },
+      configDir: '.obsidian', adapter: { basePath: '/test/vault' },
       getAbstractFileByPath: (p: string) => (has(p) ? mkFile(p) : null),
       read: async () => 'body\n',
       cachedRead: async () => 'body\n',

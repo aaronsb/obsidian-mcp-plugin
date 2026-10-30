@@ -38,7 +38,7 @@ describe('VaultSecurityManager', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockApp = {} as App;
+    mockApp = { vault: { configDir: '.obsidian' } } as unknown as App;
     manager = new VaultSecurityManager(mockApp);
   });
 

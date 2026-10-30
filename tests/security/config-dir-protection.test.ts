@@ -167,6 +167,12 @@ describe('config directory protection', () => {
     expect(writes).toEqual([]);
   });
 
+  it('refuses to build a security layer that does not know the config directory', () => {
+    const app = { vault: { adapter: { basePath: '/test/vault' } } } as unknown as App;
+    expect(() => new SecureObsidianAPI(app, undefined, { settings: {} } as never, PERMISSIVE))
+      .toThrow("Could not determine Obsidian's config directory");
+  });
+
   it('sees through a symlinked folder that points into the config directory', () => {
     // A real directory tree: the alias exists only on disk, so the lexical check cannot see it.
     const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'cfgdir-'));

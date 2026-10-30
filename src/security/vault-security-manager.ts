@@ -132,8 +132,14 @@ export class VaultSecurityManager {
 		isReadOnly?: () => boolean
 	) {
 		this.validator = new SecurePathValidator(app);
-		// Obsidian's config directory, `.obsidian` unless the user moved it.
-		this.configDir = app.vault?.configDir || '.obsidian';
+		// Obsidian's config directory, which the user can rename. Without it no
+		// path can be shown to be outside it, so refuse to build, as the path
+		// validator does without a vault base directory.
+		const configDir = app.vault?.configDir;
+		if (!configDir) {
+			throw new Error('Could not determine Obsidian\'s config directory');
+		}
+		this.configDir = configDir;
 		this.settings = { ...DEFAULT_SECURITY_SETTINGS, ...settings };
 		this.ignoreManager = ignoreManager;
 		this.isReadOnly = isReadOnly;
