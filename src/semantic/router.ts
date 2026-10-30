@@ -22,6 +22,7 @@ import { executeVaultOperation } from './operations/vault';
 import { executeBasesOperation } from './operations/bases';
 import { executeEditOperation } from './operations/edit';
 import { executeViewOperation } from './operations/view';
+import { executeSystemOperation } from './operations/system';
 import { Params, SearchResultItem, paramStr, paramNum, paramBool } from './operations/shared';
 
 export class SemanticRouter implements RouterContext {
@@ -119,7 +120,7 @@ export class SemanticRouter implements RouterContext {
       case 'workflow':
         return this.executeWorkflowOperation(action, params);
       case 'system':
-        return this.executeSystemOperation(action, params);
+        return executeSystemOperation(this, action, params);
       case 'graph':
         return this.executeGraphOperation(action, params);
       case 'bases':
@@ -135,22 +136,6 @@ export class SemanticRouter implements RouterContext {
         return this.generateWorkflowSuggestions();
       default:
         throw new Error(`Unknown workflow action: ${action}`);
-    }
-  }
-  
-  private async executeSystemOperation(action: string, params: Params): Promise<unknown> {
-    switch (action) {
-      case 'info':
-        return this.api.getServerInfo();
-      case 'commands':
-        return this.api.getCommands();
-      case 'fetch_web': {
-        // Import fetch tool dynamically
-        const { fetchTool } = await import('../tools/fetch.js');
-        return await (fetchTool.handler as unknown as (api: unknown, args: Params) => Promise<unknown>)(this.api, params);
-      }
-      default:
-        throw new Error(`Unknown system action: ${action}`);
     }
   }
   
