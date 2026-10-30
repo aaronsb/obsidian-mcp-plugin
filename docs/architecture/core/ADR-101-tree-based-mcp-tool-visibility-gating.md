@@ -76,6 +76,8 @@ MCP Tool Visibility
     └── ...
 ```
 
+> **Note (2026-10-30, [#326](https://github.com/aaronsb/obsidian-mcp-plugin/issues/326)):** `vault.update` is now the deprecated name of `vault.replace`. The tree shows one `replace` row in its place, and that row governs both names.
+
 **Tri-state cascade behavior** (same pattern as backup include/exclude trees):
 
 | Parent State | Meaning | Visual |
@@ -113,6 +115,8 @@ Each action maps to an `OperationType` that the security manager already underst
 | `EXECUTE` | view.open_in_obsidian, system.fetch_web |
 
 The granular `toolVisibility` map gives finer control than the CRUD permissions alone. A user might want `vault.update` (edit existing files) but not `vault.delete`. Both are separate toggles in the tree.
+
+> **Note (2026-10-30, [#326](https://github.com/aaronsb/obsidian-mcp-plugin/issues/326)):** "edit existing files" misdescribes `vault.update`: it replaces a file's entire contents. Reading the name as a partial edit led callers to wipe files, so the action was renamed `vault.replace`, and `update` stays as a deprecated alias. The two names share one visibility switch: either `toolVisibility` key set to `false` hides and blocks both, and the `replace` row writes both keys. Partial edits are the `edit` actions in the table above.
 
 ### Auto-population
 

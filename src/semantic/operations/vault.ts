@@ -16,6 +16,14 @@ import { Params, paramStr, paramNum, paramBool, requireParamStr } from './shared
 type FragmentStrategy = 'auto' | 'adaptive' | 'proximity' | 'semantic';
 
 /**
+ * Returned with every `vault.update` result (#326). `update` replaces the whole
+ * file, and callers who read the name as "modify" wiped files with it. It stays
+ * working as an alias of `vault.replace` until it is removed.
+ */
+export const VAULT_UPDATE_DEPRECATION =
+  '`vault.update` is deprecated — use `vault.replace` (replaces entire file contents) or `edit.window`/`edit.patch` for partial modifications.';
+
+/**
  * Resolve the caller-facing fragment strategy onto the internal one.
  *
  * 'structure' is the honest name for what the index does — it cuts on the document's own
@@ -166,15 +174,19 @@ export async function executeVaultOperation(ctx: RouterContext, action: string, 
         const content = paramStr(params, 'content') ?? '';
         return await ctx.api.createFile(path, content);
       }
+      case 'replace':
       case 'update': {
-        const path = requireParamStr(params, 'path', 'vault.update');
+        // `update` is the old name of `replace` (#326): same write, plus a notice.
+        const name = `vault.${action}`;
+        const path = requireParamStr(params, 'path', name);
         const content = requireParamStr(
           params,
           'content',
-          'vault.update',
+          name,
           "For partial replacement, use edit.patch with operation='replace', oldText, newText — or edit.window for fuzzy in-place edits.",
         );
-        return await ctx.api.updateFile(path, content);
+        const result = await ctx.api.updateFile(path, content);
+        return action === 'update' ? { ...result, deprecation: VAULT_UPDATE_DEPRECATION } : result;
       }
       case 'delete': {
         const path = requireParamStr(params, 'path', 'vault.delete');

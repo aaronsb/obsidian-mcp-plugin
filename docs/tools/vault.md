@@ -34,15 +34,17 @@ Create a new file.
 }
 ```
 
-#### `update`
-Replace a file's content.
+#### `replace`
+Replace a file's entire content. Everything not in `content` is gone afterwards. To change part of a file, use the `edit` tool (`window`, `patch`, `append`, `at_line`).
 ```json
 {
-  "action": "update",
+  "action": "replace",
   "path": "notes/existing.md",
-  "content": "Updated content..."
+  "content": "The whole new file..."
 }
 ```
+
+`update` is the deprecated name of `replace`. It behaves the same and its response carries a deprecation notice. It will be removed in a future major version.
 
 #### `delete`
 Delete a file.

@@ -575,6 +575,8 @@ export function formatResponse(
         return formatFileRead(normalized as FileReadResponse);
       case 'vault.create':
         return formatFileWrite(normalized as FileWriteResponse, 'create');
+      case 'vault.replace':
+        return formatFileWrite(normalized as FileWriteResponse, 'replace');
       case 'vault.update':
         return formatFileWrite(normalized as FileWriteResponse, 'update');
       case 'vault.delete':

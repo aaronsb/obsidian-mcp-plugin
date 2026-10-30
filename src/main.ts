@@ -8,7 +8,10 @@ import { randomBytes } from 'crypto';
 import { PluginDetector } from './utils/plugin-detector';
 import { CertificateConfig } from './utils/certificate-manager';
 import { ValidationConfig } from './validation/input-validator';
-import { ALL_OPERATIONS, getActionsForOperation, getOperationDescription } from './tools/semantic-tools';
+import {
+	ALL_OPERATIONS, applyVisibilityToggle, getOperationDescription, isActionVisible, isOperationHidden,
+	visibilityKeysFor, visibilityRowValue, visibilityTreeActions,
+} from './tools/semantic-tools';
 import { BindMode, classifyFromSettings, normalizeBindInput } from './utils/network-classifier';
 
 interface MCPPluginSettings {
@@ -734,12 +737,7 @@ class MCPSettingTab extends PluginSettingTab {
 
 	getControlValue(key: string): unknown {
 		if (key.startsWith(TOOL_VISIBILITY_PREFIX)) {
-			const rest = key.slice(TOOL_VISIBILITY_PREFIX.length);
-			// `op.action` is one key; a bare `op` is the parent row, on unless
-			// every action is off.
-			return rest.includes('.')
-				? this.plugin.settings.toolVisibility[rest] !== false
-				: !this.isOperationFullyDisabled(rest);
+			return visibilityRowValue(this.plugin.settings.toolVisibility, key.slice(TOOL_VISIBILITY_PREFIX.length));
 		}
 		return readPath(this.plugin.settings, key);
 	}
@@ -1183,6 +1181,8 @@ class MCPSettingTab extends PluginSettingTab {
 					},
 					...actions.map((action): SettingDefinition => ({
 						name: `${operation}.${action}`,
+						// A row that also governs a deprecated name is findable by it.
+						aliases: visibilityKeysFor(operation, action).slice(1),
 						control: { type: 'toggle', key: `${TOOL_VISIBILITY_PREFIX}${operation}.${action}` },
 					})),
 				],
@@ -1212,46 +1212,21 @@ class MCPSettingTab extends PluginSettingTab {
 
 	// ── Tool visibility helpers ──────────────────────────────────────────
 
-	// ADR-109: fetch_web is governed by the dedicated "Allow outbound web
-	// fetch" toggle in the security section, not by this tree.
 	private treeActions(op: string): string[] {
-		return getActionsForOperation(op).filter(action => !(op === 'system' && action === 'fetch_web'));
+		return visibilityTreeActions(op);
 	}
 
 	private isActionEnabled(op: string, action: string): boolean {
-		return this.plugin.settings.toolVisibility[`${op}.${action}`] !== false;
+		return isActionVisible(this.plugin.settings.toolVisibility, op, action);
 	}
 
 	private isOperationFullyDisabled(op: string): boolean {
-		const visibility = this.plugin.settings.toolVisibility;
-		if (visibility[op] === false) return true;
-		return this.treeActions(op).every(a => !this.isActionEnabled(op, a));
+		return isOperationHidden(this.plugin.settings.toolVisibility, op);
 	}
 
 	/** `rest` is `op` (cascade to every action) or `op.action` (one leaf). */
 	private async setToolVisibility(rest: string, value: boolean): Promise<void> {
-		const visibility = this.plugin.settings.toolVisibility;
-		const dot = rest.indexOf('.');
-
-		if (dot < 0) {
-			visibility[rest] = value;
-			for (const action of this.treeActions(rest)) {
-				visibility[`${rest}.${action}`] = value;
-			}
-		} else {
-			const operation = rest.slice(0, dot);
-			visibility[rest] = value;
-
-			// The operation-level key follows the aggregate of its actions.
-			const actions = this.treeActions(operation);
-			const allNowDisabled = actions.every(a => visibility[`${operation}.${a}`] === false);
-			if (allNowDisabled) {
-				visibility[operation] = false;
-			} else {
-				delete visibility[operation]; // all on, or mixed = not explicitly false
-			}
-		}
-
+		applyVisibilityToggle(this.plugin.settings.toolVisibility, rest, value);
 		await this.plugin.saveSettings();
 		this.plugin.mcpServer?.notifyToolListChanged();
 		this.update(); // parent counts and states
@@ -1724,8 +1699,8 @@ class MCPSettingTab extends PluginSettingTab {
 		const toolsListEl = info.createEl('ul');
 		for (const entry of toolEntries) {
 			if (!entry.available) continue;
-			const actions = getActionsForOperation(entry.name);
-			const enabledActions = actions.filter(a => visibility[`${entry.name}.${a}`] !== false);
+			const actions = this.treeActions(entry.name);
+			const enabledActions = actions.filter(a => isActionVisible(visibility, entry.name, a));
 			const isDisabled = visibility[entry.name] === false || enabledActions.length === 0;
 
 			const li = toolsListEl.createEl('li', {

@@ -36,6 +36,7 @@ import { formatResponse } from '../formatters';
  * positive would break working callers.
  */
 const DESTRUCTIVE_ACTION_PARAMS: Record<string, readonly string[]> = {
+  'vault.replace': ['path', 'content'],
   'vault.update': ['path', 'content'],
   'vault.create': ['path', 'content'],
   'vault.delete': ['path'],
@@ -52,7 +53,7 @@ const UNIVERSAL_PARAMS: readonly string[] = ['action', 'raw'];
 const PARAM_OWNER_HINTS: Record<string, string> = {
   // The two that motivated this check.
   mode: "'mode' applies to vault.concatenate (joining two FILES via path1/path2) and to edit.at_line (before/after/replace). To append TEXT to a file use edit.append; for partial replacement use edit.patch or edit.window.",
-  overwrite: "'overwrite' applies to vault.move and vault.copy. vault.update always replaces the entire file contents. To modify part of a file use edit.patch or edit.window.",
+  overwrite: "'overwrite' applies to vault.move and vault.copy. vault.replace always replaces the entire file contents. To modify part of a file use edit.patch or edit.window.",
 
   // vault: move / copy / rename
   destination: "'destination' applies to vault.move, vault.copy and vault.combine.",
@@ -201,6 +202,92 @@ export interface SemanticTool {
 /** Tool visibility map — keys are "operation" or "operation.action", values are enabled/disabled */
 export type ToolVisibility = Record<string, boolean>;
 
+/**
+ * Actions that are one capability under two names share one visibility switch.
+ * `vault.update` is the deprecated name of `vault.replace` (#326): a user who
+ * switched `update` off to stop whole-file overwrites must not get them back
+ * through a new, default-on `replace` toggle.
+ */
+const VISIBILITY_ALIASES: Record<string, readonly string[]> = {
+  'vault.replace': ['vault.update'],
+  'vault.update': ['vault.replace'],
+};
+
+/** Every visibility key that governs `operation.action`, its own key first. */
+export function visibilityKeysFor(operation: string, action: string): string[] {
+  const key = `${operation}.${action}`;
+  return [key, ...(VISIBILITY_ALIASES[key] ?? [])];
+}
+
+/** An action is enabled unless any key that governs it is explicitly false. */
+export function isActionVisible(visibility: ToolVisibility, operation: string, action: string): boolean {
+  return visibilityKeysFor(operation, action).every(k => visibility[k] !== false);
+}
+
+/**
+ * The actions that get their own row in the settings visibility tree.
+ * ADR-109: fetch_web is governed by the "Allow outbound web fetch" setting, not
+ * this tree. vault.update shares the vault.replace row (#326).
+ */
+export function visibilityTreeActions(operation: string): string[] {
+  return getActionsForOperation(operation).filter(action =>
+    !(operation === 'system' && action === 'fetch_web') &&
+    !(operation === 'vault' && action === 'update'));
+}
+
+/** True when the operation key is off, or every one of its tree rows is. */
+export function isOperationHidden(visibility: ToolVisibility, operation: string): boolean {
+  if (visibility[operation] === false) return true;
+  return visibilityTreeActions(operation).every(a => !isActionVisible(visibility, operation, a));
+}
+
+/**
+ * The on/off state a settings-tree row shows. `key` is `op.action` for one row,
+ * or `op` for the parent row, which is on unless every action is off.
+ */
+export function visibilityRowValue(visibility: ToolVisibility, key: string): boolean {
+  const dot = key.indexOf('.');
+  return dot >= 0
+    ? isActionVisible(visibility, key.slice(0, dot), key.slice(dot + 1))
+    : !isOperationHidden(visibility, key);
+}
+
+/**
+ * Apply one settings-tree toggle. `key` is `op` (cascade to every row) or
+ * `op.action` (one row).
+ *
+ * Every key that governs an action is written, so an alias key left over from
+ * an older setting cannot keep a row off after the user turns it on.
+ *
+ * Mutates and returns `visibility`. Tool handlers already built for live MCP
+ * sessions hold this same object for their dispatch check, so it is changed in
+ * place, not copied.
+ */
+export function applyVisibilityToggle(visibility: ToolVisibility, key: string, value: boolean): ToolVisibility {
+  const dot = key.indexOf('.');
+
+  if (dot < 0) {
+    visibility[key] = value;
+    for (const action of visibilityTreeActions(key)) {
+      for (const k of visibilityKeysFor(key, action)) visibility[k] = value;
+    }
+    return visibility;
+  }
+
+  const operation = key.slice(0, dot);
+  for (const k of visibilityKeysFor(operation, key.slice(dot + 1))) visibility[k] = value;
+
+  // The operation-level key follows the aggregate of its rows.
+  const allNowDisabled = visibilityTreeActions(operation)
+    .every(a => !isActionVisible(visibility, operation, a));
+  if (allNowDisabled) {
+    visibility[operation] = false;
+  } else {
+    delete visibility[operation]; // all on, or mixed = not explicitly false
+  }
+  return visibility;
+}
+
 /** Plugin interface for checking read-only mode */
 interface PluginWithSettings {
   settings?: {
@@ -235,7 +322,7 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility, webF
   // Filter actions based on visibility
   let actions = getActionsForOperation(operation);
   if (visibility) {
-    actions = actions.filter(action => visibility[`${operation}.${action}`] !== false);
+    actions = actions.filter(action => isActionVisible(visibility, operation, action));
     if (actions.length === 0) return null;
   }
 
@@ -293,7 +380,7 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility, webF
     // access to it until eviction or restart. Same staleness class as the
     // read-only bug in ADR-108, in the sibling control.
     if (visibility && (visibility[operation] === false ||
-        visibility[`${operation}.${args.action}`] === false)) {
+        !isActionVisible(visibility, operation, args.action))) {
       const operationDisabled = visibility[operation] === false;
       return {
         content: [{
@@ -534,7 +621,7 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility, webF
 
 export function getOperationDescription(operation: string): string {
   const descriptions: Record<string, string> = {
-    vault: '📁 File operations - list, read, create, update, delete, search, fragments, move, rename, copy, split, combine, concatenate. Search supports: operators (file:, path:, content:, tag:), OR/AND, "quoted phrases", /regex/. Options: ranked=true for TF-IDF relevance scoring, searchStrategy (filename|content|combined|auto), includeSnippets for contextual extracts. Search matches words, not meaning — it will miss notes that cover a topic in different vocabulary, and its scores are term frequency, so a low-scoring hit is NOT necessarily unimportant (do not prune on score). Prefer a couple of BROAD scans over many narrow ones, then follow links from the hits with `graph.neighbors` to reach what search cannot rank.',
+    vault: '📁 File operations - list, read, create, replace (replaces the entire file; for partial edits use the edit tool), delete, search, fragments, move, rename, copy, split, combine, concatenate. `update` is a deprecated alias of replace. Search supports: operators (file:, path:, content:, tag:), OR/AND, "quoted phrases", /regex/. Options: ranked=true for TF-IDF relevance scoring, searchStrategy (filename|content|combined|auto), includeSnippets for contextual extracts. Search matches words, not meaning — it will miss notes that cover a topic in different vocabulary, and its scores are term frequency, so a low-scoring hit is NOT necessarily unimportant (do not prune on score). Prefer a couple of BROAD scans over many narrow ones, then follow links from the hits with `graph.neighbors` to reach what search cannot rank.',
     edit: '✏️ Edit files - window: find/replace with fuzzy matching, append: add to end, patch: modify headings/blocks/frontmatter or replace exact text, at_line: insert at line number, from_buffer: reuse previous window content',
     view: '👁️ View content - file: entire document, window: ~20 lines around point, active: current editor file, open_in_obsidian: launch in app',
     workflow: '💡 Get contextual suggestions for next actions based on current state',
@@ -548,7 +635,7 @@ export function getOperationDescription(operation: string): string {
 
 export function getActionsForOperation(operation: string): string[] {
   const actions: Record<string, string[]> = {
-    vault: ['list', 'read', 'create', 'update', 'delete', 'search', 'fragments', 'move', 'rename', 'copy', 'split', 'combine', 'concatenate'],
+    vault: ['list', 'read', 'create', 'replace', 'update', 'delete', 'search', 'fragments', 'move', 'rename', 'copy', 'split', 'combine', 'concatenate'],
     edit: ['window', 'append', 'patch', 'at_line', 'from_buffer'],
     view: ['file', 'window', 'active', 'open_in_obsidian'],
     workflow: ['suggest'],
