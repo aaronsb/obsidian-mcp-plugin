@@ -695,9 +695,11 @@ export class ObsidianAPI {
 
         // Find the last non-empty line to check if it's a list
         let lastNonEmptyLine = '';
+        let lastNonEmptyIndex = targetLineIndex;
         for (let i = endLineIndex - 1; i >= targetLineIndex + 1; i--) {
           if (lines[i].trim() !== '') {
             lastNonEmptyLine = lines[i];
+            lastNonEmptyIndex = i;
             break;
           }
         }
@@ -710,8 +712,10 @@ export class ObsidianAPI {
           // Append list item without blank line
           lines.splice(endLineIndex, 0, patchContent);
         } else {
-          // Default: add blank line separator (original behavior)
-          lines.splice(endLineIndex, 0, '', patchContent);
+          // Default: one blank line after the last content line. Trailing blank
+          // lines stay after the appended content, so the section's existing gap
+          // is reused rather than doubled (#355).
+          lines.splice(lastNonEmptyIndex + 1, 0, '', patchContent);
         }
         break;
       }

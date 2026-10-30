@@ -58,8 +58,8 @@ Different content.`;
 ## Section One
 Original content here.
 
-
 New appended content.
+
 ## Section Two
 Different content.`;
 
@@ -119,8 +119,8 @@ Original subsection content.
 ### Subsection
 Original subsection content.
 
-
 New content in subsection.
+
 ## Section Two`;
 
       mockVault.read.mockResolvedValue(originalContent);
@@ -134,6 +134,42 @@ New content in subsection.
 
       expect(result.success).toBe(true);
       expect(mockVault.modify).toHaveBeenCalledWith(mockFile, expectedContent);
+    });
+  });
+
+  describe('Heading Append Separation (#355)', () => {
+    const append = (content: string, target = 'Section A') =>
+      api.patchVaultFile('test.md', { targetType: 'heading', target, operation: 'append', content });
+
+    it.each([
+      ['section ends without a newline', '## Section A\nsection body', '## Section A\nsection body\n\nappended line'],
+      ['section ends in a blank line (file ends with a newline)', '## Section A\nsection body\n', '## Section A\nsection body\n\nappended line\n'],
+      ['section ends in several blank lines', '## Section A\nsection body\n\n\n', '## Section A\nsection body\n\nappended line\n\n\n'],
+      ['section is followed by a heading after a blank line', '## Section A\nsection body\n\n## Section B\nb', '## Section A\nsection body\n\nappended line\n\n## Section B\nb'],
+      ['section has only its heading', '## Section A\n', '## Section A\n\nappended line\n'],
+    ])('adds exactly one blank separator when the %s', async (_case, original, expected) => {
+      mockVault.read.mockResolvedValue(original);
+
+      await append('appended line');
+
+      expect(mockVault.modify).toHaveBeenCalledWith(mockFile, expected);
+    });
+
+    // List continuity from PR #44 keeps its behaviour.
+    it('appends a list item straight after a list that ends the section', async () => {
+      mockVault.read.mockResolvedValue('## Section A\n- one\n## Section B');
+
+      await append('- two');
+
+      expect(mockVault.modify).toHaveBeenCalledWith(mockFile, '## Section A\n- one\n- two\n## Section B');
+    });
+
+    it('replaces the blank line after a list when appending a list item', async () => {
+      mockVault.read.mockResolvedValue('## Section A\n- one\n\n## Section B');
+
+      await append('- two');
+
+      expect(mockVault.modify).toHaveBeenCalledWith(mockFile, '## Section A\n- one\n- two\n## Section B');
     });
   });
 
