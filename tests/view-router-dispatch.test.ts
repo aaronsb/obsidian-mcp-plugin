@@ -94,6 +94,27 @@ describe('view operation dispatch (router -> operations/view.ts)', () => {
     expect(result.searchText).toBe('the needle sits here');
   });
 
+  it('window prefers lineNumber over searchText when both are given', async () => {
+    const { router } = setup({ 'a.md': numberedLines(30, { 25: 'the needle sits here' }) });
+    const response = await router.route({
+      operation: 'view',
+      action: 'window',
+      params: { path: 'a.md', lineNumber: 5, searchText: 'the needle sits here' }
+    });
+    expect((response.result as Record<string, unknown>).centerLine).toBe(5);
+  });
+
+  it('window finds searchText at fuzzy similarity 0.65, above its 0.6 threshold', async () => {
+    // 20 chars, 7 substituted: similarity 0.65. Matches at 0.6, not at 0.7.
+    const { router } = setup({ 'a.md': numberedLines(30, { 25: 'abcdefghijklmXXXXXXX' }) });
+    const response = await router.route({
+      operation: 'view',
+      action: 'window',
+      params: { path: 'a.md', searchText: 'abcdefghijklmnopqrst' }
+    });
+    expect((response.result as Record<string, unknown>).centerLine).toBe(25);
+  });
+
   it('window refuses image files', async () => {
     const { router } = setup({}, ['pic.png']);
     const response = await router.route({ operation: 'view', action: 'window', params: { path: 'pic.png' } });

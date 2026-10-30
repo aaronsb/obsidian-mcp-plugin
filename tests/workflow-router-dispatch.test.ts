@@ -65,6 +65,17 @@ describe('workflow operation dispatch (router -> operations/workflow.ts)', () =>
     expect(result.current_context.search_history).toEqual(['tag:#x']);
   });
 
+  it('suggest refines the most recent of several searches', async () => {
+    // route() records `query` from any operation before dispatch.
+    const router = setup();
+    await router.route({ operation: 'workflow', action: 'suggest', params: { query: 'first' } });
+    const response = await router.route({ operation: 'workflow', action: 'suggest', params: { query: 'second' } });
+    const result = response.result as { suggestions: Array<{ command: string }> };
+    expect(result.suggestions.map((s) => s.command)).toEqual([
+      "vault(action='search', query='second AND ...')"
+    ]);
+  });
+
   it('an unknown action is rejected', async () => {
     const response = await setup().route({ operation: 'workflow', action: 'nope', params: {} });
     expect(response.error?.message).toBe('Unknown workflow action: nope');

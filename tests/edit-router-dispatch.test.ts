@@ -223,6 +223,73 @@ describe('edit operation dispatch (router -> operations/edit.ts)', () => {
     expect(api.files.get('a.md')).toBe('NEW\nnext');
   });
 
+  // 20 chars, 7 substituted: similarity 0.65, under performWindowEdit's 0.7 default.
+  const NEAR_MISS_LINE = 'abcdefghijklmXXXXXXX';
+  const NEAR_MISS_SEARCH = 'abcdefghijklmnopqrst';
+
+  it('window passes fuzzyThreshold through, so a lower threshold lands a near miss', async () => {
+    const { router, api } = setup({ 'a.md': `${NEAR_MISS_LINE}\nend` });
+    const response = await router.route({
+      operation: 'edit',
+      action: 'window',
+      params: { path: 'a.md', oldText: NEAR_MISS_SEARCH, newText: 'NEW', fuzzyThreshold: 0.5 }
+    });
+    expect(response.result).toEqual({
+      content: [{ type: 'text', text: 'Successfully replaced line 1 (65% match) in a.md' }]
+    });
+    expect(api.files.get('a.md')).toBe('NEW\nend');
+  });
+
+  it('at_line rejects line 0', async () => {
+    const { router, api } = setup({ 'a.md': 'L1\nL2' });
+    const response = await router.route({
+      operation: 'edit',
+      action: 'at_line',
+      params: { path: 'a.md', content: 'NEW', lineNumber: 0 }
+    });
+    expect(response.error?.message).toBe('Invalid line number 0. File has 2 lines.');
+    expect(api.files.get('a.md')).toBe('L1\nL2');
+  });
+
+  it('at_line accepts one past the last line, which appends', async () => {
+    const { router, api } = setup({ 'a.md': 'L1\nL2' });
+    const response = await router.route({
+      operation: 'edit',
+      action: 'at_line',
+      params: { path: 'a.md', content: 'NEW', lineNumber: 3 }
+    });
+    expect(response.result).toEqual({ success: true, line: 3, mode: 'replace' });
+    expect(api.files.get('a.md')).toBe('L1\nL2\nNEW');
+  });
+
+  it('from_buffer prefers an explicit oldText over the buffered search text', async () => {
+    ContentBufferManager.getInstance().store('NEW', undefined, { searchText: 'A line' });
+    const { router, api } = setup({ 'a.md': 'A line\nB line' });
+    const response = await router.route({
+      operation: 'edit',
+      action: 'from_buffer',
+      params: { path: 'a.md', oldText: 'B line' }
+    });
+    expect(response.result).toEqual({
+      content: [{ type: 'text', text: 'Successfully replaced exact match in a.md' }]
+    });
+    expect(api.files.get('a.md')).toBe('A line\nNEW');
+  });
+
+  it('from_buffer passes fuzzyThreshold through, so a lower threshold lands a near miss', async () => {
+    ContentBufferManager.getInstance().store('NEW', undefined, { searchText: NEAR_MISS_SEARCH });
+    const { router, api } = setup({ 'a.md': `${NEAR_MISS_LINE}\nend` });
+    const response = await router.route({
+      operation: 'edit',
+      action: 'from_buffer',
+      params: { path: 'a.md', fuzzyThreshold: 0.5 }
+    });
+    expect(response.result).toEqual({
+      content: [{ type: 'text', text: 'Successfully replaced line 1 (65% match) in a.md' }]
+    });
+    expect(api.files.get('a.md')).toBe('NEW\nend');
+  });
+
   it('an unknown action is rejected', async () => {
     const { router } = setup({ 'a.md': 'x' });
     const response = await router.route({ operation: 'edit', action: 'nope', params: { path: 'a.md' } });
