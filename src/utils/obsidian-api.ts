@@ -519,47 +519,95 @@ export class ObsidianAPI {
     return { success: true };
   }
 
+  /**
+   * Apply one patch to a file. A request either changes the file as asked or
+   * throws before anything is written (#327).
+   *
+   * Three request shapes:
+   * - structured: targetType + target + operation (heading, block, frontmatter)
+   * - text replacement: oldText + newText, exact match, first occurrence
+   * - legacy offsets: operation 'insert' (position, text) or 'delete' (start, end)
+   */
   async patchVaultFile(path: string, params: PatchParams) {
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!file || !(file instanceof TFile)) {
       throw new Error(`File not found: ${path}`);
     }
 
-    let content = await this.app.vault.read(file);
-
-    // Handle structured targeting (heading, block, frontmatter)
-    if (params.targetType && params.target) {
-      content = this.applyStructuredPatch(content, params);
-    }
-    // Handle legacy patch operations
-    else if (params.operation === 'replace') {
-      if (params.old_text && params.new_text) {
-        content = content.replace(params.old_text, params.new_text);
-      }
-    } else if (params.operation === 'insert') {
-      if (params.position !== undefined) {
-        content = content.slice(0, params.position) + (params.text ?? '') + content.slice(params.position);
-      }
-    } else if (params.operation === 'delete') {
-      if (params.start !== undefined && params.end !== undefined) {
-        content = content.slice(0, params.start) + content.slice(params.end);
-      }
-    }
+    const content = this.applyPatch(await this.app.vault.read(file), params, path);
 
     await this.app.vault.modify(file, content);
     return { success: true, updated_content: content };
   }
 
+  private applyPatch(content: string, params: PatchParams, path: string): string {
+    const { targetType, target, operation, old_text: oldText } = params;
+
+    if (targetType !== undefined || target !== undefined) {
+      if (!targetType || !target) {
+        throw new Error(
+          "edit.patch needs 'targetType' and 'target' together (e.g. targetType='heading', target='Section::Subsection')."
+        );
+      }
+      return this.applyStructuredPatch(content, params);
+    }
+
+    if (oldText !== undefined) {
+      if (operation !== undefined && operation !== 'replace') {
+        throw new Error(`edit.patch text replacement takes operation='replace' or none (got '${operation}').`);
+      }
+      return this.replaceText(content, oldText, params.new_text, path);
+    }
+
+    switch (operation) {
+      case 'insert':
+        if (params.position === undefined) {
+          throw new Error("Patch operation 'insert' requires 'position'.");
+        }
+        return content.slice(0, params.position) + (params.text ?? '') + content.slice(params.position);
+      case 'delete':
+        if (params.start === undefined || params.end === undefined) {
+          throw new Error("Patch operation 'delete' requires 'start' and 'end'.");
+        }
+        return content.slice(0, params.start) + content.slice(params.end);
+    }
+
+    throw new Error(
+      'edit.patch needs either targetType + target + operation (to patch a heading, block or frontmatter field) ' +
+      'or oldText + newText (to replace exact text).'
+    );
+  }
+
+  private replaceText(content: string, oldText: string, newText: string | undefined, path: string): string {
+    if (oldText === '') {
+      throw new Error("edit.patch 'oldText' must not be empty.");
+    }
+    if (newText === undefined) {
+      throw new Error("edit.patch requires 'newText' with 'oldText'. Pass newText='' to delete the text.");
+    }
+    const index = content.indexOf(oldText);
+    if (index === -1) {
+      throw new Error(`oldText not found in ${path}. edit.patch matches exactly; use edit.window for fuzzy matching.`);
+    }
+    // Slice rather than String.replace, which would expand $&, $1 and $$ in newText.
+    return content.slice(0, index) + newText + content.slice(index + oldText.length);
+  }
+
   private applyStructuredPatch(content: string, params: PatchParams): string {
     const { targetType, target, operation, content: patchContent } = params;
 
+    if (operation !== 'append' && operation !== 'prepend' && operation !== 'replace') {
+      const got = operation === undefined ? 'none given' : `got '${operation}'`;
+      throw new Error(`edit.patch on a ${String(targetType)} requires 'operation': append, prepend or replace (${got}).`);
+    }
+
     switch (targetType) {
       case 'heading':
-        return this.patchHeading(content, target ?? '', operation ?? '', patchContent ?? '');
+        return this.patchHeading(content, target ?? '', operation, patchContent ?? '');
       case 'block':
-        return this.patchBlock(content, target ?? '', operation ?? '', patchContent ?? '');
+        return this.patchBlock(content, target ?? '', operation, patchContent ?? '');
       case 'frontmatter':
-        return this.patchFrontmatter(content, target ?? '', operation ?? '', patchContent ?? '');
+        return this.patchFrontmatter(content, target ?? '', operation, patchContent ?? '');
       default:
         throw new Error(`Unknown targetType: ${String(targetType)}`);
     }

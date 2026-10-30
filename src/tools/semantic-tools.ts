@@ -92,8 +92,8 @@ const PARAM_OWNER_HINTS: Record<string, string> = {
 
   // edit parameters, included because a caller trying to modify part of a file
   // is exactly the caller most likely to land on a destructive vault action.
-  oldText: "'oldText' and 'newText' belong to edit.window (find/replace with fuzzy matching).",
-  newText: "'oldText' and 'newText' belong to edit.window (find/replace with fuzzy matching).",
+  oldText: "'oldText' and 'newText' belong to edit.window (fuzzy find/replace) and edit.patch (exact replace).",
+  newText: "'oldText' and 'newText' belong to edit.window (fuzzy find/replace) and edit.patch (exact replace).",
   fuzzyThreshold: "'fuzzyThreshold' belongs to edit.window.",
   operation: "'operation' belongs to edit.patch (append/prepend/replace against a heading, block, or frontmatter field).",
   target: "'target' and 'targetType' belong to edit.patch.",
@@ -535,7 +535,7 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility, webF
 export function getOperationDescription(operation: string): string {
   const descriptions: Record<string, string> = {
     vault: '📁 File operations - list, read, create, update, delete, search, fragments, move, rename, copy, split, combine, concatenate. Search supports: operators (file:, path:, content:, tag:), OR/AND, "quoted phrases", /regex/. Options: ranked=true for TF-IDF relevance scoring, searchStrategy (filename|content|combined|auto), includeSnippets for contextual extracts. Search matches words, not meaning — it will miss notes that cover a topic in different vocabulary, and its scores are term frequency, so a low-scoring hit is NOT necessarily unimportant (do not prune on score). Prefer a couple of BROAD scans over many narrow ones, then follow links from the hits with `graph.neighbors` to reach what search cannot rank.',
-    edit: '✏️ Edit files - window: find/replace with fuzzy matching, append: add to end, patch: modify headings/blocks/frontmatter, at_line: insert at line number, from_buffer: reuse previous window content',
+    edit: '✏️ Edit files - window: find/replace with fuzzy matching, append: add to end, patch: modify headings/blocks/frontmatter or replace exact text, at_line: insert at line number, from_buffer: reuse previous window content',
     view: '👁️ View content - file: entire document, window: ~20 lines around point, active: current editor file, open_in_obsidian: launch in app',
     workflow: '💡 Get contextual suggestions for next actions based on current state',
     system: 'ℹ️ System operations - info: server details, commands: available actions, fetch_web: retrieve and process web content',
@@ -717,11 +717,11 @@ function getParametersForOperation(operation: string): Record<string, unknown> {
       ...contentParam,
       oldText: {
         type: 'string',
-        description: 'Text to search for (supports fuzzy matching)'
+        description: 'Text to search for. edit.window matches fuzzily; edit.patch matches exactly and replaces the first occurrence'
       },
       newText: {
         type: 'string',
-        description: 'Text to replace with'
+        description: 'Text to replace with (empty string deletes the matched text)'
       },
       fuzzyThreshold: {
         type: 'number',
