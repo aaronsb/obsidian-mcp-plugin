@@ -186,6 +186,70 @@ tags: new-tag
       expect(result.success).toBe(true);
       expect(mockVault.modify).toHaveBeenCalledWith(mockFile, expectedContent);
     });
+
+    // #344: a '---' horizontal rule in the body is not frontmatter.
+    it('creates frontmatter at the top when the body has one --- rule', async () => {
+      const body = `# Notes\n\nIntro\n\n---\n\nstatus: keep me\nLast line`;
+      mockVault.read.mockResolvedValue(body);
+
+      const result = await api.patchVaultFile('test.md', {
+        targetType: 'frontmatter',
+        target: 'status',
+        operation: 'replace',
+        content: 'done'
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockVault.modify).toHaveBeenCalledWith(mockFile, `---\nstatus: done\n---\n\n${body}`);
+      const written: string = mockVault.modify.mock.calls[0][1];
+      expect(written.slice(written.indexOf('\n---\n\n') + 6)).toBe(body);
+    });
+
+    it('creates frontmatter at the top when the body has two --- rules', async () => {
+      const body = `# Notes\n\n---\nstatus: draft\ntitle: body text\n---\n\nEnd`;
+      mockVault.read.mockResolvedValue(body);
+
+      for (const operation of ['replace', 'append']) {
+        mockVault.modify.mockClear();
+        const result = await api.patchVaultFile('test.md', {
+          targetType: 'frontmatter',
+          target: operation === 'replace' ? 'status' : 'tags',
+          operation,
+          content: 'done'
+        });
+
+        const field = operation === 'replace' ? 'status' : 'tags';
+        expect(result.success).toBe(true);
+        expect(mockVault.modify).toHaveBeenCalledWith(mockFile, `---\n${field}: done\n---\n\n${body}`);
+        const written: string = mockVault.modify.mock.calls[0][1];
+        expect(written.slice(written.indexOf('\n---\n\n') + 6)).toBe(body);
+      }
+    });
+
+    it('edits real frontmatter and leaves a later --- rule in the body alone', async () => {
+      mockVault.read.mockResolvedValue('---\nstatus: draft\n---\n# A\n\n---\n\nstatus: body');
+
+      await api.patchVaultFile('test.md', {
+        targetType: 'frontmatter',
+        target: 'status',
+        operation: 'replace',
+        content: 'done'
+      });
+
+      expect(mockVault.modify).toHaveBeenCalledWith(mockFile, '---\nstatus: done\n---\n# A\n\n---\n\nstatus: body');
+    });
+
+    it('throws without writing when the opening --- has no closing line', async () => {
+      mockVault.read.mockResolvedValue('---\nstatus: draft\n# A\nbody');
+
+      await expect(api.patchVaultFile('test.md', {
+        targetType: 'frontmatter',
+        target: 'status',
+        operation: 'replace',
+        content: 'done'
+      })).rejects.toThrow('never closed');
+      expect(mockVault.modify).not.toHaveBeenCalled();
+    });
   });
 
   describe('Structured Patch - Block', () => {
