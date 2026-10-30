@@ -33,10 +33,9 @@ describe('ADR-107 integration', () => {
     expect(src).toMatch(/\.\.\.\(this\.initializeInstructions \? \{ instructions: this\.initializeInstructions \} : \{\}\)/);
   });
 
-  test('node-mcp-server.ts hardcodes loopback (ADR-107 default for unwired fallback)', () => {
-    const src = readFileSync(join(__dirname, '../src/node-mcp-server.ts'), 'utf8');
-    expect(src).toContain("const host = '127.0.0.1'");
-    expect(src).toContain('this.server!.listen(this.port, host,');
+  test('mcp-server.ts falls back to loopback when no bind mode is configured', () => {
+    const src = readFileSync(join(__dirname, '../src/mcp-server.ts'), 'utf8');
+    expect(src).toContain("const bindMode = this.plugin?.settings?.bindMode ?? 'loopback';");
   });
 
   test('verdict→instructions pipeline yields warning text for jail and null elsewhere', () => {
