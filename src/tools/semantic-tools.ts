@@ -362,7 +362,10 @@ const createSemanticTool = (operation: string, visibility?: ToolVisibility, webF
   // Keep the advertised description and parameters in step with the action list.
   const description = operation === 'system' ? describeSystem(actions) : getOperationDescription(operation);
   const parameters = getParametersForOperation(operation);
-  if (operation === 'system' && !actions.includes('execute')) delete parameters.commandId;
+  if (operation === 'system') {
+    if (!actions.includes('fetch_web')) delete parameters.url;
+    if (!actions.includes('execute')) delete parameters.commandId;
+  }
 
   return {
   name: operation,

@@ -145,7 +145,7 @@ export function formatSystemCommands(response: SystemCommandsResponse): string {
   sortedGroups.forEach(([prefix, cmds]) => {
     lines.push(header(2, `${prefix} (${cmds.length})`));
     cmds.slice(0, 5).forEach(cmd => {
-      lines.push(`- ${cmd.name}`);
+      lines.push(`- \`${cmd.id}\` ${cmd.name}`);
     });
     if (cmds.length > 5) {
       lines.push(`  ... and ${cmds.length - 5} more`);
@@ -154,7 +154,7 @@ export function formatSystemCommands(response: SystemCommandsResponse): string {
   });
 
   lines.push(divider());
-  lines.push(tip('Commands can be executed via Obsidian\'s command palette'));
+  lines.push(tip('system.execute takes the id, and runs only commands the user has turned on and added to the allowlist. Use raw: true for every command.'));
   lines.push(summaryFooter());
 
   return joinLines(lines);

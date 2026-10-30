@@ -46,6 +46,14 @@ describe('fetch_web enumeration', () => {
     expect(vaultActions(disabled)).toEqual(vaultActions(enabled));
   });
 
+  it('advertises the url parameter only alongside fetch_web', () => {
+    // Same agreement as the description: a parameter for a hidden action
+    // advertises the action.
+    expect(systemTool(true)?.inputSchema.properties).toHaveProperty('url');
+    expect(systemTool(false)?.inputSchema.properties).not.toHaveProperty('url');
+    expect(systemTool(undefined)?.inputSchema.properties).not.toHaveProperty('url');
+  });
+
   it('hides fetch_web when the flag is omitted entirely (fail closed)', () => {
     // A caller that forgets to thread the setting must not accidentally
     // advertise the capability — the same fail-closed posture the handler has.

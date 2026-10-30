@@ -11,7 +11,7 @@ Server, vault and Obsidian version details.
 ```
 
 #### `commands`
-Every registered Obsidian command, with its id and name. Use `raw: true` to get the ids, which `execute` takes.
+Registered Obsidian commands, each shown as its id and name. `execute` takes the id. The plain view shows the largest groups; `raw: true` returns every command.
 ```json
 { "action": "commands", "raw": true }
 ```
