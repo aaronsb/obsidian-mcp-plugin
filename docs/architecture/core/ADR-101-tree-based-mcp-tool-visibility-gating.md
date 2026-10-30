@@ -38,6 +38,9 @@ interface MCPPluginSettings {
 
 Keys follow the `operation.action` pattern that already exists in `semantic-tools.ts` (`getActionsForOperation()`). Missing keys default to `true` — backward compatible, existing installs see no change.
 
+> **Note (2026-10-30, [#312](https://github.com/aaronsb/obsidian-mcp-plugin/issues/312)):** `system.execute` is the exception (ADR-204). It is in `OPT_IN_ACTIONS`, so a missing key means off; only `true` enables it. Code that reads `toolVisibility` should go through `isActionVisible`, which applies this rule.
+
+
 ### Tree UI in settings panel
 
 The plugin settings panel renders a tree view of all operations and their actions:
