@@ -1,5 +1,7 @@
 // Mock Obsidian API for testing
 
+export const apiVersion = '1.13.0';
+
 export abstract class TAbstractFile {
   path!: string;
   name!: string;
