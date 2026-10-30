@@ -52,6 +52,10 @@ When the command opens a dialog (a modal or a suggester), the result has `awaiti
 
 The gates are checked in that order. A refused call runs nothing. The allowlist is read on every call, so removing a command takes effect on the next call.
 
-Each command an agent runs shows an Obsidian notice naming it. **Security → Notify when an agent runs a command** turns the notice off; it is on by default.
+A command runs inside Obsidian, with Obsidian's own access, and does whatever its author wrote: it can change notes other than the open one, or files the plugin would refuse to touch. The plugin checks one file: the note open in the editor when the call arrives. If `.mcpignore` excludes that note, the call is refused with `PATH_BLOCKED`; if a `readonly:` rule covers it, with `PATH_READ_ONLY`. This holds when the agent opened the note itself with `view.open_in_obsidian`. Allow only commands whose effect you are willing to give an agent.
+
+When a command's own code throws, the call fails with `COMMAND_FAILED` and a fixed message. The detail goes to the Obsidian developer console, not to the agent, because a third-party command's error can contain paths or note content.
+
+Each command Obsidian runs for an agent shows an Obsidian notice naming it. A command Obsidian did not run shows none. **Security → Notify when an agent runs a command** turns the notice off; it is on by default.
 
 An allowlisted command whose plugin is later disabled stays on the list, marked as not registered, and allows nothing until the command is registered again.

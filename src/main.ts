@@ -1140,7 +1140,7 @@ class MCPSettingTab extends PluginSettingTab {
 			items: [
 				{
 					name: 'How agents run commands',
-					desc: 'An agent can run an Obsidian command (system.execute) only when all three are true: system.execute is on under Tool visibility → system, read-only mode is off, and the command is on the allowlist below. A command that opens a dialog waits for you; the plugin never answers dialogs.',
+					desc: 'An agent can run an Obsidian command (system.execute) only when all three are true: system.execute is on under Tool visibility → system, read-only mode is off, and the command is on the allowlist below. A command runs inside Obsidian and can change whatever it is written to change. The plugin checks only the note open in the editor: if .mcpignore excludes it or marks it readonly:, no command runs. A command that opens a dialog waits for you; the plugin never answers dialogs.',
 					aliases: ['system.execute', 'command palette'],
 				},
 				{
