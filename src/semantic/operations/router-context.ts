@@ -16,6 +16,22 @@ import { InputValidator } from '../../validation/input-validator';
 import { GraphSearchTool } from '../../tools/graph-search';
 import { GraphSearchTool as GraphSearchTraversalTool } from '../../tools/graph-search-tool';
 import { GraphTagTool } from '../../tools/graph-tag-tool';
+import { SemanticContext } from '../../types/semantic';
+
+/** The router's tracked context as reported in responses and by workflow.suggest. */
+export interface ContextSnapshot {
+  current_file?: string;
+  current_directory?: string;
+  buffer_available: boolean;
+  file_history?: string[];
+  search_history?: string[];
+  has_file_content?: boolean;
+  has_links: boolean;
+  has_tags: boolean;
+  search_results_available?: boolean;
+  linked_files?: string[];
+  tags?: string[];
+}
 
 export interface RouterContext {
   readonly api: ObsidianAPI;
@@ -26,4 +42,7 @@ export interface RouterContext {
   readonly graphSearchTool?: GraphSearchTool;
   readonly graphSearchTraversalTool?: GraphSearchTraversalTool;
   readonly graphTagTool?: GraphTagTool;
+  // Context tracking stays in the router; handlers only read it.
+  readonly context: SemanticContext;
+  getCurrentContext(): ContextSnapshot;
 }

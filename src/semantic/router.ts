@@ -17,22 +17,23 @@ import { GraphSearchTool as GraphSearchTraversalTool } from '../tools/graph-sear
 import { GraphTagTool } from '../tools/graph-tag-tool';
 import { App } from 'obsidian';
 import { InputValidator } from '../validation/input-validator';
-import { RouterContext } from './operations/router-context';
+import { ContextSnapshot, RouterContext } from './operations/router-context';
 import { executeVaultOperation } from './operations/vault';
 import { executeBasesOperation } from './operations/bases';
 import { executeEditOperation } from './operations/edit';
 import { executeViewOperation } from './operations/view';
 import { executeSystemOperation } from './operations/system';
 import { executeGraphOperation } from './operations/graph';
+import { executeWorkflowOperation } from './operations/workflow';
 import { Params, SearchResultItem, paramStr } from './operations/shared';
 
 export class SemanticRouter implements RouterContext {
   private config!: WorkflowConfig;
-  private context: SemanticContext = {};
+  private tokenManager: StateTokenManager;
   // Public to satisfy RouterContext — the router passes itself as the
   // dependency context to extracted operation modules (ADR-202, #199).
+  readonly context: SemanticContext = {};
   readonly api: ObsidianAPI;
-  private tokenManager: StateTokenManager;
   readonly fragmentRetriever: UniversalFragmentRetriever;
   readonly graphSearchTool?: GraphSearchTool;
   readonly graphSearchTraversalTool?: GraphSearchTraversalTool;
@@ -119,7 +120,7 @@ export class SemanticRouter implements RouterContext {
       case 'view':
         return executeViewOperation(this, action, params);
       case 'workflow':
-        return this.executeWorkflowOperation(action, params);
+        return executeWorkflowOperation(this, action, params);
       case 'system':
         return executeSystemOperation(this, action, params);
       case 'graph':
@@ -128,15 +129,6 @@ export class SemanticRouter implements RouterContext {
         return executeBasesOperation(this, action, params);
       default:
         throw new Error(`Unknown operation: ${operation}`);
-    }
-  }
-  
-  private executeWorkflowOperation(action: string, _params: Params): unknown {
-    switch (action) {
-      case 'suggest':
-        return this.generateWorkflowSuggestions();
-      default:
-        throw new Error(`Unknown workflow action: ${action}`);
     }
   }
   
@@ -394,7 +386,7 @@ export class SemanticRouter implements RouterContext {
     }
   }
   
-  private getCurrentContext() {
+  getCurrentContext(): ContextSnapshot {
     const tokens = this.tokenManager.getTokens();
     
     return {
@@ -443,42 +435,6 @@ export class SemanticRouter implements RouterContext {
     delete errorResponse.workflow; // Move suggestions to recovery_hints
     
     return errorResponse;
-  }
-  
-  private generateWorkflowSuggestions(): { current_context: ReturnType<SemanticRouter['getCurrentContext']>; suggestions: SuggestedAction[] } {
-    // Generate contextual workflow suggestions based on current state
-    const suggestions: SuggestedAction[] = [];
-    
-    if (this.context.last_file) {
-      suggestions.push({
-        description: 'Continue working with last file',
-        command: `vault(action='read', path='${this.context.last_file}')`,
-        reason: 'Return to previous work'
-      });
-    }
-    
-    if (this.context.search_history?.length) {
-      const lastSearch = this.context.search_history[this.context.search_history.length - 1];
-      suggestions.push({
-        description: 'Refine last search',
-        command: `vault(action='search', query='${lastSearch} AND ...')`,
-        reason: 'Narrow down results'
-      });
-    }
-    
-    // Always include a default suggestion if no context-specific ones
-    if (suggestions.length === 0) {
-      suggestions.push({
-        description: 'Use workflow hints from other operations',
-        command: 'vault(action="list") or vault(action="read", path="...") etc.',
-        reason: 'Each operation provides contextual workflow suggestions'
-      });
-    }
-    
-    return {
-      current_context: this.getCurrentContext(),
-      suggestions
-    };
   }
 
   /**
