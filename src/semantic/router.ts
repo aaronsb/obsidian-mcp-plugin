@@ -11,7 +11,6 @@ import {
 import { ContentBufferManager } from '../utils/content-buffer';
 import { StateTokenManager } from './state-tokens';
 import { limitResponse } from '../utils/response-limiter';
-import { isImageFile } from '../types/obsidian';
 import { UniversalFragmentRetriever } from '../indexing/fragment-retriever';
 import { GraphSearchTool, GraphSearchParams } from '../tools/graph-search';
 import { GraphSearchTool as GraphSearchTraversalTool } from '../tools/graph-search-tool';
@@ -22,7 +21,8 @@ import { RouterContext } from './operations/router-context';
 import { executeVaultOperation } from './operations/vault';
 import { executeBasesOperation } from './operations/bases';
 import { executeEditOperation } from './operations/edit';
-import { Params, SearchResultItem, paramStr, paramNum, paramBool, requireParamStr } from './operations/shared';
+import { executeViewOperation } from './operations/view';
+import { Params, SearchResultItem, paramStr, paramNum, paramBool } from './operations/shared';
 
 export class SemanticRouter implements RouterContext {
   private config!: WorkflowConfig;
@@ -115,7 +115,7 @@ export class SemanticRouter implements RouterContext {
       case 'edit':
         return executeEditOperation(this, action, params);
       case 'view':
-        return this.executeViewOperation(action, params);
+        return executeViewOperation(this, action, params);
       case 'workflow':
         return this.executeWorkflowOperation(action, params);
       case 'system':
@@ -126,76 +126,6 @@ export class SemanticRouter implements RouterContext {
         return executeBasesOperation(this, action, params);
       default:
         throw new Error(`Unknown operation: ${operation}`);
-    }
-  }
-  
-  private async executeViewOperation(action: string, params: Params): Promise<unknown> {
-    switch (action) {
-      case 'file':
-        return await this.api.getFile(requireParamStr(params, 'path', 'view.file'));
-      case 'window': {
-        // View a portion of a file
-        const viewPath = requireParamStr(params, 'path', 'view.window');
-        const file = await this.api.getFile(viewPath);
-        if (isImageFile(file)) {
-          throw new Error('Cannot view window of image files');
-        }
-        const content = typeof file === 'string' ? file : file.content;
-        const lines = content.split('\n');
-        const searchText = paramStr(params, 'searchText');
-
-        let centerLine = paramNum(params, 'lineNumber') || 1;
-
-        // If search text provided, find it
-        if (searchText && !params.lineNumber) {
-          const { findFuzzyMatches } = await import('../utils/fuzzy-match.js');
-          const matches = findFuzzyMatches(content, searchText, 0.6);
-          if (matches.length > 0) {
-            centerLine = matches[0].lineNumber;
-          }
-        }
-
-        // Calculate window
-        const windowSize = paramNum(params, 'windowSize') || 20;
-        const halfWindow = Math.floor(windowSize / 2);
-        const startLine = Math.max(1, centerLine - halfWindow);
-        const endLine = Math.min(lines.length, centerLine + halfWindow);
-
-        return {
-          path: viewPath,
-          lines: lines.slice(startLine - 1, endLine),
-          startLine,
-          endLine,
-          totalLines: lines.length,
-          centerLine,
-          searchText
-        };
-      }
-        
-      case 'active':
-        // Add timeout to prevent hanging when no file is active
-        try {
-          const timeoutPromise = new Promise((_, reject) =>
-            window.setTimeout(() => reject(new Error('Timeout: No active file in Obsidian. Please open a file first.')), 5000)
-          );
-          const activeResult = await Promise.race([
-            this.api.getActiveFile(),
-            timeoutPromise
-          ]);
-          return activeResult;
-        } catch (error: unknown) {
-          if (error instanceof Error && error.message?.includes('Timeout')) {
-            throw error;
-          }
-          // Re-throw original error if not timeout
-          throw error;
-        }
-        
-      case 'open_in_obsidian':
-        return await this.api.openFile(requireParamStr(params, 'path', 'view.open_in_obsidian'));
-        
-      default:
-        throw new Error(`Unknown view action: ${action}`);
     }
   }
   
