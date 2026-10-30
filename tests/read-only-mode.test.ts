@@ -13,6 +13,7 @@ describe('Read-Only Mode Integration', () => {
   beforeEach(() => {
     mockApp = {
       vault: {
+        configDir: '.obsidian',
         adapter: {
           basePath: '/test/vault'
         }

@@ -40,7 +40,7 @@ export interface SecuritySettings {
 		delete: boolean;    // D in CRUD
 		move: boolean;      // Special operations
 		rename: boolean;
-		execute: boolean;   // Opening files in Obsidian
+		execute: boolean;   // Running Obsidian commands (system.execute, ADR-204)
 	};
 	
 	// Advanced options
@@ -113,6 +113,7 @@ export class VaultSecurityManager {
 	private readonly maxLogEntries = 1000;
 	private ignoreManager?: MCPIgnoreManager;
 	private isReadOnly?: () => boolean;
+	private readonly configDir: string;
 
 	/**
 	 * @param isReadOnly - Live read-only predicate, consulted per call (ADR-108).
@@ -131,6 +132,14 @@ export class VaultSecurityManager {
 		isReadOnly?: () => boolean
 	) {
 		this.validator = new SecurePathValidator(app);
+		// Obsidian's config directory, which the user can rename. Without it no
+		// path can be shown to be outside it, so refuse to build, as the path
+		// validator does without a vault base directory.
+		const configDir = app.vault?.configDir;
+		if (!configDir) {
+			throw new Error('Could not determine Obsidian\'s config directory');
+		}
+		this.configDir = configDir;
 		this.settings = { ...DEFAULT_SECURITY_SETTINGS, ...settings };
 		this.ignoreManager = ignoreManager;
 		this.isReadOnly = isReadOnly;
@@ -155,6 +164,9 @@ export class VaultSecurityManager {
 					);
 				}
 
+				// Disabling path validation never opens the config directory.
+				this.assertOutsideConfigDir(operation);
+
 				// Paths pass through unvalidated — that is what 'disabled' means.
 				// The spread already carries path and targetPath; two `if
 				// (operation.path)` re-assignments used to sit here writing the same
@@ -178,6 +190,8 @@ export class VaultSecurityManager {
 					'PERMISSION_DENIED'
 				);
 			}
+
+			this.assertOutsideConfigDir(operation);
 
 			// Step 3: Validate paths if present
 			let validatedPath: ValidatedPath | undefined;
@@ -282,6 +296,27 @@ export class VaultSecurityManager {
 				this.logSecurityEvent(operation, 'blocked', 'UNKNOWN_ERROR', errorMessage);
 			}
 			throw error;
+		}
+	}
+
+	/**
+	 * Refuses any operation whose path or target is in Obsidian's config
+	 * directory. It holds every plugin's settings, this plugin's included: an
+	 * agent that could write `<configDir>/plugins/<id>/data.json` could switch on
+	 * system.execute and fill its allowlist for the next load, and an agent that
+	 * could create files under `<configDir>/plugins/` could install a plugin.
+	 * Reads are refused too; nothing an agent needs lives there, and plugin
+	 * settings can hold credentials.
+	 */
+	private assertOutsideConfigDir(operation: VaultOperation): void {
+		for (const p of [operation.path, operation.targetPath]) {
+			if (p !== undefined && p !== null && this.validator.isInsideDir(p, this.configDir)) {
+				this.logSecurityEvent(operation, 'blocked', 'CONFIG_DIR_PROTECTED');
+				throw new SecurityError(
+					`'${p}' is in Obsidian's config directory (${this.configDir}), which agents cannot read or change`,
+					'CONFIG_DIR_PROTECTED'
+				);
+			}
 		}
 	}
 

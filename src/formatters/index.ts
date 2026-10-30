@@ -88,12 +88,14 @@ import {
 import {
   formatSystemInfo,
   formatSystemCommands,
+  formatSystemExecute,
   formatWorkflowSuggest,
   formatEditResult,
   formatWebFetch,
   SystemInfoResponse,
   CommandInfo,
   SystemCommandsResponse,
+  SystemExecuteResponse,
   WorkflowSuggestion,
   WorkflowSuggestResponse,
   EditResponse,
@@ -654,6 +656,8 @@ export function formatResponse(
         return formatSystemInfo(normalized as SystemInfoResponse);
       case 'system.commands':
         return formatSystemCommands(normalized as SystemCommandsResponse);
+      case 'system.execute':
+        return formatSystemExecute(normalized as SystemExecuteResponse);
       case 'system.fetch_web':
         return formatWebFetch(normalized as WebFetchResponse);
 

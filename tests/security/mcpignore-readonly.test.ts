@@ -86,7 +86,7 @@ describe('.mcpignore readonly: rules (#275)', () => {
       const ignore = await managerWith(['private/', 'readonly:sources/**', '!readonly:sources/notes/**'].join('\n'));
       // Path validation is exercised for real; the validator only needs a base
       // directory from the App.
-      const app = { vault: { adapter: { basePath: '/test/vault' } } } as unknown as App;
+      const app = { vault: { configDir: '.obsidian', adapter: { basePath: '/test/vault' } } } as unknown as App;
       security = new VaultSecurityManager(app, {}, ignore);
     });
 

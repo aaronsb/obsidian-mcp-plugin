@@ -145,7 +145,7 @@ export function formatSystemCommands(response: SystemCommandsResponse): string {
   sortedGroups.forEach(([prefix, cmds]) => {
     lines.push(header(2, `${prefix} (${cmds.length})`));
     cmds.slice(0, 5).forEach(cmd => {
-      lines.push(`- ${cmd.name}`);
+      lines.push(`- \`${cmd.id}\` ${cmd.name}`);
     });
     if (cmds.length > 5) {
       lines.push(`  ... and ${cmds.length - 5} more`);
@@ -154,7 +154,7 @@ export function formatSystemCommands(response: SystemCommandsResponse): string {
   });
 
   lines.push(divider());
-  lines.push(tip('Commands can be executed via Obsidian\'s command palette'));
+  lines.push(tip('system.execute takes the id, and runs only commands the user has turned on and added to the allowlist. Use raw: true for every command.'));
   lines.push(summaryFooter());
 
   return joinLines(lines);
@@ -277,6 +277,34 @@ export function formatEditResult(response: EditResponse): string {
 
   lines.push(divider());
   lines.push(tip('Use `view.file(path)` to verify the changes'));
+  lines.push(summaryFooter());
+
+  return joinLines(lines);
+}
+
+/**
+ * Format system.execute response (ADR-204). Says "dispatched", never "done":
+ * Obsidian reports a command as run when its callback is invoked.
+ */
+export interface SystemExecuteResponse {
+  success: boolean;
+  commandId: string;
+  awaitingUserInteraction: boolean;
+  warning?: string;
+}
+
+export function formatSystemExecute(response: SystemExecuteResponse): string {
+  const lines: string[] = [];
+
+  lines.push(header(1, response.success ? 'Command Dispatched' : 'Command Not Dispatched'));
+  lines.push('');
+  lines.push(response.success
+    ? `Dispatched \`${response.commandId}\`. This means Obsidian started the command; it does not confirm that it finished.`
+    : `Obsidian did not dispatch \`${response.commandId}\`.`);
+  if (response.warning) {
+    lines.push('');
+    lines.push(`Warning: ${response.warning}`);
+  }
   lines.push(summaryFooter());
 
   return joinLines(lines);

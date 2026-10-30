@@ -1,41 +1,19 @@
-import { App, Plugin, PluginSettingTab, Setting, Notice, TFolder, setIcon, Modal, TextComponent, ButtonComponent, FileSystemAdapter } from 'obsidian';
-import type { SettingDefinition, SettingDefinitionGroup, SettingDefinitionItem, SettingDefinitionPage } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, Notice, TFolder, setIcon, Modal, TextComponent, ButtonComponent, FileSystemAdapter, FuzzySuggestModal } from 'obsidian';
+import type { Command, SettingDefinition, SettingDefinitionGroup, SettingDefinitionItem, SettingDefinitionList, SettingDefinitionPage } from 'obsidian';
 import { MCPHttpServer } from './mcp-server';
 import { getVersion } from './version';
 import { Debug } from './utils/debug';
 import { MCPIgnoreManager } from './security/mcp-ignore-manager';
 import { randomBytes } from 'crypto';
 import { PluginDetector } from './utils/plugin-detector';
-import { CertificateConfig } from './utils/certificate-manager';
-import { ValidationConfig } from './validation/input-validator';
 import {
-	ALL_OPERATIONS, applyVisibilityToggle, getOperationDescription, isActionVisible, isOperationHidden,
+	ALL_OPERATIONS, OPT_IN_ACTIONS, applyVisibilityToggle, getOperationDescription, isActionVisible, isOperationHidden,
 	visibilityKeysFor, visibilityRowValue, visibilityTreeActions,
 } from './tools/semantic-tools';
-import { BindMode, classifyFromSettings, normalizeBindInput } from './utils/network-classifier';
+import { addableCommands, allowlistEntries, listCommands } from './utils/obsidian-commands';
+import { MCPPluginSettings, mergeLoadedSettings } from './plugin-settings';
+import { classifyFromSettings, normalizeBindInput } from './utils/network-classifier';
 
-interface MCPPluginSettings {
-	httpEnabled: boolean;
-	httpPort: number;
-	httpsEnabled: boolean;
-	httpsPort: number;
-	certificateConfig: CertificateConfig;
-	// ADR-107: network exposure modes
-	bindMode: BindMode;
-	customBindHost: string;
-	hasShownBindMigrationNotice: boolean;
-	debugLogging: boolean;
-	showConnectionStatus: boolean;
-	autoDetectPortConflicts: boolean;
-	apiKey: string;
-	dangerouslyDisableAuth: boolean;
-	readOnlyMode: boolean;
-	enableWebFetch: boolean;
-	pathExclusionsEnabled: boolean;
-	enableIgnoreContextMenu: boolean;
-	validation?: Partial<ValidationConfig>;
-	toolVisibility: Record<string, boolean>;
-}
 
 interface MCPServerInfo {
 	version: string;
@@ -60,40 +38,6 @@ interface MCPServerInfo {
 	} | undefined;
 }
 
-const DEFAULT_SETTINGS: MCPPluginSettings = {
-	httpEnabled: true, // Start enabled by default
-	httpPort: 3001,
-	httpsEnabled: false, // HTTPS disabled by default
-	httpsPort: 3443,
-	certificateConfig: {
-		enabled: false,
-		selfSigned: true,
-		autoGenerate: true,
-		// rejectUnauthorized omitted on purpose: inert for our inbound HTTPS
-		// server (no requestCert); cert-manager defaults it to true. See #163.
-		minTLSVersion: 'TLSv1.2'
-	},
-	bindMode: 'loopback',
-	customBindHost: '',
-	hasShownBindMigrationNotice: false,
-	debugLogging: false,
-	showConnectionStatus: true,
-	autoDetectPortConflicts: true,
-	apiKey: '', // Will be generated on first load
-	dangerouslyDisableAuth: false, // Auth enabled by default
-	readOnlyMode: false, // Read-only mode disabled by default
-	enableWebFetch: false, // ADR-109: outbound web fetch off by default, for everyone
-	pathExclusionsEnabled: false, // Path exclusions disabled by default
-	enableIgnoreContextMenu: false, // Context menu disabled by default
-	validation: {
-		maxFileSize: 10 * 1024 * 1024, // 10MB default
-		maxBatchSize: 100,
-		maxPathLength: 255,
-		maxRegexComplexity: 100,
-		strictMode: false
-	},
-	toolVisibility: {} // Empty = all tools enabled (missing keys default to true)
-};
 
 export default class ObsidianMCPPlugin extends Plugin {
 	settings!: MCPPluginSettings;
@@ -322,19 +266,9 @@ export default class ObsidianMCPPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MCPPluginSettings>);
-
-		// Coerce the security booleans loaded from data.json.
-		//
-		// loadData() returns whatever is on disk, and data.json is hand-editable.
-		// The security predicate tests `=== true` while the settings toggle renders
-		// with truthiness, so a string "true" would show the toggle ON while
-		// read-only was NOT enforced — belief diverging from reality, which is the
-		// exact shape of the bug this hardening came out of. Normalising here means
-		// UI and enforcement read one value.
-		this.settings.readOnlyMode = this.settings.readOnlyMode === true;
-		this.settings.dangerouslyDisableAuth = this.settings.dangerouslyDisableAuth === true;
-		this.settings.enableWebFetch = this.settings.enableWebFetch === true;
+		// Coercion of the security values, and copies of every nested default,
+		// live in mergeLoadedSettings.
+		this.settings = mergeLoadedSettings(await this.loadData() as Partial<MCPPluginSettings> | null);
 
 		// ADR-109: fetch_web moved from the visibility tree to the dedicated
 		// enableWebFetch setting. A leftover visibility key would be a second
@@ -698,16 +632,17 @@ class MCPSettingTab extends PluginSettingTab {
 		return {
 			type: 'page',
 			name: 'Security',
-			desc: 'Read-only mode, outbound web fetch, and .mcpignore path rules.',
+			desc: 'Read-only mode, outbound web fetch, .mcpignore path rules, and which commands agents may run.',
 			displayValue: () => {
 				const s = this.plugin.settings;
 				return [
 					`read-only ${s.readOnlyMode ? 'on' : 'off'}`,
 					`web fetch ${s.enableWebFetch ? 'on' : 'off'}`,
 					`exclusions ${s.pathExclusionsEnabled ? 'on' : 'off'}`,
+					`${s.commandExecutionAllowlist.length} commands allowed`,
 				].join(' · ');
 			},
-			items: [this.securityGroup()],
+			items: [this.securityGroup(), this.commandExecutionGroup(), this.commandAllowlist()],
 		};
 	}
 
@@ -1118,6 +1053,72 @@ class MCPSettingTab extends PluginSettingTab {
 		};
 	}
 
+	/**
+	 * ADR-204. Running a command needs three things: system.execute switched on
+	 * under Tool visibility, a security mode that permits it, and the command
+	 * on the allowlist below.
+	 */
+	private commandExecutionGroup(): SettingDefinitionGroup {
+		return {
+			type: 'group',
+			heading: 'Command execution',
+			items: [
+				{
+					name: 'How agents run commands',
+					desc: 'An agent can run an Obsidian command (system.execute) only when all three are true: system.execute is on under Tool visibility → system, read-only mode is off, and the command is on the allowlist below. A command runs inside Obsidian and can change whatever it is written to change. The plugin checks only the note open in the editor: if .mcpignore excludes it or marks it readonly:, no command runs. A command that opens a dialog waits for you; the plugin never answers dialogs.',
+					aliases: ['system.execute', 'command palette'],
+				},
+				{
+					name: 'Notify when an agent runs a command',
+					desc: 'Show a notice each time an agent runs an Obsidian command.',
+					aliases: ['system.execute'],
+					control: { type: 'toggle', key: 'notifyOnCommandExecution' },
+				},
+			],
+		};
+	}
+
+	/**
+	 * Entries are added only by picking a registered command, never by typing an
+	 * id: a mistyped id would match nothing while looking allowed (ADR-204).
+	 */
+	private commandAllowlist(): SettingDefinitionList {
+		const entries = allowlistEntries(this.plugin.settings.commandExecutionAllowlist, listCommands(this.app));
+		return {
+			type: 'list',
+			heading: 'Allowed commands',
+			emptyState: 'No commands are allowed. Agents cannot run any command.',
+			items: entries.map((entry): SettingDefinition => ({
+				name: entry.name,
+				desc: entry.registered
+					? entry.id
+					: `${entry.id} is not registered right now (its plugin may be disabled), so this entry allows nothing.`,
+				aliases: [entry.id, 'allowlist'],
+			})),
+			onDelete: (index) => {
+				const list = this.plugin.settings.commandExecutionAllowlist;
+				this.plugin.settings.commandExecutionAllowlist = list.filter((_, i) => i !== index);
+				void this.saveAllowlist();
+			},
+			addItem: {
+				name: 'Allow a command',
+				action: () => {
+					const choices = addableCommands(this.plugin.settings.commandExecutionAllowlist, listCommands(this.app));
+					new CommandSuggestModal(this.app, choices, (command) => {
+						this.plugin.settings.commandExecutionAllowlist = [...this.plugin.settings.commandExecutionAllowlist, command.id];
+						void this.saveAllowlist();
+					}).open();
+				},
+			},
+		};
+	}
+
+	/** The allowlist is read per call, so saving is all a change needs. */
+	private async saveAllowlist(): Promise<void> {
+		await this.plugin.saveSettings();
+		this.update();
+	}
+
 	/** Operations that have a row in the tree: at least one action, and a served plugin. */
 	private treeOperations(): string[] {
 		return ALL_OPERATIONS.filter(op => this.treeActions(op).length > 0);
@@ -1161,6 +1162,7 @@ class MCPSettingTab extends PluginSettingTab {
 		const actions = this.treeActions(operation);
 		const desc = getOperationDescription(operation).replace(/^[^\s]+\s/, ''); // strip leading emoji
 		const enabledCount = () => actions.filter(a => this.isActionEnabled(operation, a)).length;
+		const optInRows = actions.map(a => `${operation}.${a}`).filter(k => OPT_IN_ACTIONS.has(k));
 
 		return {
 			type: 'page',
@@ -1175,12 +1177,17 @@ class MCPSettingTab extends PluginSettingTab {
 				items: [
 					{
 						name: `All ${operation} actions`,
-						desc: 'Show or hide every action below at once.',
+						desc: optInRows.length
+							? `Show or hide every action below at once. Showing all does not turn on ${optInRows.join(', ')}.`
+							: 'Show or hide every action below at once.',
 						aliases: [operation, 'hide tools', 'disable tools'],
 						control: { type: 'toggle', key: `${TOOL_VISIBILITY_PREFIX}${operation}` },
 					},
 					...actions.map((action): SettingDefinition => ({
 						name: `${operation}.${action}`,
+						desc: OPT_IN_ACTIONS.has(`${operation}.${action}`)
+							? 'Off until you turn it on here. Commands also need to be on the allowlist under Security → Command execution.'
+							: undefined,
 						// A row that also governs a deprecated name is findable by it.
 						aliases: visibilityKeysFor(operation, action).slice(1),
 						control: { type: 'toggle', key: `${TOOL_VISIBILITY_PREFIX}${operation}.${action}` },
@@ -2039,6 +2046,26 @@ class NoteTakingEnthusiastModal extends Modal {
 	}
 	onClose() {
 		this.contentEl.empty();
+	}
+}
+
+/** Picks a registered command for the allowlist. Only listed commands can be chosen. */
+class CommandSuggestModal extends FuzzySuggestModal<Command> {
+	constructor(app: App, private readonly commands: Command[], private readonly onPick: (command: Command) => void) {
+		super(app);
+		this.setPlaceholder('Search commands to allow');
+	}
+
+	getItems(): Command[] {
+		return this.commands;
+	}
+
+	getItemText(command: Command): string {
+		return `${command.name} (${command.id})`;
+	}
+
+	onChooseItem(command: Command): void {
+		this.onPick(command);
 	}
 }
 

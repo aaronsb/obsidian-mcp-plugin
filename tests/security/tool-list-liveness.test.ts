@@ -24,7 +24,7 @@ jest.mock('obsidian');
 
 const makeApp = (): App => ({
   vault: {
-    adapter: { basePath: '/test/vault' },
+    configDir: '.obsidian', adapter: { basePath: '/test/vault' },
     getAbstractFileByPath: () => null,
     getFiles: () => [],
     getMarkdownFiles: () => []
