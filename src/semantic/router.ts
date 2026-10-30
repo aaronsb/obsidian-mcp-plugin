@@ -9,20 +9,23 @@ import {
   EfficiencyRule
 } from '../types/semantic';
 import { ContentBufferManager } from '../utils/content-buffer';
-import { FileLockManager } from '../utils/file-lock';
 import { StateTokenManager } from './state-tokens';
 import { limitResponse } from '../utils/response-limiter';
-import { isImageFile } from '../types/obsidian';
 import { UniversalFragmentRetriever } from '../indexing/fragment-retriever';
-import { GraphSearchTool, GraphSearchParams } from '../tools/graph-search';
+import { GraphSearchTool } from '../tools/graph-search';
 import { GraphSearchTool as GraphSearchTraversalTool } from '../tools/graph-search-tool';
 import { GraphTagTool } from '../tools/graph-tag-tool';
 import { App } from 'obsidian';
 import { InputValidator } from '../validation/input-validator';
-import { RouterContext } from './operations/router-context';
+import { ContextSnapshot, RouterContext } from './operations/router-context';
 import { executeVaultOperation } from './operations/vault';
 import { executeBasesOperation } from './operations/bases';
-import { Params, SearchResultItem, paramStr, paramNum, paramBool, requireParamStr } from './operations/shared';
+import { executeEditOperation } from './operations/edit';
+import { executeViewOperation } from './operations/view';
+import { executeSystemOperation } from './operations/system';
+import { executeGraphOperation } from './operations/graph';
+import { executeWorkflowOperation } from './operations/workflow';
+import { Params, SearchResultItem, paramStr } from './operations/shared';
 
 export class SemanticRouter implements RouterContext {
   private config!: WorkflowConfig;
@@ -32,9 +35,9 @@ export class SemanticRouter implements RouterContext {
   readonly api: ObsidianAPI;
   private tokenManager: StateTokenManager;
   readonly fragmentRetriever: UniversalFragmentRetriever;
-  private graphSearchTool?: GraphSearchTool;
-  private graphSearchTraversalTool?: GraphSearchTraversalTool;
-  private graphTagTool?: GraphTagTool;
+  readonly graphSearchTool?: GraphSearchTool;
+  readonly graphSearchTraversalTool?: GraphSearchTraversalTool;
+  readonly graphTagTool?: GraphTagTool;
   readonly app?: App;
   readonly validator: InputValidator;
 
@@ -113,289 +116,20 @@ export class SemanticRouter implements RouterContext {
       case 'vault':
         return executeVaultOperation(this, action, params);
       case 'edit':
-        return this.executeEditOperation(action, params);
+        return executeEditOperation(this, action, params);
       case 'view':
-        return this.executeViewOperation(action, params);
+        return executeViewOperation(this, action, params);
       case 'workflow':
-        return this.executeWorkflowOperation(action, params);
+        return executeWorkflowOperation(this, action, params);
       case 'system':
-        return this.executeSystemOperation(action, params);
+        return executeSystemOperation(this, action, params);
       case 'graph':
-        return this.executeGraphOperation(action, params);
+        return executeGraphOperation(this, action, params);
       case 'bases':
         return executeBasesOperation(this, action, params);
       default:
         throw new Error(`Unknown operation: ${operation}`);
     }
-  }
-  
-  private async executeEditOperation(action: string, params: Params): Promise<unknown> {
-    const buffer = ContentBufferManager.getInstance();
-
-    // Serialize all edit actions targeting the same file so parallel
-    // edit.window/append/patch/at_line/from_buffer calls from a batched MCP
-    // client can no longer silently clobber each other (#139). Different
-    // files remain fully concurrent.
-    // Guard the lock key up-front so a missing path can't take a lock on
-    // the literal string "undefined" and serialize unrelated bad calls.
-    const lockPath = requireParamStr(params, 'path', `edit.${action}`);
-    return FileLockManager.getInstance().withLock(lockPath, async () => {
-    switch (action) {
-      case 'window': {
-        const oldText = requireParamStr(params, 'oldText', 'edit.window');
-        const newText = requireParamStr(params, 'newText', 'edit.window');
-        // Imported dynamically (only when needed) to avoid circular deps.
-        const { performWindowEdit } = await import('../tools/window-edit.js');
-        const result = await performWindowEdit(
-          this.api,
-          lockPath,
-          oldText,
-          newText,
-          paramNum(params, 'fuzzyThreshold')
-        );
-        if (result.isError) {
-          throw new Error(result.content[0].text);
-        }
-        return result;
-      }
-      case 'append': {
-        const content = requireParamStr(
-          params,
-          'content',
-          'edit.append',
-          "Pass the text to append as 'content'.",
-        );
-        return await this.api.appendToFile(lockPath, content);
-      }
-      case 'patch':
-        return await this.api.patchVaultFile(lockPath, {
-          operation: paramStr(params, 'operation'),
-          targetType: paramStr(params, 'targetType'),
-          target: paramStr(params, 'target'),
-          content: paramStr(params, 'content'),
-          old_text: paramStr(params, 'oldText'),
-          new_text: paramStr(params, 'newText')
-        });
-      case 'at_line': {
-        // Get content to insert
-        let insertContent = paramStr(params, 'content');
-        if (!insertContent) {
-          const buffered = buffer.retrieve();
-          if (!buffered) {
-            throw new Error('No content provided and no buffered content found');
-          }
-          insertContent = buffered.content;
-        }
-
-        // Get file and perform line-based edit
-        const filePath = lockPath;
-        const file = await this.api.getFile(filePath);
-        if (isImageFile(file)) {
-          throw new Error('Cannot perform line-based edits on image files');
-        }
-        const content = typeof file === 'string' ? file : file.content;
-        const lines = content.split('\n');
-        const lineNumber = paramNum(params, 'lineNumber') ?? 1;
-
-        if (lineNumber < 1 || lineNumber > lines.length + 1) {
-          throw new Error(`Invalid line number ${lineNumber}. File has ${lines.length} lines.`);
-        }
-
-        const lineIndex = lineNumber - 1;
-        const mode = paramStr(params, 'mode') || 'replace';
-
-        switch (mode) {
-          case 'before':
-            lines.splice(lineIndex, 0, insertContent);
-            break;
-          case 'after':
-            lines.splice(lineIndex + 1, 0, insertContent);
-            break;
-          case 'replace':
-            lines[lineIndex] = insertContent;
-            break;
-        }
-
-        await this.api.updateFile(filePath, lines.join('\n'));
-        return { success: true, line: lineNumber, mode };
-      }
-      case 'from_buffer': {
-        const buffered = buffer.retrieve();
-        if (!buffered) {
-          throw new Error('No buffered content available');
-        }
-        const { performWindowEdit } = await import('../tools/window-edit.js');
-        return await performWindowEdit(
-          this.api,
-          lockPath,
-          paramStr(params, 'oldText') || buffered.searchText || '',
-          buffered.content,
-          paramNum(params, 'fuzzyThreshold')
-        );
-      }
-      default:
-        throw new Error(`Unknown edit action: ${action}`);
-    }
-    });
-  }
-
-  private async executeViewOperation(action: string, params: Params): Promise<unknown> {
-    switch (action) {
-      case 'file':
-        return await this.api.getFile(requireParamStr(params, 'path', 'view.file'));
-      case 'window': {
-        // View a portion of a file
-        const viewPath = requireParamStr(params, 'path', 'view.window');
-        const file = await this.api.getFile(viewPath);
-        if (isImageFile(file)) {
-          throw new Error('Cannot view window of image files');
-        }
-        const content = typeof file === 'string' ? file : file.content;
-        const lines = content.split('\n');
-        const searchText = paramStr(params, 'searchText');
-
-        let centerLine = paramNum(params, 'lineNumber') || 1;
-
-        // If search text provided, find it
-        if (searchText && !params.lineNumber) {
-          const { findFuzzyMatches } = await import('../utils/fuzzy-match.js');
-          const matches = findFuzzyMatches(content, searchText, 0.6);
-          if (matches.length > 0) {
-            centerLine = matches[0].lineNumber;
-          }
-        }
-
-        // Calculate window
-        const windowSize = paramNum(params, 'windowSize') || 20;
-        const halfWindow = Math.floor(windowSize / 2);
-        const startLine = Math.max(1, centerLine - halfWindow);
-        const endLine = Math.min(lines.length, centerLine + halfWindow);
-
-        return {
-          path: viewPath,
-          lines: lines.slice(startLine - 1, endLine),
-          startLine,
-          endLine,
-          totalLines: lines.length,
-          centerLine,
-          searchText
-        };
-      }
-        
-      case 'active':
-        // Add timeout to prevent hanging when no file is active
-        try {
-          const timeoutPromise = new Promise((_, reject) =>
-            window.setTimeout(() => reject(new Error('Timeout: No active file in Obsidian. Please open a file first.')), 5000)
-          );
-          const activeResult = await Promise.race([
-            this.api.getActiveFile(),
-            timeoutPromise
-          ]);
-          return activeResult;
-        } catch (error: unknown) {
-          if (error instanceof Error && error.message?.includes('Timeout')) {
-            throw error;
-          }
-          // Re-throw original error if not timeout
-          throw error;
-        }
-        
-      case 'open_in_obsidian':
-        return await this.api.openFile(requireParamStr(params, 'path', 'view.open_in_obsidian'));
-        
-      default:
-        throw new Error(`Unknown view action: ${action}`);
-    }
-  }
-  
-  private executeWorkflowOperation(action: string, _params: Params): unknown {
-    switch (action) {
-      case 'suggest':
-        return this.generateWorkflowSuggestions();
-      default:
-        throw new Error(`Unknown workflow action: ${action}`);
-    }
-  }
-  
-  private async executeSystemOperation(action: string, params: Params): Promise<unknown> {
-    switch (action) {
-      case 'info':
-        return this.api.getServerInfo();
-      case 'commands':
-        return this.api.getCommands();
-      case 'fetch_web': {
-        // Import fetch tool dynamically
-        const { fetchTool } = await import('../tools/fetch.js');
-        return await (fetchTool.handler as unknown as (api: unknown, args: Params) => Promise<unknown>)(this.api, params);
-      }
-      default:
-        throw new Error(`Unknown system action: ${action}`);
-    }
-  }
-  
-  private async executeGraphOperation(action: string, params: Params): Promise<unknown> {
-    // Handle graph search traversal operations
-    if (action === 'search-traverse' || action === 'advanced-traverse') {
-      if (!this.graphSearchTraversalTool) {
-        throw new Error('Graph search traversal operations require Obsidian app context');
-      }
-      return await this.graphSearchTraversalTool.execute({
-        action,
-        startPath: paramStr(params, 'startPath') ?? '',
-        searchQuery: paramStr(params, 'searchQuery'),
-        searchQueries: params.searchQueries as string[] | undefined,
-        maxDepth: paramNum(params, 'maxDepth'),
-        maxSnippetsPerNode: paramNum(params, 'maxSnippetsPerNode'),
-        scoreThreshold: paramNum(params, 'scoreThreshold'),
-        strategy: paramStr(params, 'strategy') as 'breadth-first' | 'best-first' | 'beam-search' | undefined,
-        beamWidth: paramNum(params, 'beamWidth'),
-        includeOrphans: paramBool(params, 'includeOrphans'),
-        followTags: paramBool(params, 'followTags'),
-        filePattern: paramStr(params, 'filePattern')
-      });
-    }
-
-    // Handle tag-based graph operations
-    if (action === 'tag-traverse' || action === 'tag-analysis' || action === 'shared-tags') {
-      if (!this.graphTagTool) {
-        throw new Error('Graph tag operations require Obsidian app context');
-      }
-      return await this.graphTagTool.execute({
-        action,
-        startPath: paramStr(params, 'startPath'),
-        targetPath: paramStr(params, 'targetPath'),
-        searchQuery: paramStr(params, 'searchQuery'),
-        maxDepth: paramNum(params, 'maxDepth'),
-        maxSnippetsPerNode: paramNum(params, 'maxSnippetsPerNode'),
-        scoreThreshold: paramNum(params, 'scoreThreshold'),
-        followTags: paramBool(params, 'followTags'),
-        tagWeight: paramNum(params, 'tagWeight')
-      });
-    }
-
-    // Handle standard graph operations
-    if (!this.graphSearchTool) {
-      throw new Error('Graph operations require Obsidian app context');
-    }
-
-    // Map action to graph operation
-    const graphParams: GraphSearchParams = {
-      operation: action as GraphSearchParams['operation'],
-      sourcePath: paramStr(params, 'sourcePath'),
-      targetPath: paramStr(params, 'targetPath'),
-      maxDepth: paramNum(params, 'maxDepth'),
-      maxNodes: paramNum(params, 'maxNodes'),
-      includeUnresolved: paramBool(params, 'includeUnresolved'),
-      followBacklinks: paramBool(params, 'followBacklinks'),
-      followForwardLinks: paramBool(params, 'followForwardLinks'),
-      followTags: paramBool(params, 'followTags'),
-      fileFilter: paramStr(params, 'fileFilter'),
-      tagFilter: params.tagFilter as string[] | undefined,
-      folderFilter: paramStr(params, 'folderFilter')
-    };
-
-    return this.graphSearchTool.search(graphParams);
   }
   
   private enrichResponse(result: unknown, operation: string, action: string, params: Params, isError: boolean): SemanticResponse {
@@ -652,7 +386,7 @@ export class SemanticRouter implements RouterContext {
     }
   }
   
-  private getCurrentContext() {
+  getCurrentContext(): ContextSnapshot {
     const tokens = this.tokenManager.getTokens();
     
     return {
@@ -701,42 +435,6 @@ export class SemanticRouter implements RouterContext {
     delete errorResponse.workflow; // Move suggestions to recovery_hints
     
     return errorResponse;
-  }
-  
-  private generateWorkflowSuggestions(): { current_context: ReturnType<SemanticRouter['getCurrentContext']>; suggestions: SuggestedAction[] } {
-    // Generate contextual workflow suggestions based on current state
-    const suggestions: SuggestedAction[] = [];
-    
-    if (this.context.last_file) {
-      suggestions.push({
-        description: 'Continue working with last file',
-        command: `vault(action='read', path='${this.context.last_file}')`,
-        reason: 'Return to previous work'
-      });
-    }
-    
-    if (this.context.search_history?.length) {
-      const lastSearch = this.context.search_history[this.context.search_history.length - 1];
-      suggestions.push({
-        description: 'Refine last search',
-        command: `vault(action='search', query='${lastSearch} AND ...')`,
-        reason: 'Narrow down results'
-      });
-    }
-    
-    // Always include a default suggestion if no context-specific ones
-    if (suggestions.length === 0) {
-      suggestions.push({
-        description: 'Use workflow hints from other operations',
-        command: 'vault(action="list") or vault(action="read", path="...") etc.',
-        reason: 'Each operation provides contextual workflow suggestions'
-      });
-    }
-    
-    return {
-      current_context: this.getCurrentContext(),
-      suggestions
-    };
   }
 
   /**
