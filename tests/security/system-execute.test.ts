@@ -25,9 +25,12 @@ import { BASELINE_SECURITY_SETTINGS } from '../../src/mcp-server';
 import {
   OPT_IN_ACTIONS, applyVisibilityToggle, isActionVisible, isOperationHidden, visibilityRowValue,
 } from '../../src/tools/semantic-tools';
+import { createSemanticTools } from '../../src/tools/semantic-tools';
+import { MCPIgnoreManager } from '../../src/security/mcp-ignore-manager';
 import { addableCommands, allowlistEntries, normalizeAllowlist } from '../../src/utils/obsidian-commands';
+import { Debug } from '../../src/utils/debug';
 import * as obsidian from 'obsidian';
-import { App } from 'obsidian';
+import { App, TFile } from 'obsidian';
 
 jest.mock('obsidian');
 
@@ -66,6 +69,40 @@ interface Options {
   opens?: 'modal-container' | 'prompt';
   /** A dialog the user already had open before the agent's call. */
   alreadyOpen?: 'modal-container' | 'prompt';
+  /** The note open in the editor when the call arrives. */
+  activeFile?: string;
+  /** .mcpignore rules in force. */
+  ignore?: MCPIgnoreManager;
+  /** The command callback throws this message. */
+  throws?: string;
+  /** Leave settings.toolVisibility undefined, as a data.json without the key would. */
+  noVisibilityKey?: boolean;
+}
+
+function mkFile(p: string): TFile {
+  const f = new TFile();
+  const w = f as unknown as { path: string; extension: string; name: string; basename: string };
+  w.path = p;
+  w.extension = 'md';
+  w.name = p.slice(p.lastIndexOf('/') + 1);
+  w.basename = w.name.replace(/\.md$/, '');
+  return f;
+}
+
+/** A real MCPIgnoreManager over the given .mcpignore text. */
+async function ignoreRules(content: string): Promise<MCPIgnoreManager> {
+  const app = {
+    vault: {
+      adapter: {
+        stat: async () => ({ mtime: 1, ctime: 1, size: content.length, type: 'file' as const }),
+        read: async () => content,
+      },
+    },
+  } as unknown as App;
+  const manager = new MCPIgnoreManager(app);
+  manager.setEnabled(true);
+  await manager.loadIgnoreFile();
+  return manager;
 }
 
 interface ToolsResult {
@@ -80,20 +117,26 @@ function setup(opts: Options = {}) {
   const doc = new FakeDocument();
   if (opts.alreadyOpen) doc.dialogs.push(new FakeDialog(opts.alreadyOpen, doc));
   (globalThis as { activeDocument?: unknown }).activeDocument = doc;
+  let active: TFile | null = opts.activeFile ? mkFile(opts.activeFile) : null;
 
   const app = {
     vault: {
       configDir: '.obsidian', adapter: { basePath: '/test/vault' },
-      getAbstractFileByPath: () => null,
+      getAbstractFileByPath: (p: string) => (p.endsWith('.md') ? mkFile(p) : null),
       getFiles: () => [],
       getMarkdownFiles: () => [],
     },
     metadataCache: { getFileCache: () => null, resolvedLinks: {} },
-    workspace: { getActiveFile: () => null },
+    // Opening a note makes it the active file, as Obsidian does.
+    workspace: {
+      getActiveFile: () => active,
+      getLeaf: () => ({ openFile: async (f: TFile) => { active = f; } }),
+    },
     commands: {
       commands: COMMANDS,
       executeCommandById: (id: string) => {
         ran.push(id);
+        if (opts.throws) throw new Error(opts.throws);
         if (opts.opens) doc.dialogs.push(new FakeDialog(opts.opens, doc));
         return id in COMMANDS;
       },
@@ -103,11 +146,15 @@ function setup(opts: Options = {}) {
   const settings: Record<string, unknown> = {
     readOnlyMode: opts.readOnly === true,
     enableWebFetch: false,
-    toolVisibility: opts.visibility ?? {},
+    toolVisibility: opts.noVisibilityKey ? undefined : (opts.visibility ?? {}),
     commandExecutionAllowlist: opts.allowlist ?? [],
   };
   if (opts.notify !== undefined) settings.notifyOnCommandExecution = opts.notify;
-  const plugin = { settings, manifest: { dir: '/test/vault/.obsidian/plugins/semantic-vault-mcp' } };
+  const plugin = {
+    settings,
+    ignoreManager: opts.ignore,
+    manifest: { dir: '/test/vault/.obsidian/plugins/semantic-vault-mcp' },
+  };
 
   const api = new SecureObsidianAPI(app, undefined, plugin, opts.security ?? BASELINE_SECURITY_SETTINGS);
   const pool = new MCPServerPool(api, 8, plugin);
@@ -119,9 +166,9 @@ function setup(opts: Options = {}) {
     const list = await (handlers.get('tools/list') as Handler<ToolsResult>)({ method: 'tools/list', params: {} }, {});
     return list.tools.find(t => t.name === 'system');
   };
-  const call = (args: Record<string, unknown>) =>
+  const call = (args: Record<string, unknown>, name = 'system') =>
     (handlers.get('tools/call') as Handler<CallResult>)(
-      { method: 'tools/call', params: { name: 'system', arguments: args } }, {},
+      { method: 'tools/call', params: { name, arguments: args } }, {},
     );
   /** The parsed JSON of a raw call: `result` on success, `error` on refusal. */
   const callRaw = async (args: Record<string, unknown>) => {
@@ -362,13 +409,13 @@ describe('system.execute', () => {
     it('shows a Notice naming the command when notify is on', async () => {
       const { callRaw } = setup({ visibility: OPTED_IN, allowlist: ['editor:save-file'], notify: true });
       await callRaw(SAVE);
-      expect(noticeMessages()).toEqual(['An agent is running the command "Save current file".']);
+      expect(noticeMessages()).toEqual(['An agent ran the command "Save current file".']);
     });
 
     it('shows the Notice when the setting is absent (default on)', async () => {
       const { callRaw } = setup({ visibility: OPTED_IN, allowlist: ['editor:save-file'] });
       await callRaw(SAVE);
-      expect(noticeMessages()).toEqual(['An agent is running the command "Save current file".']);
+      expect(noticeMessages()).toEqual(['An agent ran the command "Save current file".']);
     });
 
     it('shows no Notice when notify is off', async () => {
@@ -378,10 +425,100 @@ describe('system.execute', () => {
       expect(noticeMessages()).toEqual([]);
     });
 
+    it('shows no Notice when Obsidian did not run an allowlisted command', async () => {
+      const { ran, callRaw } = setup({ visibility: OPTED_IN, allowlist: ['plugin:gone'], notify: true });
+      const out = await callRaw({ action: 'execute', commandId: 'plugin:gone' });
+      expect(ran).toEqual(['plugin:gone']);
+      expect(out.result?.success).toBe(false);
+      expect(noticeMessages()).toEqual([]);
+    });
+
     it('shows no Notice for a refused command, which did not run', async () => {
       const { callRaw } = setup({ visibility: OPTED_IN, notify: true });
       await callRaw(SAVE);
       expect(noticeMessages()).toEqual([]);
+    });
+  });
+
+  describe('the active file (.mcpignore)', () => {
+    it.each([
+      ['excluded', 'private/', 'private/diary.md', 'PATH_BLOCKED'],
+      ['read-only', 'readonly:sources/**', 'sources/paper.md', 'PATH_READ_ONLY'],
+    ])('refuses while an %s note is active, and runs nothing', async (_label, rules, activeFile, code) => {
+      const { ran, callRaw } = setup({
+        visibility: OPTED_IN, allowlist: ['editor:save-file'], ignore: await ignoreRules(rules), activeFile,
+      });
+      expect((await callRaw(SAVE)).error?.code).toBe(code);
+      expect(ran).toEqual([]);
+      expect(noticeMessages()).toEqual([]);
+    });
+
+    it('refuses after an agent opens a read-only note, closing the open-then-execute chain', async () => {
+      const { ran, call, callRaw } = setup({
+        visibility: OPTED_IN, allowlist: ['editor:save-file'], ignore: await ignoreRules('readonly:sources/**'),
+      });
+      // view.open_in_obsidian is charged as READ, so read-only rules let it through.
+      const opened = await call({ action: 'open_in_obsidian', path: 'sources/paper.md' }, 'view');
+      expect(opened.isError).toBeFalsy();
+
+      expect((await callRaw(SAVE)).error?.code).toBe('PATH_READ_ONLY');
+      expect(ran).toEqual([]);
+    });
+
+    it('runs while an ordinary note is active (positive control)', async () => {
+      const { ran, callRaw } = setup({
+        visibility: OPTED_IN, allowlist: ['editor:save-file'],
+        ignore: await ignoreRules(['private/', 'readonly:sources/**'].join('\n')), activeFile: 'notes/today.md',
+      });
+      expect((await callRaw(SAVE)).result?.success).toBe(true);
+      expect(ran).toEqual(['editor:save-file']);
+    });
+  });
+
+  describe('a command callback that throws', () => {
+    let logged: jest.SpyInstance;
+    beforeEach(() => { logged = jest.spyOn(Debug, 'error').mockImplementation(() => undefined); });
+    afterEach(() => logged.mockRestore());
+
+    it('returns a fixed message, keeps the detail out of the result, and logs it locally', async () => {
+      const { ran, call, callRaw } = setup({
+        visibility: OPTED_IN, allowlist: ['editor:save-file'], throws: 'EACCES /home/user/secret path',
+      });
+      const out = await callRaw(SAVE);
+      expect(ran).toEqual(['editor:save-file']);
+      expect(out.error?.code).toBe('COMMAND_FAILED');
+      expect(out.error?.message).toBe('The command threw an error.');
+
+      const res = await call(SAVE);
+      expect(res.isError).toBe(true);
+      expect(JSON.stringify(res)).not.toContain('secret path');
+      expect(logged.mock.calls.map(c => String(c[1])).join()).toContain('secret path');
+    });
+
+    it('still shows the Notice, because the command ran', async () => {
+      const { callRaw } = setup({ visibility: OPTED_IN, allowlist: ['editor:save-file'], throws: 'boom' });
+      await callRaw(SAVE);
+      expect(noticeMessages()).toEqual(['An agent ran the command "Save current file".']);
+    });
+  });
+
+  describe('no visibility map at all', () => {
+    it('createSemanticTools(api, undefined) keeps execute hidden and refused', async () => {
+      const { ran, api } = setup({ allowlist: ['editor:save-file'] });
+      const system = createSemanticTools(api, undefined).find(t => t.name === 'system')!;
+      expect((system.inputSchema.properties.action as { enum: string[] }).enum).not.toContain('execute');
+
+      const res = await system.handler(api, { ...SAVE, raw: true });
+      const text = (res.content[0] as { text: string }).text;
+      expect(JSON.parse(text).error?.code).toBe('ACTION_DISABLED');
+      expect(ran).toEqual([]);
+    });
+
+    it('an undefined settings.toolVisibility keeps execute hidden and refused through the pool', async () => {
+      const { ran, systemTool, callRaw } = setup({ noVisibilityKey: true, allowlist: ['editor:save-file'] });
+      expect((await systemTool())!.inputSchema.properties.action.enum).not.toContain('execute');
+      expect((await callRaw(SAVE)).error?.code).toBe('ACTION_DISABLED');
+      expect(ran).toEqual([]);
     });
   });
 

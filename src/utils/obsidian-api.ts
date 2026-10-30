@@ -1015,8 +1015,15 @@ export class ObsidianAPI {
    * or dismissing a dialog the agent cannot read could confirm a destructive
    * action.
    *
+   * The Notice is raised once Obsidian has run the command, so it never claims
+   * a run that did not happen.
+   *
    * @throws SecurityError with code COMMAND_NOT_ALLOWED when the id is not on
    *   the allowlist. Nothing runs.
+   * @throws Error with code COMMAND_FAILED when the command's callback throws.
+   *   The callback belongs to whichever plugin registered the command, so its
+   *   message can carry anything (paths, file contents); it goes to the local
+   *   log only, and the caller gets a fixed message.
    */
   async executeCommand(commandId: string): Promise<CommandExecutionResult> {
     const settings = this.plugin?.settings;
@@ -1028,13 +1035,21 @@ export class ObsidianAPI {
     }
 
     const registry = commandRegistry(this.app);
-    if (settings?.notifyOnCommandExecution !== false) {
+    const notify = () => {
+      if (settings?.notifyOnCommandExecution === false) return;
       const name = registry?.commands?.[commandId]?.name ?? commandId;
-      new Notice(`An agent is running the command "${name}".`);
-    }
+      new Notice(`An agent ran the command "${name}".`);
+    };
 
     const before = this.openDialogs();
-    const success = registry?.executeCommandById?.(commandId) === true;
+    let success: boolean;
+    try {
+      success = registry?.executeCommandById?.(commandId) === true;
+    } catch (error) {
+      Debug.error(`Command '${commandId}' threw:`, error);
+      notify();
+      throw Object.assign(new Error('The command threw an error.'), { code: 'COMMAND_FAILED' });
+    }
     if (!success) {
       return {
         success: false,
@@ -1044,6 +1059,7 @@ export class ObsidianAPI {
       };
     }
 
+    notify();
     await new Promise<void>(resolve => window.setTimeout(resolve, COMMAND_SETTLE_MS));
     const appeared = [...this.openDialogs()].some(el => !before.has(el));
     return appeared

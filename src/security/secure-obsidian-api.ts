@@ -219,10 +219,19 @@ export class SecureObsidianAPI extends ObsidianAPI {
 	 * Goes through validateOperation like every other write, rather than a
 	 * separate synchronous permission check: one gate function, and no entry
 	 * point that silently cannot validate a path.
+	 *
+	 * A command acts inside Obsidian, usually on the active file, which the
+	 * agent may have opened itself (view.open_in_obsidian is a READ). So the
+	 * active file is validated as this operation's path: an excluded note
+	 * refuses with PATH_BLOCKED and a `readonly:` note with PATH_READ_ONLY.
+	 * That is the only file the plugin can check; what else a command touches
+	 * is up to the command.
 	 */
 	async executeCommand(commandId: string): ReturnType<ObsidianAPI['executeCommand']> {
+		const activeFile = this.getApp().workspace?.getActiveFile?.();
 		await this.security.validateOperation({
 			type: OperationType.EXECUTE,
+			...(activeFile ? { path: activeFile.path } : {}),
 			context: { method: 'executeCommand', commandId }
 		});
 
