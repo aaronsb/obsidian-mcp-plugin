@@ -6,40 +6,14 @@ import { Debug } from './utils/debug';
 import { MCPIgnoreManager } from './security/mcp-ignore-manager';
 import { randomBytes } from 'crypto';
 import { PluginDetector } from './utils/plugin-detector';
-import { CertificateConfig } from './utils/certificate-manager';
-import { ValidationConfig } from './validation/input-validator';
 import {
 	ALL_OPERATIONS, OPT_IN_ACTIONS, applyVisibilityToggle, getOperationDescription, isActionVisible, isOperationHidden,
 	visibilityKeysFor, visibilityRowValue, visibilityTreeActions,
 } from './tools/semantic-tools';
-import { addableCommands, allowlistEntries, listCommands, normalizeAllowlist } from './utils/obsidian-commands';
-import { BindMode, classifyFromSettings, normalizeBindInput } from './utils/network-classifier';
+import { addableCommands, allowlistEntries, listCommands } from './utils/obsidian-commands';
+import { MCPPluginSettings, mergeLoadedSettings } from './plugin-settings';
+import { classifyFromSettings, normalizeBindInput } from './utils/network-classifier';
 
-interface MCPPluginSettings {
-	httpEnabled: boolean;
-	httpPort: number;
-	httpsEnabled: boolean;
-	httpsPort: number;
-	certificateConfig: CertificateConfig;
-	// ADR-107: network exposure modes
-	bindMode: BindMode;
-	customBindHost: string;
-	hasShownBindMigrationNotice: boolean;
-	debugLogging: boolean;
-	showConnectionStatus: boolean;
-	autoDetectPortConflicts: boolean;
-	apiKey: string;
-	dangerouslyDisableAuth: boolean;
-	readOnlyMode: boolean;
-	enableWebFetch: boolean;
-	pathExclusionsEnabled: boolean;
-	enableIgnoreContextMenu: boolean;
-	validation?: Partial<ValidationConfig>;
-	toolVisibility: Record<string, boolean>;
-	// ADR-204: exact command ids system.execute may run. Empty refuses every command.
-	commandExecutionAllowlist: string[];
-	notifyOnCommandExecution: boolean;
-}
 
 interface MCPServerInfo {
 	version: string;
@@ -64,42 +38,6 @@ interface MCPServerInfo {
 	} | undefined;
 }
 
-const DEFAULT_SETTINGS: MCPPluginSettings = {
-	httpEnabled: true, // Start enabled by default
-	httpPort: 3001,
-	httpsEnabled: false, // HTTPS disabled by default
-	httpsPort: 3443,
-	certificateConfig: {
-		enabled: false,
-		selfSigned: true,
-		autoGenerate: true,
-		// rejectUnauthorized omitted on purpose: inert for our inbound HTTPS
-		// server (no requestCert); cert-manager defaults it to true. See #163.
-		minTLSVersion: 'TLSv1.2'
-	},
-	bindMode: 'loopback',
-	customBindHost: '',
-	hasShownBindMigrationNotice: false,
-	debugLogging: false,
-	showConnectionStatus: true,
-	autoDetectPortConflicts: true,
-	apiKey: '', // Will be generated on first load
-	dangerouslyDisableAuth: false, // Auth enabled by default
-	readOnlyMode: false, // Read-only mode disabled by default
-	enableWebFetch: false, // ADR-109: outbound web fetch off by default, for everyone
-	pathExclusionsEnabled: false, // Path exclusions disabled by default
-	enableIgnoreContextMenu: false, // Context menu disabled by default
-	validation: {
-		maxFileSize: 10 * 1024 * 1024, // 10MB default
-		maxBatchSize: 100,
-		maxPathLength: 255,
-		maxRegexComplexity: 100,
-		strictMode: false
-	},
-	toolVisibility: {}, // Empty = all tools enabled, except opt-in actions (system.execute)
-	commandExecutionAllowlist: [], // ADR-204: no command may run until the user lists it
-	notifyOnCommandExecution: true
-};
 
 export default class ObsidianMCPPlugin extends Plugin {
 	settings!: MCPPluginSettings;
@@ -328,22 +266,9 @@ export default class ObsidianMCPPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MCPPluginSettings>);
-
-		// Coerce the security booleans loaded from data.json.
-		//
-		// loadData() returns whatever is on disk, and data.json is hand-editable.
-		// The security predicate tests `=== true` while the settings toggle renders
-		// with truthiness, so a string "true" would show the toggle ON while
-		// read-only was NOT enforced — belief diverging from reality, which is the
-		// exact shape of the bug this hardening came out of. Normalising here means
-		// UI and enforcement read one value.
-		this.settings.readOnlyMode = this.settings.readOnlyMode === true;
-		this.settings.dangerouslyDisableAuth = this.settings.dangerouslyDisableAuth === true;
-		this.settings.enableWebFetch = this.settings.enableWebFetch === true;
-		// ADR-204. A fresh array also keeps edits off the DEFAULT_SETTINGS one.
-		this.settings.commandExecutionAllowlist = normalizeAllowlist(this.settings.commandExecutionAllowlist);
-		this.settings.notifyOnCommandExecution = this.settings.notifyOnCommandExecution !== false;
+		// Coercion of the security values, and copies of every nested default,
+		// live in mergeLoadedSettings.
+		this.settings = mergeLoadedSettings(await this.loadData() as Partial<MCPPluginSettings> | null);
 
 		// ADR-109: fetch_web moved from the visibility tree to the dedicated
 		// enableWebFetch setting. A leftover visibility key would be a second
