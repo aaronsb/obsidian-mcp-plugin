@@ -16,7 +16,6 @@ import { InputValidator } from '../../validation/input-validator';
 import { GraphSearchTool } from '../../tools/graph-search';
 import { GraphSearchTool as GraphSearchTraversalTool } from '../../tools/graph-search-tool';
 import { GraphTagTool } from '../../tools/graph-tag-tool';
-import { SemanticContext } from '../../types/semantic';
 
 /** The router's tracked context as reported in responses and by workflow.suggest. */
 export interface ContextSnapshot {
@@ -42,7 +41,6 @@ export interface RouterContext {
   readonly graphSearchTool?: GraphSearchTool;
   readonly graphSearchTraversalTool?: GraphSearchTraversalTool;
   readonly graphTagTool?: GraphTagTool;
-  // Context tracking stays in the router; handlers only read it.
-  readonly context: SemanticContext;
+  // Context tracking stays private to the router; handlers read a snapshot.
   getCurrentContext(): ContextSnapshot;
 }

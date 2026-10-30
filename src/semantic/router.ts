@@ -29,11 +29,11 @@ import { Params, SearchResultItem, paramStr } from './operations/shared';
 
 export class SemanticRouter implements RouterContext {
   private config!: WorkflowConfig;
-  private tokenManager: StateTokenManager;
+  private context: SemanticContext = {};
   // Public to satisfy RouterContext — the router passes itself as the
   // dependency context to extracted operation modules (ADR-202, #199).
-  readonly context: SemanticContext = {};
   readonly api: ObsidianAPI;
+  private tokenManager: StateTokenManager;
   readonly fragmentRetriever: UniversalFragmentRetriever;
   readonly graphSearchTool?: GraphSearchTool;
   readonly graphSearchTraversalTool?: GraphSearchTraversalTool;

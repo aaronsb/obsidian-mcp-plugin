@@ -3,8 +3,8 @@
  *
  * Behaviour-preserving move of SemanticRouter.executeWorkflowOperation and
  * generateWorkflowSuggestions, its only caller's helper. Suggestions are
- * built from the router's tracked context, which route() updates before
- * dispatch; this module only reads it.
+ * built from the router's context snapshot (getCurrentContext), which
+ * reflects what route() recorded before dispatch.
  */
 import { SuggestedAction } from '../../types/semantic';
 import { ContextSnapshot, RouterContext } from './router-context';
@@ -21,18 +21,19 @@ export function executeWorkflowOperation(ctx: RouterContext, action: string, _pa
 
 function generateWorkflowSuggestions(ctx: RouterContext): { current_context: ContextSnapshot; suggestions: SuggestedAction[] } {
   // Generate contextual workflow suggestions based on current state
+  const current = ctx.getCurrentContext();
   const suggestions: SuggestedAction[] = [];
   
-  if (ctx.context.last_file) {
+  if (current.current_file) {
     suggestions.push({
       description: 'Continue working with last file',
-      command: `vault(action='read', path='${ctx.context.last_file}')`,
+      command: `vault(action='read', path='${current.current_file}')`,
       reason: 'Return to previous work'
     });
   }
   
-  if (ctx.context.search_history?.length) {
-    const lastSearch = ctx.context.search_history[ctx.context.search_history.length - 1];
+  if (current.search_history?.length) {
+    const lastSearch = current.search_history[current.search_history.length - 1];
     suggestions.push({
       description: 'Refine last search',
       command: `vault(action='search', query='${lastSearch} AND ...')`,
@@ -50,7 +51,7 @@ function generateWorkflowSuggestions(ctx: RouterContext): { current_context: Con
   }
   
   return {
-    current_context: ctx.getCurrentContext(),
+    current_context: current,
     suggestions
   };
 }
