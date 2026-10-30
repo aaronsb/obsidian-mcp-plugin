@@ -1,4 +1,4 @@
-import { App, TFile, TFolder, TAbstractFile, Command, getAllTags } from 'obsidian';
+import { App, TFile, TFolder, TAbstractFile, Command, apiVersion, getAllTags } from 'obsidian';
 import { ObsidianConfig, ObsidianFile, ObsidianFileResponse } from '../types/obsidian';
 import { paginateFiles } from './response-limiter';
 import { isImageFile as checkIsImageFile, processImageResponse, IMAGE_PROCESSING_PRESETS } from './image-handler';
@@ -32,9 +32,8 @@ export interface ObsidianAPIPluginRef {
   manifest?: { dir?: string };
 }
 
-/** Internal Obsidian App interface exposing appVersion and commands */
+/** Internal Obsidian App interface exposing the command registry */
 interface AppInternal extends App {
-  appVersion?: string;
   commands?: {
     commands?: Record<string, ObsidianCommand>;
     executeCommandById?(id: string): boolean;
@@ -114,7 +113,7 @@ export class ObsidianAPI {
       ok: true,
       service: 'Obsidian MCP Plugin',
       versions: {
-        obsidian: (this.app as unknown as AppInternal).appVersion || '1.0.0',
+        obsidian: apiVersion,
         'self': getVersion()
       }
     };
