@@ -160,12 +160,9 @@ The plugin provides 8 powerful tools that give AI comprehensive vault access —
 Detailed documentation for each tool and feature:
 
 - [📁 Vault Operations](docs/tools/vault.md) - File management and search
-- [✏️ Edit Operations](docs/tools/edit.md) - Content modification strategies  
 - [🕸️ Graph Navigation](docs/tools/graph.md) - Link traversal and analysis
 - [ℹ️ System Operations](docs/tools/system.md) - Server info, web fetch, and gated command execution
-- [📊 Dataview Integration](docs/tools/dataview.md) - Query language support
-- [🔐 Security & Authentication](docs/security.md) - API keys and permissions
-- [🔧 Configuration](docs/configuration.md) - Server settings and options
+- [🔧 Configuration](#plugin-settings) - Server settings and options
 - [❓ Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
 
 ## In Practice
