@@ -11,11 +11,15 @@
 //
 // Usage: node scripts/scorecard.mjs            (prose, for reading/evaluation)
 //        node scripts/scorecard.mjs --json     (single JSON line, for diffing)
+//        --html <file>  parse a saved page instead of fetching (test seam,
+//                       used by tests/scorecard.test.ts)
 //
 // Exit code is always 0 — this is an advisory signal, not a gate.
 
 import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import { stripFindingKey } from './scorecard-findings.mjs';
 
 const SLUG = 'semantic-vault-mcp';
 const URL = `https://community.obsidian.md/plugins/${SLUG}`;
@@ -102,13 +106,20 @@ function repoState() {
 async function main() {
   const asJson = process.argv.includes('--json');
 
+  const htmlIdx = process.argv.indexOf('--html');
+  const htmlFile = htmlIdx !== -1 ? process.argv[htmlIdx + 1] : undefined;
+
   let html;
   try {
-    const res = await fetch(URL, { headers: { 'User-Agent': 'obsidian-mcp-scorecard/1' } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    html = await res.text();
+    if (htmlFile) {
+      html = await readFile(htmlFile, 'utf8');
+    } else {
+      const res = await fetch(URL, { headers: { 'User-Agent': 'obsidian-mcp-scorecard/1' } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      html = await res.text();
+    }
   } catch (e) {
-    console.error(`scorecard: could not fetch ${URL} — ${e.message}`);
+    console.error(`scorecard: could not read ${htmlFile ?? URL} — ${e.message}`);
     process.exit(0);
   }
 
@@ -132,7 +143,9 @@ async function main() {
   // Findings live in the RSC flight payload as JSX tuples
   // ["$","div"|"details","<finding text>",{"className":...}] within the
   // scorecard region (anchored to the "issues found by automated scans"
-  // sentence). The SIGNATURE — re-anchored to the redesign's wording: bold
+  // sentence). The captured element is the tuple's React key, which the
+  // portal now prefixes "<severity>:<index>:"; stripFindingKey drops it
+  // (#315). The SIGNATURE — re-anchored to the redesign's wording: bold
   // "**Title**:" entries plus the neutral scan/attestation sentences — is
   // the contract. Reworded findings trip the drift guard below rather than
   // silently dropping out.
@@ -147,7 +160,7 @@ async function main() {
           /\["\$","(?:div|details|summary)","((?:[^"\\]|\\.){12,500})",\{"className"/g,
         ),
       ]
-        .map((m) => m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim())
+        .map((m) => stripFindingKey(m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\')))
         .filter((s) => SIGNATURE.test(s)),
     ),
   ];
