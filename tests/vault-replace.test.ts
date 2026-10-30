@@ -11,7 +11,10 @@
  * Assertions are on recorded vault writes, following tool-visibility.test.ts.
  */
 import { SecureObsidianAPI, SecurityError, VaultSecurityManager } from '../src/security';
-import { createSemanticTools, getOperationDescription } from '../src/tools/semantic-tools';
+import {
+  applyVisibilityToggle, createSemanticTools, getOperationDescription,
+  isActionVisible, visibilityRowValue, visibilityTreeActions,
+} from '../src/tools/semantic-tools';
 import { SemanticRouter } from '../src/semantic/router';
 import { executeVaultOperation, VAULT_UPDATE_DEPRECATION } from '../src/semantic/operations/vault';
 import { BASELINE_SECURITY_SETTINGS } from '../src/mcp-server';
@@ -32,11 +35,15 @@ function mkFile(p: string): TFile {
   return f;
 }
 
-function makeApp(writes: Write[]): App {
+/**
+ * `resolveAll` makes every path resolve to a file, so a refusal can only come
+ * from the security layer and not from "File not found".
+ */
+function makeApp(writes: Write[], resolveAll = false): App {
   return {
     vault: {
       adapter: { basePath: '/test/vault' },
-      getAbstractFileByPath: (p: string) => (p === 'note.md' ? mkFile(p) : null),
+      getAbstractFileByPath: (p: string) => (resolveAll || p === 'note.md' ? mkFile(p) : null),
       read: async () => ORIGINAL,
       cachedRead: async () => ORIGINAL,
       modify: async (f: TFile, data: string) => { writes.push({ op: 'modify', path: f.path, content: data }); },
@@ -52,11 +59,11 @@ function makeApp(writes: Write[]): App {
   } as unknown as App;
 }
 
-function setup(opts: { readOnly?: boolean; visibility?: Record<string, boolean> } = {}) {
+function setup(opts: { readOnly?: boolean; visibility?: Record<string, boolean>; resolveAll?: boolean } = {}) {
   const writes: Write[] = [];
   const plugin = { settings: { readOnlyMode: opts.readOnly === true } };
   const api = new SecureObsidianAPI(
-    makeApp(writes), undefined, plugin as never, BASELINE_SECURITY_SETTINGS,
+    makeApp(writes, opts.resolveAll), undefined, plugin as never, BASELINE_SECURITY_SETTINGS,
   );
   const tools = createSemanticTools(api, opts.visibility) ?? [];
   return { writes, api, byName: (n: string) => tools.find(t => t.name === n) };
@@ -165,13 +172,15 @@ describe('vault.replace (#326)', () => {
     });
 
     it.each(['replace', 'update'])('path validation refuses vault.%s outside the vault', async (action) => {
-      const { byName, api, writes } = setup();
+      // Every path resolves, so without the validator this call would write.
+      const { byName, api, writes } = setup({ resolveAll: true });
 
       const res = await byName('vault')!.handler(api, {
         action, path: '../outside.md', content: 'x',
       });
 
       expect((res as { isError?: boolean }).isError).toBe(true);
+      expect(text(res)).toContain('FORBIDDEN_PATTERN');
       expect(writes).toEqual([]);
     });
 
@@ -261,11 +270,101 @@ describe('vault.replace (#326)', () => {
       expect(writes).toEqual([]);
     });
 
+    it('a stale vault.update=false with a stored vault.replace=true still hides both', () => {
+      const { byName } = setup({ visibility: { 'vault.update': false, 'vault.replace': true } });
+      expect(advertisedActions(byName('vault')!)).not.toContain('replace');
+    });
+
     it('leaves sibling actions untouched', () => {
       const { byName } = setup({ visibility: { 'vault.replace': false } });
       const actions = advertisedActions(byName('vault')!);
 
       expect(actions).toEqual(expect.arrayContaining(['create', 'delete', 'read']));
+    });
+  });
+
+  /**
+   * The settings tab's toggle logic, extracted from main.ts so it can be tested
+   * without Obsidian. These are the reads and writes the vault.replace row makes.
+   */
+  describe('settings tree toggles', () => {
+    it('shows one vault row for the two names', () => {
+      const rows = visibilityTreeActions('vault');
+      expect(rows).toContain('replace');
+      expect(rows).not.toContain('update');
+    });
+
+    it('reads the replace row as off when only vault.update=false is stored, and hides both', () => {
+      const v = { 'vault.update': false };
+
+      expect(visibilityRowValue(v, 'vault.replace')).toBe(false);
+      expect(isActionVisible(v, 'vault', 'replace')).toBe(false);
+      expect(isActionVisible(v, 'vault', 'update')).toBe(false);
+    });
+
+    it('reads the replace row as on when neither key is stored', () => {
+      expect(visibilityRowValue({}, 'vault.replace')).toBe(true);
+      expect(visibilityRowValue({}, 'vault')).toBe(true);
+    });
+
+    it('turning the row on writes both keys true', () => {
+      const v = applyVisibilityToggle({ 'vault.update': false }, 'vault.replace', true);
+
+      expect(v['vault.replace']).toBe(true);
+      expect(v['vault.update']).toBe(true);
+      expect(isActionVisible(v, 'vault', 'update')).toBe(true);
+    });
+
+    it('turning the row off writes both keys false', () => {
+      const v = applyVisibilityToggle({}, 'vault.replace', false);
+
+      expect(v).toEqual({ 'vault.replace': false, 'vault.update': false });
+    });
+
+    it('fixes the stale-key case (update on, replace off) with one toggle', () => {
+      const v: Record<string, boolean> = { 'vault.update': true, 'vault.replace': false };
+      expect(isActionVisible(v, 'vault', 'update')).toBe(false);
+      expect(visibilityRowValue(v, 'vault.replace')).toBe(false);
+
+      applyVisibilityToggle(v, 'vault.replace', true);
+
+      expect(isActionVisible(v, 'vault', 'replace')).toBe(true);
+      expect(isActionVisible(v, 'vault', 'update')).toBe(true);
+    });
+
+    it('the parent-level cascade writes both keys', () => {
+      const off = applyVisibilityToggle({}, 'vault', false);
+      expect(off.vault).toBe(false);
+      expect(off['vault.replace']).toBe(false);
+      expect(off['vault.update']).toBe(false);
+
+      const on = applyVisibilityToggle(off, 'vault', true);
+      expect(on['vault.replace']).toBe(true);
+      expect(on['vault.update']).toBe(true);
+      expect(visibilityRowValue(on, 'vault')).toBe(true);
+    });
+
+    it('turning off every row marks the operation off, and one row back on clears it', () => {
+      const v: Record<string, boolean> = {};
+      for (const a of visibilityTreeActions('vault')) applyVisibilityToggle(v, `vault.${a}`, false);
+      expect(v.vault).toBe(false);
+      expect(visibilityRowValue(v, 'vault')).toBe(false);
+
+      applyVisibilityToggle(v, 'vault.read', true);
+      expect('vault' in v).toBe(false);
+      expect(visibilityRowValue(v, 'vault')).toBe(true);
+    });
+
+    it('changes the map it was given, so live tool handlers see the toggle', async () => {
+      const visibility: Record<string, boolean> = {};
+      const { byName, api, writes } = setup({ visibility });
+      const vault = byName('vault')!;
+
+      applyVisibilityToggle(visibility, 'vault.replace', false);
+      const res = await vault.handler(api, { action: 'update', path: 'note.md', content: 'x' });
+
+      expect(text(res)).toContain('ACTION_DISABLED');
+      expect(writes).toEqual([]);
     });
   });
 });

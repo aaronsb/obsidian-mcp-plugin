@@ -224,6 +224,70 @@ export function isActionVisible(visibility: ToolVisibility, operation: string, a
   return visibilityKeysFor(operation, action).every(k => visibility[k] !== false);
 }
 
+/**
+ * The actions that get their own row in the settings visibility tree.
+ * ADR-109: fetch_web is governed by the "Allow outbound web fetch" setting, not
+ * this tree. vault.update shares the vault.replace row (#326).
+ */
+export function visibilityTreeActions(operation: string): string[] {
+  return getActionsForOperation(operation).filter(action =>
+    !(operation === 'system' && action === 'fetch_web') &&
+    !(operation === 'vault' && action === 'update'));
+}
+
+/** True when the operation key is off, or every one of its tree rows is. */
+export function isOperationHidden(visibility: ToolVisibility, operation: string): boolean {
+  if (visibility[operation] === false) return true;
+  return visibilityTreeActions(operation).every(a => !isActionVisible(visibility, operation, a));
+}
+
+/**
+ * The on/off state a settings-tree row shows. `key` is `op.action` for one row,
+ * or `op` for the parent row, which is on unless every action is off.
+ */
+export function visibilityRowValue(visibility: ToolVisibility, key: string): boolean {
+  const dot = key.indexOf('.');
+  return dot >= 0
+    ? isActionVisible(visibility, key.slice(0, dot), key.slice(dot + 1))
+    : !isOperationHidden(visibility, key);
+}
+
+/**
+ * Apply one settings-tree toggle. `key` is `op` (cascade to every row) or
+ * `op.action` (one row).
+ *
+ * Every key that governs an action is written, so an alias key left over from
+ * an older setting cannot keep a row off after the user turns it on.
+ *
+ * Mutates and returns `visibility`. Tool handlers already built for live MCP
+ * sessions hold this same object for their dispatch check, so it is changed in
+ * place, not copied.
+ */
+export function applyVisibilityToggle(visibility: ToolVisibility, key: string, value: boolean): ToolVisibility {
+  const dot = key.indexOf('.');
+
+  if (dot < 0) {
+    visibility[key] = value;
+    for (const action of visibilityTreeActions(key)) {
+      for (const k of visibilityKeysFor(key, action)) visibility[k] = value;
+    }
+    return visibility;
+  }
+
+  const operation = key.slice(0, dot);
+  for (const k of visibilityKeysFor(operation, key.slice(dot + 1))) visibility[k] = value;
+
+  // The operation-level key follows the aggregate of its rows.
+  const allNowDisabled = visibilityTreeActions(operation)
+    .every(a => !isActionVisible(visibility, operation, a));
+  if (allNowDisabled) {
+    visibility[operation] = false;
+  } else {
+    delete visibility[operation]; // all on, or mixed = not explicitly false
+  }
+  return visibility;
+}
+
 /** Plugin interface for checking read-only mode */
 interface PluginWithSettings {
   settings?: {
