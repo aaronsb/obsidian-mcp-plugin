@@ -85,6 +85,8 @@ silently never matches, so the user would believe they allowed something they
 did not, with no feedback that the entry is dead. An allowlisted id that later
 disappears (plugin disabled, id renamed) simply stops matching.
 
+> **Note (2026-10-30, [#312](https://github.com/aaronsb/obsidian-mcp-plugin/issues/312)):** It matches again if a command with the same id is registered again, for example when the plugin is re-enabled. The settings list marks an entry whose id is not registered right now.
+
 ### Enforcement order for a `system.execute` call
 
 1. Registration: absent an explicit `toolVisibility['system.execute'] === true`,
@@ -94,6 +96,8 @@ disappears (plugin disabled, id renamed) simply stops matching.
 3. Allowlist: `ObsidianAPI.executeCommand` refuses an id not on the list with a
    structured `COMMAND_NOT_ALLOWED` result, before touching
    `executeCommandById`.
+
+> **Note (2026-10-30, [#312](https://github.com/aaronsb/obsidian-mcp-plugin/issues/312)):** Security review of the implementation added two checks. The permission step validates the active file as the operation's path, because a command acts on it: a note `.mcpignore` excludes refuses with `PATH_BLOCKED`, a `readonly:` note with `PATH_READ_ONLY`. Without it an agent could open a read-only note with `view.open_in_obsidian` (a READ) and run a mutating command on it. And the security layer refuses every agent read and write in Obsidian's config directory (`CONFIG_DIR_PROTECTED`). Before that, an agent could write this plugin's `data.json`, setting `toolVisibility['system.execute']` and the allowlist for the next load, which would have opened all three gates from outside the settings UI. A command callback that throws fails with `COMMAND_FAILED` and a fixed message; the detail stays in the local log.
 
 > **Note (2026-10-30, [#312](https://github.com/aaronsb/obsidian-mcp-plugin/issues/312)):** The refusal is a `SecurityError` with code `COMMAND_NOT_ALLOWED`, which the tool returns as an error result (`isError: true`), like the `PERMISSION_DENIED` refusal before it. A success-shaped result would read as a run command to a client that checks `isError`. The allowlist is read from settings on every call, and a non-array value allows nothing.
 
@@ -110,7 +114,7 @@ Auto-dismissing or auto-confirming a detected dialog is refused outright — an
 agent pressing OK on a modal it cannot read could confirm a destructive action.
 We detect and report; we never drive.
 
-> **Note (2026-10-30, [#312](https://github.com/aaronsb/obsidian-mcp-plugin/issues/312)):** Only a dialog that was not open before dispatch counts, so a dialog the user already had open is not reported as the command's. The settle is 100 ms. The Notice is raised just before dispatch, and only for a command that passed all three gates; a refused command runs nothing and shows nothing.
+> **Note (2026-10-30, [#312](https://github.com/aaronsb/obsidian-mcp-plugin/issues/312)):** Only a dialog that was not open before dispatch counts, so a dialog the user already had open is not reported as the command's. The settle is 100 ms. The Notice is raised after Obsidian runs the command (or the command throws), so a listed command Obsidian did not run shows none, and a refused command runs nothing and shows nothing.
 
 ### Implementation touchpoints
 
