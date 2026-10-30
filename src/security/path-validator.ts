@@ -159,6 +159,51 @@ export class SecurePathValidator {
 	}
 
 	/**
+	 * True when `userPath` names the vault-relative directory `dirRel` or
+	 * anything under it.
+	 *
+	 * Built to refuse rather than to match exactly: segments compare
+	 * case-insensitively and without trailing dots or spaces, which
+	 * case-insensitive filesystems and Windows ignore, and an existing path is
+	 * also compared by the real path of its deepest existing ancestor, so a
+	 * symlinked folder cannot alias the directory. A false positive only
+	 * refuses an unusual folder name.
+	 */
+	isInsideDir(userPath: string, dirRel: string): boolean {
+		const dir = path.resolve(this.baseDir, normalizePath(dirRel));
+		const candidate = path.resolve(this.baseDir, normalizePath(userPath));
+		if (this.segmentsStartWith(candidate, dir)) return true;
+
+		const realCandidate = this.realpathOfDeepestExisting(candidate);
+		const realDir = this.realpathOfDeepestExisting(dir);
+		return realCandidate !== null && realDir !== null && this.segmentsStartWith(realCandidate, realDir);
+	}
+
+	private segmentsStartWith(absPath: string, absDir: string): boolean {
+		const canon = (p: string) => p.split(path.sep).filter(Boolean).map(seg => seg.replace(/[. ]+$/, '').toLowerCase());
+		const target = canon(absPath);
+		const dir = canon(absDir);
+		return dir.length > 0 && target.length >= dir.length && dir.every((seg, i) => target[i] === seg);
+	}
+
+	/** Real path of `absPath`, resolved through its deepest existing ancestor. */
+	private realpathOfDeepestExisting(absPath: string): string | null {
+		let existing = absPath;
+		const rest: string[] = [];
+		while (!fs.existsSync(existing)) {
+			const parent = path.dirname(existing);
+			if (parent === existing) return null;
+			rest.unshift(path.basename(existing));
+			existing = parent;
+		}
+		try {
+			return path.join(fs.realpathSync(existing), ...rest);
+		} catch {
+			return null;
+		}
+	}
+
+	/**
 	 * Gets the vault base directory (for testing/debugging)
 	 */
 	getBaseDir(): string {

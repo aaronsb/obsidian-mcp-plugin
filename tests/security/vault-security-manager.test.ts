@@ -10,7 +10,10 @@ jest.mock('../../src/security/path-validator', () => ({
         throw new SecurityError('Path contains forbidden sequences', 'FORBIDDEN_PATTERN');
       }
       return path;
-    })
+    }),
+    // The config-directory rule has its own suite (config-dir-protection.test.ts),
+    // which runs the real validator. Nothing here targets the config directory.
+    isInsideDir: jest.fn(() => false)
   })),
   SecurityError: class SecurityError extends Error {
     constructor(message: string, public code: string = 'SECURITY_VIOLATION') {
