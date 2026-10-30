@@ -7,6 +7,7 @@ import {
 	SecurityLogEntry
 } from './vault-security-manager';
 import { MCPIgnoreManager } from './mcp-ignore-manager';
+import { SecurityError } from './path-validator';
 import { ObsidianConfig, ObsidianFile, ObsidianFileResponse } from '../types/obsidian';
 import { BaseYAML } from '../types/bases-yaml';
 import { Debug } from '../utils/debug';
@@ -101,14 +102,45 @@ export class SecureObsidianAPI extends ObsidianAPI {
 		return super.listFilesPaginated(listPath, page, pageSize, recursive);
 	}
 
+	/**
+	 * view.active. The active file is checked as a vault.read of its path
+	 * would be, so an excluded note or a config-directory file open in the
+	 * editor is refused rather than returned.
+	 */
 	async getActiveFile(): Promise<ObsidianFile> {
-		// This doesn't need path validation as it gets the currently active file
-		await this.security.validateOperation({
-			type: OperationType.READ,
-			context: { method: 'getActiveFile' }
-		});
-
+		await this.validateActiveFile(OperationType.READ, 'getActiveFile');
 		return super.getActiveFile();
+	}
+
+	/**
+	 * Validate the file open in the editor as `type` on its path.
+	 *
+	 * An active-file operation takes no path argument, but it acts on a real
+	 * file, and an agent can choose which one with view.open_in_obsidian. So the
+	 * active file's path goes through the same checks a path argument would:
+	 * .mcpignore exclusion (PATH_BLOCKED), `readonly:` for non-reads
+	 * (PATH_READ_ONLY), and the config directory (CONFIG_DIR_PROTECTED). With
+	 * no active file only the permission is checked, and the base method
+	 * reports "No active file".
+	 *
+	 * The base method looks the active file up again. If a different file is
+	 * active by then, the call is refused rather than letting the check apply
+	 * to one file and the operation to another.
+	 */
+	private async validateActiveFile(type: OperationType, method: string, context: Record<string, unknown> = {}): Promise<void> {
+		const before = this.getApp().workspace?.getActiveFile?.()?.path;
+		await this.security.validateOperation({
+			type,
+			...(before !== undefined ? { path: before } : {}),
+			context: { method, ...context }
+		});
+		const after = this.getApp().workspace?.getActiveFile?.()?.path;
+		if (after !== before) {
+			throw new SecurityError(
+				`The active file changed while '${method}' was being checked; nothing was done`,
+				'ACTIVE_FILE_CHANGED'
+			);
+		}
 	}
 
 	// Note: searchSimple doesn't exist in base ObsidianAPI
@@ -228,13 +260,7 @@ export class SecureObsidianAPI extends ObsidianAPI {
 	 * is up to the command.
 	 */
 	async executeCommand(commandId: string): ReturnType<ObsidianAPI['executeCommand']> {
-		const activeFile = this.getApp().workspace?.getActiveFile?.();
-		await this.security.validateOperation({
-			type: OperationType.EXECUTE,
-			...(activeFile ? { path: activeFile.path } : {}),
-			context: { method: 'executeCommand', commandId }
-		});
-
+		await this.validateActiveFile(OperationType.EXECUTE, 'executeCommand', { commandId });
 		return super.executeCommand(commandId);
 	}
 
@@ -265,34 +291,23 @@ export class SecureObsidianAPI extends ObsidianAPI {
 	// Active-file writes
 	//
 	// Not currently reachable from the tool surface, but they write via
-	// app.vault.modify / fileManager.trashFile, so an unwrapped version is the
-	// same bug class as createBase waiting for its first caller. patchActiveFile
-	// needs no override — it delegates to the wrapped patchVaultFile.
+	// app.vault.modify / fileManager.trashFile, so each validates the active
+	// file's path with its own operation type, ready for its first caller.
+	// patchActiveFile needs no override: it delegates to the wrapped
+	// patchVaultFile with the active file's path.
 
 	async updateActiveFile(content: string): ReturnType<ObsidianAPI['updateActiveFile']> {
-		await this.security.validateOperation({
-			type: OperationType.UPDATE,
-			context: { method: 'updateActiveFile', contentSize: content.length }
-		});
-
+		await this.validateActiveFile(OperationType.UPDATE, 'updateActiveFile', { contentSize: content.length });
 		return super.updateActiveFile(content);
 	}
 
 	async appendToActiveFile(content: string): ReturnType<ObsidianAPI['appendToActiveFile']> {
-		await this.security.validateOperation({
-			type: OperationType.UPDATE,
-			context: { method: 'appendToActiveFile', contentSize: content.length }
-		});
-
+		await this.validateActiveFile(OperationType.UPDATE, 'appendToActiveFile', { contentSize: content.length });
 		return super.appendToActiveFile(content);
 	}
 
 	async deleteActiveFile(): ReturnType<ObsidianAPI['deleteActiveFile']> {
-		await this.security.validateOperation({
-			type: OperationType.DELETE,
-			context: { method: 'deleteActiveFile' }
-		});
-
+		await this.validateActiveFile(OperationType.DELETE, 'deleteActiveFile');
 		return super.deleteActiveFile();
 	}
 
