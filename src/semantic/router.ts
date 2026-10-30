@@ -12,7 +12,7 @@ import { ContentBufferManager } from '../utils/content-buffer';
 import { StateTokenManager } from './state-tokens';
 import { limitResponse } from '../utils/response-limiter';
 import { UniversalFragmentRetriever } from '../indexing/fragment-retriever';
-import { GraphSearchTool, GraphSearchParams } from '../tools/graph-search';
+import { GraphSearchTool } from '../tools/graph-search';
 import { GraphSearchTool as GraphSearchTraversalTool } from '../tools/graph-search-tool';
 import { GraphTagTool } from '../tools/graph-tag-tool';
 import { App } from 'obsidian';
@@ -23,7 +23,8 @@ import { executeBasesOperation } from './operations/bases';
 import { executeEditOperation } from './operations/edit';
 import { executeViewOperation } from './operations/view';
 import { executeSystemOperation } from './operations/system';
-import { Params, SearchResultItem, paramStr, paramNum, paramBool } from './operations/shared';
+import { executeGraphOperation } from './operations/graph';
+import { Params, SearchResultItem, paramStr } from './operations/shared';
 
 export class SemanticRouter implements RouterContext {
   private config!: WorkflowConfig;
@@ -33,9 +34,9 @@ export class SemanticRouter implements RouterContext {
   readonly api: ObsidianAPI;
   private tokenManager: StateTokenManager;
   readonly fragmentRetriever: UniversalFragmentRetriever;
-  private graphSearchTool?: GraphSearchTool;
-  private graphSearchTraversalTool?: GraphSearchTraversalTool;
-  private graphTagTool?: GraphTagTool;
+  readonly graphSearchTool?: GraphSearchTool;
+  readonly graphSearchTraversalTool?: GraphSearchTraversalTool;
+  readonly graphTagTool?: GraphTagTool;
   readonly app?: App;
   readonly validator: InputValidator;
 
@@ -122,7 +123,7 @@ export class SemanticRouter implements RouterContext {
       case 'system':
         return executeSystemOperation(this, action, params);
       case 'graph':
-        return this.executeGraphOperation(action, params);
+        return executeGraphOperation(this, action, params);
       case 'bases':
         return executeBasesOperation(this, action, params);
       default:
@@ -137,70 +138,6 @@ export class SemanticRouter implements RouterContext {
       default:
         throw new Error(`Unknown workflow action: ${action}`);
     }
-  }
-  
-  private async executeGraphOperation(action: string, params: Params): Promise<unknown> {
-    // Handle graph search traversal operations
-    if (action === 'search-traverse' || action === 'advanced-traverse') {
-      if (!this.graphSearchTraversalTool) {
-        throw new Error('Graph search traversal operations require Obsidian app context');
-      }
-      return await this.graphSearchTraversalTool.execute({
-        action,
-        startPath: paramStr(params, 'startPath') ?? '',
-        searchQuery: paramStr(params, 'searchQuery'),
-        searchQueries: params.searchQueries as string[] | undefined,
-        maxDepth: paramNum(params, 'maxDepth'),
-        maxSnippetsPerNode: paramNum(params, 'maxSnippetsPerNode'),
-        scoreThreshold: paramNum(params, 'scoreThreshold'),
-        strategy: paramStr(params, 'strategy') as 'breadth-first' | 'best-first' | 'beam-search' | undefined,
-        beamWidth: paramNum(params, 'beamWidth'),
-        includeOrphans: paramBool(params, 'includeOrphans'),
-        followTags: paramBool(params, 'followTags'),
-        filePattern: paramStr(params, 'filePattern')
-      });
-    }
-
-    // Handle tag-based graph operations
-    if (action === 'tag-traverse' || action === 'tag-analysis' || action === 'shared-tags') {
-      if (!this.graphTagTool) {
-        throw new Error('Graph tag operations require Obsidian app context');
-      }
-      return await this.graphTagTool.execute({
-        action,
-        startPath: paramStr(params, 'startPath'),
-        targetPath: paramStr(params, 'targetPath'),
-        searchQuery: paramStr(params, 'searchQuery'),
-        maxDepth: paramNum(params, 'maxDepth'),
-        maxSnippetsPerNode: paramNum(params, 'maxSnippetsPerNode'),
-        scoreThreshold: paramNum(params, 'scoreThreshold'),
-        followTags: paramBool(params, 'followTags'),
-        tagWeight: paramNum(params, 'tagWeight')
-      });
-    }
-
-    // Handle standard graph operations
-    if (!this.graphSearchTool) {
-      throw new Error('Graph operations require Obsidian app context');
-    }
-
-    // Map action to graph operation
-    const graphParams: GraphSearchParams = {
-      operation: action as GraphSearchParams['operation'],
-      sourcePath: paramStr(params, 'sourcePath'),
-      targetPath: paramStr(params, 'targetPath'),
-      maxDepth: paramNum(params, 'maxDepth'),
-      maxNodes: paramNum(params, 'maxNodes'),
-      includeUnresolved: paramBool(params, 'includeUnresolved'),
-      followBacklinks: paramBool(params, 'followBacklinks'),
-      followForwardLinks: paramBool(params, 'followForwardLinks'),
-      followTags: paramBool(params, 'followTags'),
-      fileFilter: paramStr(params, 'fileFilter'),
-      tagFilter: params.tagFilter as string[] | undefined,
-      folderFilter: paramStr(params, 'folderFilter')
-    };
-
-    return this.graphSearchTool.search(graphParams);
   }
   
   private enrichResponse(result: unknown, operation: string, action: string, params: Params, isError: boolean): SemanticResponse {
