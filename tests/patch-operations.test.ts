@@ -308,13 +308,74 @@ Another paragraph.`;
     );
 
     it.each([
-      [{ operation: 'insert', text: 'x' }],
-      [{ operation: 'delete', start: 0 }],
-    ])('throws without writing when legacy %o lacks its positions', async (params) => {
+      [{ operation: 'insert', text: 'x' }, "requires 'position' and 'text'"],
+      [{ operation: 'insert', position: 1 }, "requires 'position' and 'text'"],
+      [{ operation: 'insert', position: 9, text: 'x' }, 'outside 0..5'],
+      [{ operation: 'insert', position: -1, text: 'x' }, 'outside 0..5'],
+      [{ operation: 'delete', start: 0 }, "requires 'start' and 'end'"],
+      [{ operation: 'delete', start: 4, end: 1 }, 'not within 0..5'],
+      [{ operation: 'delete', start: 0, end: 9 }, 'not within 0..5'],
+    ])('throws without writing for legacy %o', async (params, message) => {
       mockVault.read.mockResolvedValue('alpha');
 
-      await expect(api.patchVaultFile('test.md', params)).rejects.toThrow();
+      await expect(api.patchVaultFile('test.md', params)).rejects.toThrow(message);
       expect(mockVault.modify).not.toHaveBeenCalled();
+    });
+
+    it('applies legacy insert and delete within range', async () => {
+      mockVault.read.mockResolvedValue('abcdef');
+      await api.patchVaultFile('test.md', { operation: 'insert', position: 3, text: 'X' });
+      expect(mockVault.modify).toHaveBeenLastCalledWith(mockFile, 'abcXdef');
+
+      await api.patchVaultFile('test.md', { operation: 'delete', start: 1, end: 4 });
+      expect(mockVault.modify).toHaveBeenLastCalledWith(mockFile, 'aef');
+    });
+
+    it('replaces only the first occurrence of oldText', async () => {
+      mockVault.read.mockResolvedValue('one two one');
+
+      await api.patchVaultFile('test.md', { old_text: 'one', new_text: 'ONE' });
+
+      expect(mockVault.modify).toHaveBeenCalledWith(mockFile, 'ONE two one');
+    });
+
+    it.each(['heading', 'block'])(
+      'throws without writing when a %s patch has no content',
+      async (targetType) => {
+        mockVault.read.mockResolvedValue('# A\nkeep me ^b1\n# B\nx');
+        const target = { heading: 'A', block: 'b1' }[targetType];
+
+        await expect(api.patchVaultFile('test.md', { targetType, target, operation: 'replace' }))
+          .rejects.toThrow("requires 'content'");
+        expect(mockVault.modify).not.toHaveBeenCalled();
+      },
+    );
+
+    it('clears a heading section when content is an explicit empty string', async () => {
+      mockVault.read.mockResolvedValue('# A\nold body\n# B\nx');
+
+      await api.patchVaultFile('test.md', { targetType: 'heading', target: 'A', operation: 'replace', content: '' });
+
+      expect(mockVault.modify).toHaveBeenCalledWith(mockFile, '# A\n\n\n# B\nx');
+    });
+
+    it('throws without writing when a structured target and oldText are both given', async () => {
+      mockVault.read.mockResolvedValue('# A\nkeep me\n# B\nx');
+
+      await expect(api.patchVaultFile('test.md', {
+        targetType: 'heading', target: 'A', operation: 'replace', old_text: 'keep me', new_text: 'new',
+      })).rejects.toThrow('not both');
+      expect(mockVault.modify).not.toHaveBeenCalled();
+    });
+
+    it('treats empty-string optional fields as absent', async () => {
+      mockVault.read.mockResolvedValue('alpha beta');
+
+      await api.patchVaultFile('test.md', {
+        operation: '', targetType: '', target: '', old_text: 'beta', new_text: 'BETA',
+      });
+
+      expect(mockVault.modify).toHaveBeenCalledWith(mockFile, 'alpha BETA');
     });
 
     it('reports the failure through the router instead of "Edit successful"', async () => {
