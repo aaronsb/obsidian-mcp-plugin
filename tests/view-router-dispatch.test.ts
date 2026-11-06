@@ -160,6 +160,14 @@ describe('view operation dispatch (router -> operations/view.ts)', () => {
       expect(jest.getTimerCount()).toBe(0);
     });
 
+    it('leaves no pending timer when the API throws synchronously', async () => {
+      const { router, api } = setup();
+      api.activeFile = () => { throw new Error('sync failure'); };
+      const response = await router.route({ operation: 'view', action: 'active', params: {} });
+      expect(response.error?.message).toBe('sync failure');
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
     it('times out after 5 seconds when no file answers', async () => {
       const { router, api } = setup();
       api.activeFile = () => new Promise(() => { /* never settles */ });
