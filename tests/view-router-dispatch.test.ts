@@ -145,6 +145,21 @@ describe('view operation dispatch (router -> operations/view.ts)', () => {
       expect(response.error?.message).toBe('No active file');
     });
 
+    // #354: the race timer is cleared once the lookup settles, so a call does
+    // not leave a pending 5s timer behind.
+    it('leaves no pending timer once the active file answers', async () => {
+      const { router } = setup();
+      await router.route({ operation: 'view', action: 'active', params: {} });
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('leaves no pending timer when the API throws', async () => {
+      const { router, api } = setup();
+      api.activeFile = async () => { throw new Error('No active file'); };
+      await router.route({ operation: 'view', action: 'active', params: {} });
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
     it('times out after 5 seconds when no file answers', async () => {
       const { router, api } = setup();
       api.activeFile = () => new Promise(() => { /* never settles */ });

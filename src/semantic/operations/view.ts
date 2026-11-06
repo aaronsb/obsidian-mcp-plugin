@@ -52,24 +52,22 @@ export async function executeViewOperation(ctx: RouterContext, action: string, p
       };
     }
       
-    case 'active':
-      // Add timeout to prevent hanging when no file is active
+    case 'active': {
+      // Add timeout to prevent hanging when no file is active. The timer is
+      // cleared once the lookup settles so no call leaves it pending (#354).
+      let timer: number | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error('Timeout: No active file in Obsidian. Please open a file first.')), 5000);
+      });
       try {
-        const timeoutPromise = new Promise((_, reject) =>
-          window.setTimeout(() => reject(new Error('Timeout: No active file in Obsidian. Please open a file first.')), 5000)
-        );
-        const activeResult = await Promise.race([
+        return await Promise.race([
           ctx.api.getActiveFile(),
           timeoutPromise
         ]);
-        return activeResult;
-      } catch (error: unknown) {
-        if (error instanceof Error && error.message?.includes('Timeout')) {
-          throw error;
-        }
-        // Re-throw original error if not timeout
-        throw error;
+      } finally {
+        window.clearTimeout(timer);
       }
+    }
       
     case 'open_in_obsidian':
       return await ctx.api.openFile(requireParamStr(params, 'path', 'view.open_in_obsidian'));
