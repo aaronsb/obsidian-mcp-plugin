@@ -342,7 +342,7 @@ describe('VaultSecurityManager', () => {
           type: OperationType.READ,
           path: 'secret/passwords.md'
         });
-      } catch (e) {
+      } catch {
         // Expected to throw
       }
 

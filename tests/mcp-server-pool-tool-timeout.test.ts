@@ -79,8 +79,8 @@ describe('MCPServerPool tool-call timeout (#268)', () => {
     // The pool refuses a session without the security layer and a plugin
     // reference (read-only mode is read live from plugin.settings).
     const plugin = { settings: { readOnlyMode: false } };
-    const obsidianAPI = new SecureObsidianAPI(mockApp, undefined, plugin as never);
-    pool = new MCPServerPool(obsidianAPI, 32, plugin as never);
+    const obsidianAPI = new SecureObsidianAPI(mockApp, undefined, plugin);
+    pool = new MCPServerPool(obsidianAPI, 32, plugin);
   });
 
   afterEach(() => {

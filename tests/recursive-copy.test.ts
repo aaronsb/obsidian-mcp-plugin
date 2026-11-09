@@ -51,7 +51,7 @@ class MockObsidianAPI extends ObsidianAPI {
     const files: string[] = [];
     
     // Add files in this directory (return full paths like the real API)
-    for (const [path, _] of this.mockFiles) {
+    for (const path of this.mockFiles.keys()) {
       if (path.startsWith(targetDir)) {
         const remainingPath = path.substring(targetDir.length);
         if (remainingPath.startsWith('/')) {

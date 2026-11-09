@@ -72,9 +72,9 @@ function makeApp(writes: Write[], configDir = '.obsidian', existing = EXISTING):
 
 async function invoke(operation: string, params: Record<string, unknown>, app?: App, writes: Write[] = []) {
   const api = new SecureObsidianAPI(
-    app ?? makeApp(writes), undefined, { settings: { readOnlyMode: false } } as never, PERMISSIVE,
+    app ?? makeApp(writes), undefined, { settings: { readOnlyMode: false } }, PERMISSIVE,
   );
-  const tool = createSemanticTools(api)!.find(t => t.name === operation)!;
+  const tool = createSemanticTools(api).find(t => t.name === operation)!;
   let text = '';
   try {
     text = JSON.stringify(await tool.handler(api, params));
@@ -150,7 +150,7 @@ describe('config directory protection', () => {
 
   it('refuses at the security layer with a SecurityError, whatever the caller', async () => {
     const writes: Write[] = [];
-    const api = new SecureObsidianAPI(makeApp(writes), undefined, { settings: {} } as never, PERMISSIVE);
+    const api = new SecureObsidianAPI(makeApp(writes), undefined, { settings: {} }, PERMISSIVE);
     const thrown = await api.updateFile(DATA, '{"toolVisibility":{"system.execute":true}}').catch((e: unknown) => e);
     expect(thrown).toBeInstanceOf(SecurityError);
     expect((thrown as SecurityError).code).toBe('CONFIG_DIR_PROTECTED');
@@ -160,7 +160,7 @@ describe('config directory protection', () => {
   it('refuses even with path validation disabled', async () => {
     const writes: Write[] = [];
     const api = new SecureObsidianAPI(
-      makeApp(writes), undefined, { settings: {} } as never, { ...PERMISSIVE, pathValidation: 'disabled' },
+      makeApp(writes), undefined, { settings: {} }, { ...PERMISSIVE, pathValidation: 'disabled' },
     );
     const thrown = await api.createFile('.obsidian/plugins/evil/main.js', 'x').catch((e: unknown) => e);
     expect((thrown as SecurityError).code).toBe('CONFIG_DIR_PROTECTED');
@@ -169,7 +169,7 @@ describe('config directory protection', () => {
 
   it('refuses to build a security layer that does not know the config directory', () => {
     const app = { vault: { adapter: { basePath: '/test/vault' } } } as unknown as App;
-    expect(() => new SecureObsidianAPI(app, undefined, { settings: {} } as never, PERMISSIVE))
+    expect(() => new SecureObsidianAPI(app, undefined, { settings: {} }, PERMISSIVE))
       .toThrow("Could not determine Obsidian's config directory");
   });
 

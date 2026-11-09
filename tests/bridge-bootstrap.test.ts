@@ -79,7 +79,7 @@ function bootAndInitialize(nodeArgs: string[], mcpUrl: string): Promise<Record<s
       if (nl === -1) return;
       const line = out.slice(0, nl);
       finish(() => {
-        try { resolve(JSON.parse(line)); } catch (e) { reject(e as Error); }
+        try { resolve(JSON.parse(line)); } catch (e) { reject(e instanceof Error ? e : new Error(String(e))); }
       });
     });
     child.on('error', (e) => finish(() => reject(e)));

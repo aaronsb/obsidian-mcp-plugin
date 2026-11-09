@@ -81,7 +81,7 @@ describe('test contract', () => {
 });
 
 describe('coverage ratchet', () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.config.js is CJS
+  // jest.config.js is CJS, so it is loaded with require().
   const config = require('../jest.config.js');
 
   it('should define coverage thresholds', () => {
@@ -97,7 +97,7 @@ describe('coverage ratchet', () => {
   });
 
   it('should keep every floor above zero', () => {
-    const floors = Object.values(config.coverageThreshold) as Record<string, number>[];
+    const floors = Object.values<Record<string, number>>(config.coverageThreshold);
 
     expect(floors.length).toBeGreaterThan(0);
     for (const floor of floors) {

@@ -54,7 +54,7 @@ function makeApp(writes: Write[]): App {
 
 /** The advertised action enum from a tool's input schema. */
 function advertisedActions(tool: { inputSchema: unknown }): string[] {
-  const schema = tool.inputSchema as unknown as {
+  const schema = tool.inputSchema as {
     properties: { action: { enum: string[] } };
   };
   return schema.properties.action.enum;
@@ -66,7 +66,7 @@ function setup(visibility?: Record<string, boolean>) {
   // its own, not be propped up by another control.
   const plugin = { settings: { readOnlyMode: false } };
   const api = new SecureObsidianAPI(
-    makeApp(writes), undefined, plugin as never, BASELINE_SECURITY_SETTINGS,
+    makeApp(writes), undefined, plugin, BASELINE_SECURITY_SETTINGS,
   );
   const tools = createSemanticTools(api, visibility) ?? [];
   return { writes, api, tools, byName: (n: string) => tools.find(t => t.name === n) };

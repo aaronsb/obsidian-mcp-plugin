@@ -85,13 +85,13 @@ async function setup(active: string | string[]) {
     settings: { readOnlyMode: false },
     ignoreManager: await ignoreRules(['private/', 'readonly:sources/**'].join('\n')),
   };
-  const api = new SecureObsidianAPI(app, undefined, plugin as never, PERMISSIVE);
+  const api = new SecureObsidianAPI(app, undefined, plugin, PERMISSIVE);
   return { api, writes };
 }
 
 const codeOf = async (p: Promise<unknown>) => {
   const e = await p.then(() => null, (err: unknown) => err);
-  return e instanceof SecurityError ? e.code : e === null ? 'resolved' : `not a SecurityError: ${String(e)}`;
+  return e instanceof SecurityError ? e.code : e === null ? 'resolved' : `not a SecurityError: ${e instanceof Error ? e.message : JSON.stringify(e)}`;
 };
 
 describe('active-file path checks', () => {
