@@ -53,8 +53,8 @@ function makeApp(writes: Write[]): App {
 function setup(readOnlyMode: boolean) {
   const writes: Write[] = [];
   const plugin = { settings: { readOnlyMode } };
-  const api = new SecureObsidianAPI(makeApp(writes), undefined, plugin as never);
-  const tools = createSemanticTools(api)!;
+  const api = new SecureObsidianAPI(makeApp(writes), undefined, plugin);
+  const tools = createSemanticTools(api);
   return {
     writes,
     plugin,
@@ -130,9 +130,9 @@ describe('read-only mode liveness', () => {
     const plugin = { settings: { readOnlyMode: true } };
     // Exactly what mcp-server.ts builds every API with, read-only or not.
     const api = new SecureObsidianAPI(
-      makeApp(writes), undefined, plugin as never, BASELINE_SECURITY_SETTINGS,
+      makeApp(writes), undefined, plugin, BASELINE_SECURITY_SETTINGS,
     );
-    const edit = createSemanticTools(api)!.find(t => t.name === 'edit')!;
+    const edit = createSemanticTools(api).find(t => t.name === 'edit')!;
 
     await edit.handler(api, { action: 'append', path: 'note.md', content: 'x' });
     expect(writes).toEqual([]);
@@ -168,10 +168,10 @@ describe('read-only mode liveness', () => {
     const writes: Write[] = [];
     const plugin = { settings: { readOnlyMode: true } };
     const api = new SecureObsidianAPI(
-      makeApp(writes), undefined, plugin as never,
+      makeApp(writes), undefined, plugin,
       { permissions: { read: true, create: false, update: false, delete: false, move: false, rename: false, execute: false } },
     );
-    const edit = createSemanticTools(api)!.find(t => t.name === 'edit')!;
+    const edit = createSemanticTools(api).find(t => t.name === 'edit')!;
 
     plugin.settings.readOnlyMode = false;
     await edit.handler(api, { action: 'append', path: 'note.md', content: 'y' });
@@ -203,9 +203,9 @@ describe('read-only mode liveness', () => {
     };
 
     const sessionApi = new SecureObsidianAPI(
-      makeApp(writes), undefined, plugin as never, permissiveSnapshot,
+      makeApp(writes), undefined, plugin, permissiveSnapshot,
     );
-    const edit = createSemanticTools(sessionApi)!.find(t => t.name === 'edit')!;
+    const edit = createSemanticTools(sessionApi).find(t => t.name === 'edit')!;
 
     plugin.settings.readOnlyMode = true;
 

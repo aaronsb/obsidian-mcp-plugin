@@ -361,7 +361,7 @@ describe('Dataview Integration', () => {
       const api = new MockObsidianAPI(app);
       const tool = new DataviewTool(api as any);
 
-      const dvApi = (app.plugins.plugins['dataview'] as any).api as MockDataviewAPI;
+      const dvApi = (app.plugins.plugins['dataview']).api as MockDataviewAPI;
       dvApi.pages = (() => ({
         length: 1,
         array: () => [{
@@ -391,7 +391,7 @@ describe('Dataview Integration', () => {
       const api = new MockObsidianAPI(app);
       const tool = new DataviewTool(api as any);
 
-      const dvApi = (app.plugins.plugins['dataview'] as any).api as MockDataviewAPI;
+      const dvApi = (app.plugins.plugins['dataview']).api as MockDataviewAPI;
       dvApi.page = (path: string) => path === 'Luxon.md' ? {
         file: {
           path: 'Luxon.md',
@@ -425,7 +425,7 @@ describe('Dataview Integration', () => {
       const api = new MockObsidianAPI(app);
       const tool = new DataviewTool(api as any);
 
-      const dvApi = (app.plugins.plugins['dataview'] as any).api as MockDataviewAPI;
+      const dvApi = (app.plugins.plugins['dataview']).api as MockDataviewAPI;
       // A failed Dataview query resolves the Result monad with no `value`,
       // only `{ successful: false, error }`.
       dvApi.query = (() => ({
@@ -536,8 +536,8 @@ describe('Dataview Integration', () => {
       const api = new MockObsidianAPI(app);
       const tool = new DataviewTool(api as any);
 
-      const dvApi = (app.plugins.plugins['dataview'] as any).api as MockDataviewAPI;
-      dvApi.pages = (() => { throw new Error('bad source'); }) as any;
+      const dvApi = (app.plugins.plugins['dataview']).api as MockDataviewAPI;
+      dvApi.pages = (() => { throw new Error('bad source'); });
 
       const output = formatResponse('dataview', 'list', tool.listPages('nonsense'), false);
 

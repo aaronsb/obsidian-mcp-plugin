@@ -1,5 +1,5 @@
 import { SecurePathValidator, TypeSafePathValidator, SecurityError } from '../../src/security/path-validator';
-import { App, normalizePath } from 'obsidian';
+import { App } from 'obsidian';
 import * as path from 'path';
 import * as fs from 'fs';
 

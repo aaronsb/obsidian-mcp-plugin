@@ -73,7 +73,7 @@ describe('write-path containment', () => {
   describe('bases.create goes through the security layer', () => {
     it('is blocked by read-only mode', async () => {
       const api = new SecureObsidianAPI(
-        makeApp(['note.md'], writes), undefined, { settings: {} } as never,
+        makeApp(['note.md'], writes), undefined, { settings: {} },
         VaultSecurityManager.presets.readOnly()
       );
 
@@ -85,7 +85,7 @@ describe('write-path containment', () => {
 
     it('rejects a traversal path even with writes permitted', async () => {
       const api = new SecureObsidianAPI(
-        makeApp(['note.md'], writes), undefined, { settings: {} } as never, PERMISSIVE
+        makeApp(['note.md'], writes), undefined, { settings: {} }, PERMISSIVE
       );
 
       await expect(
@@ -96,7 +96,7 @@ describe('write-path containment', () => {
 
     it('still creates a base at a legitimate path', async () => {
       const api = new SecureObsidianAPI(
-        makeApp(['note.md'], writes), undefined, { settings: {} } as never, PERMISSIVE
+        makeApp(['note.md'], writes), undefined, { settings: {} }, PERMISSIVE
       );
 
       await api.createBase('views/ok.base', { views: [{ type: 'table', name: 'v' }] } as never);
@@ -107,7 +107,7 @@ describe('write-path containment', () => {
   describe('renameFile validates source and destination', () => {
     it('rejects a traversal destination even with writes permitted', async () => {
       const api = new SecureObsidianAPI(
-        makeApp(['note.md'], writes), undefined, { settings: {} } as never, PERMISSIVE
+        makeApp(['note.md'], writes), undefined, { settings: {} }, PERMISSIVE
       );
 
       await expect(api.renameFile('note.md', '../escaped.md')).rejects.toThrow(SecurityError);
@@ -116,7 +116,7 @@ describe('write-path containment', () => {
 
     it('is blocked by read-only mode', async () => {
       const api = new SecureObsidianAPI(
-        makeApp(['note.md'], writes), undefined, { settings: {} } as never,
+        makeApp(['note.md'], writes), undefined, { settings: {} },
         VaultSecurityManager.presets.readOnly()
       );
 
@@ -126,7 +126,7 @@ describe('write-path containment', () => {
 
     it('still renames within the vault', async () => {
       const api = new SecureObsidianAPI(
-        makeApp(['note.md'], writes), undefined, { settings: {} } as never, PERMISSIVE
+        makeApp(['note.md'], writes), undefined, { settings: {} }, PERMISSIVE
       );
 
       await api.renameFile('note.md', 'renamed.md');
@@ -144,7 +144,7 @@ describe('write-path containment', () => {
   describe('move and rename are charged against their own permissions', () => {
     function apiWith(perms: { move: boolean; rename: boolean }) {
       return new SecureObsidianAPI(
-        makeApp(['note.md'], writes), undefined, { settings: {} } as never,
+        makeApp(['note.md'], writes), undefined, { settings: {} },
         {
           ...PERMISSIVE,
           permissions: { ...PERMISSIVE.permissions, move: perms.move, rename: perms.rename },
@@ -201,7 +201,7 @@ describe('write-path containment', () => {
   describe('active-file writes go through the security layer', () => {
     it('blocks update/append/delete under read-only', async () => {
       const api = new SecureObsidianAPI(
-        makeApp(['active.md'], writes), undefined, { settings: {} } as never,
+        makeApp(['active.md'], writes), undefined, { settings: {} },
         VaultSecurityManager.presets.readOnly()
       );
 
@@ -219,7 +219,7 @@ describe('write-path containment', () => {
   describe('router-level: the confirmed live exploits', () => {
     function router(existing: string[]) {
       const app = makeApp(existing, writes);
-      const api = new SecureObsidianAPI(app, undefined, { settings: {} } as never, PERMISSIVE);
+      const api = new SecureObsidianAPI(app, undefined, { settings: {} }, PERMISSIVE);
       return new SemanticRouter(api, app);
     }
 

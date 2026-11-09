@@ -25,7 +25,7 @@ let certPath: string;
 let keyPath: string;
 
 beforeAll(() => {
-  manager = new CertificateManager(new App() as unknown as App);
+  manager = new CertificateManager(new App());
   const { cert, key } = manager.generateSelfSignedCertificate('localhost');
 
   const dir = mkdtempSync(join(tmpdir(), 'mcp-tls-'));

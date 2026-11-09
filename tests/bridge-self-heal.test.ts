@@ -20,7 +20,7 @@ process.env.MCP_BRIDGE_NO_AUTOSTART = '1';
 process.env.MCP_URL = 'http://localhost:3001/mcp';
 process.env.MCP_API_KEY = 'test-key';
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports -- bridge is plain CommonJS, loaded as a module to test dispatch
+// The bridge is plain CommonJS, loaded as a module to test dispatch.
 const bridge = require('../mcpb/server.js') as {
   dispatch: (msg: unknown, isReplay?: boolean) => Promise<void>;
   __reset: () => void;

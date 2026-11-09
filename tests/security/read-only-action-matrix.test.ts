@@ -215,10 +215,10 @@ async function invoke(
   const app = makeApp(writes);
   const plugin = { settings: { readOnlyMode: mode === 'readOnly' } };
   const api = new SecureObsidianAPI(
-    app, undefined, plugin as never,
+    app, undefined, plugin,
     mode === 'permissive' ? PERMISSIVE : VaultSecurityManager.presets.readOnly(),
   );
-  const tool = createSemanticTools(api)!.find(t => t.name === operation);
+  const tool = createSemanticTools(api).find(t => t.name === operation);
   if (!tool) throw new Error(`tool not found: ${operation}`);
 
   SETUP[`${operation}.${action}`]?.();
@@ -249,7 +249,7 @@ describe('read-only enforcement — exhaustive action matrix', () => {
   const invocable = (() => {
     const probeWrites: Write[] = [];
     const probeApi = new SecureObsidianAPI(
-      makeApp(probeWrites), undefined, { settings: {} } as never, PERMISSIVE,
+      makeApp(probeWrites), undefined, { settings: {} }, PERMISSIVE,
     );
     const names = new Set((createSemanticTools(probeApi) ?? []).map(t => t.name));
     return (op: string) => names.has(op);
@@ -327,10 +327,10 @@ describe('read-only enforcement — exhaustive action matrix', () => {
       // the permission gate went untested.
       const plugin = { settings: { readOnlyMode: true, commandExecutionAllowlist: ['editor:save-file'] } };
       const api = new SecureObsidianAPI(
-        makeApp(writes), undefined, plugin as never,
+        makeApp(writes), undefined, plugin,
         VaultSecurityManager.presets.readOnly(),
       );
-      const tool = createSemanticTools(api, { [key]: true })!.find(t => t.name === op)!;
+      const tool = createSemanticTools(api, { [key]: true }).find(t => t.name === op)!;
 
       const res = await tool.handler(api, { action, commandId: 'editor:save-file' }).catch(e => ({
         content: [{ type: 'text' as const, text: String(e) }],
@@ -351,10 +351,10 @@ describe('read-only enforcement — exhaustive action matrix', () => {
       const writes: Write[] = [];
       const app = makeApp(writes);
       const api = new SecureObsidianAPI(
-        app, undefined, { settings: { readOnlyMode: true } } as never,
+        app, undefined, { settings: { readOnlyMode: true } },
         VaultSecurityManager.presets.readOnly(),
       );
-      const tool = createSemanticTools(api)!.find(t => t.name === op)!;
+      const tool = createSemanticTools(api).find(t => t.name === op)!;
 
       // Params are best-effort, so other errors are tolerated; the point is that
       // read-only must never be the reason a read fails.

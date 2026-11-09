@@ -31,8 +31,7 @@ jest.mock('../../src/security/secure-obsidian-api', () => {
   class Recording extends actual.SecureObsidianAPI {
     constructor(...args: unknown[]) {
       constructorCalls.push(args);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- forwarding the real signature verbatim
-      super(...(args as Parameters<typeof actual.SecureObsidianAPI>));
+      super(...(args));
     }
   }
   return { ...actual, SecureObsidianAPI: Recording };
@@ -80,9 +79,9 @@ describe('session API enforcement', () => {
   it('hands each session the live plugin reference, by identity', () => {
     const app = makeApp();
     const plugin = { settings: { readOnlyMode: false } };
-    const parent = new SecureObsidianAPI(app, undefined, plugin as never, BASELINE_SECURITY_SETTINGS);
+    const parent = new SecureObsidianAPI(app, undefined, plugin, BASELINE_SECURITY_SETTINGS);
 
-    const pool = new MCPServerPool(parent, 4, plugin as never);
+    const pool = new MCPServerPool(parent, 4, plugin);
     constructorCalls.length = 0;   // ignore the parent's own construction
     pool.getOrCreateServer('session-1');
 
@@ -101,7 +100,7 @@ describe('session API enforcement', () => {
   it('refuses to build a session without a plugin reference', () => {
     const app = makeApp();
     const plugin = { settings: { readOnlyMode: true } };
-    const parent = new SecureObsidianAPI(app, undefined, plugin as never, BASELINE_SECURITY_SETTINGS);
+    const parent = new SecureObsidianAPI(app, undefined, plugin, BASELINE_SECURITY_SETTINGS);
 
     // Omitting the plugin leaves the session API with no setting to read, so
     // read-only silently would not apply while path validation still would.
@@ -117,7 +116,7 @@ describe('session API enforcement', () => {
     // session API and merely log "(no security)".
     const parent = new ObsidianAPI(app, undefined, plugin as never);
 
-    const pool = new MCPServerPool(parent, 4, plugin as never);
+    const pool = new MCPServerPool(parent, 4, plugin);
 
     expect(() => pool.getOrCreateServer('session-2')).toThrow(/without the security layer/);
   });

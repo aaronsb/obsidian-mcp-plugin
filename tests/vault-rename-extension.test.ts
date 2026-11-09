@@ -63,7 +63,7 @@ async function rename(source: string, newName: string): Promise<{ result: Rename
     params: { path: source, newName }
   });
 
-  return { result: response.result as unknown as RenameResult, renamed };
+  return { result: response.result as RenameResult, renamed };
 }
 
 describe('vault rename — extension handling (#253)', () => {

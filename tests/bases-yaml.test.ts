@@ -5,7 +5,7 @@
  * behavioural oracle: the new bridge must parse/serialize identically, with
  * exactly one documented, proven-safe exception (date coercion).
  */
-// eslint-disable-next-line @typescript-eslint/no-var-requires -- js-yaml kept only as test oracle; @types removed in #174
+// js-yaml is kept only as the test oracle (a devDependency without @types since #174).
 const jsyaml: { load(s: string): unknown } = require('js-yaml');
 
 import { parseYaml, stringifyBaseConfig } from '../src/utils/yaml-bridge';

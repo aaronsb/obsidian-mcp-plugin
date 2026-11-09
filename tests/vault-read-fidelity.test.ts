@@ -109,7 +109,7 @@ describe('vault.read fidelity & pagination (ADR-203)', () => {
       path: 's.md', content: TRICKY,
       metadata: { totalLines: TRICKY.split('\n').length, bytes: TRICKY.length },
       pagination: { paginated: false, page: 1, pageLineStart: 1, pageLineEnd: TRICKY.split('\n').length, totalLines: TRICKY.split('\n').length, bytes: TRICKY.length, hasMore: false, nextPage: null },
-    } as any);
+    });
     // Verbatim body present in full, including the inner ```python fence,
     // the indented code line, and the trailing-space + tab line.
     expect(out).toContain(TRICKY);
@@ -124,7 +124,7 @@ describe('vault.read fidelity & pagination (ADR-203)', () => {
       metadata: { totalLines: 4000, bytes: 90000 },
       pagination: { paginated: true, page: 1, pageLineStart: 1, pageLineEnd: 1800, totalLines: 4000, bytes: 90000, hasMore: true, nextPage: "vault.read(path='big.md', page=2)" },
       warning: 'Large file …',
-    } as any);
+    });
     expect(out2).toContain('Pagination');
     expect(out2).toContain('page=2');
     expect(out2).not.toContain('Formatter error');

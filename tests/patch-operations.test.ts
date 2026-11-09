@@ -1,6 +1,6 @@
 import { ObsidianAPI } from '../src/utils/obsidian-api';
 import { SemanticRouter } from '../src/semantic/router';
-import { App, TFile } from 'obsidian';
+import { App } from 'obsidian';
 
 // Mock the instanceof check for TFile
 jest.mock('obsidian', () => {

@@ -59,7 +59,7 @@ function setup() {
   const writes: Write[] = [];
   const plugin = { settings: { readOnlyMode: false } };
   const api = new SecureObsidianAPI(
-    makeApp(writes), undefined, plugin as never, BASELINE_SECURITY_SETTINGS,
+    makeApp(writes), undefined, plugin, BASELINE_SECURITY_SETTINGS,
   );
   const tools = createSemanticTools(api, undefined) ?? [];
   return { writes, api, byName: (n: string) => tools.find(t => t.name === n) };

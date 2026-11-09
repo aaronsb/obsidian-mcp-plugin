@@ -63,7 +63,7 @@ function setup(opts: { readOnly?: boolean; visibility?: Record<string, boolean>;
   const writes: Write[] = [];
   const plugin = { settings: { readOnlyMode: opts.readOnly === true } };
   const api = new SecureObsidianAPI(
-    makeApp(writes, opts.resolveAll), undefined, plugin as never, BASELINE_SECURITY_SETTINGS,
+    makeApp(writes, opts.resolveAll), undefined, plugin, BASELINE_SECURITY_SETTINGS,
   );
   const tools = createSemanticTools(api, opts.visibility) ?? [];
   return { writes, api, byName: (n: string) => tools.find(t => t.name === n) };
@@ -147,7 +147,7 @@ describe('vault.replace (#326)', () => {
     it.each(['replace', 'update'])('read-only mode blocks vault.%s with a SecurityError', async (action) => {
       const writes: Write[] = [];
       const api = new SecureObsidianAPI(
-        makeApp(writes), undefined, { settings: { readOnlyMode: true } } as never, BASELINE_SECURITY_SETTINGS,
+        makeApp(writes), undefined, { settings: { readOnlyMode: true } }, BASELINE_SECURITY_SETTINGS,
       );
       const router = new SemanticRouter(api, api.getApp());
 
@@ -160,7 +160,7 @@ describe('vault.replace (#326)', () => {
     it.each(['replace', 'update'])('the read-only security preset blocks vault.%s', async (action) => {
       const writes: Write[] = [];
       const api = new SecureObsidianAPI(
-        makeApp(writes), undefined, { settings: { readOnlyMode: false } } as never,
+        makeApp(writes), undefined, { settings: { readOnlyMode: false } },
         VaultSecurityManager.presets.readOnly(),
       );
       const router = new SemanticRouter(api, api.getApp());
