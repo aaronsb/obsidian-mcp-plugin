@@ -16,6 +16,7 @@ import { SecureObsidianAPI, SecurityError } from '../../src/security';
 import { MCPIgnoreManager } from '../../src/security/mcp-ignore-manager';
 import { createSemanticTools } from '../../src/tools/semantic-tools';
 import { App, TFile } from 'obsidian';
+import { inspect } from 'util';
 
 jest.mock('obsidian');
 
@@ -91,7 +92,7 @@ async function setup(active: string | string[]) {
 
 const codeOf = async (p: Promise<unknown>) => {
   const e = await p.then(() => null, (err: unknown) => err);
-  return e instanceof SecurityError ? e.code : e === null ? 'resolved' : `not a SecurityError: ${e instanceof Error ? e.message : JSON.stringify(e)}`;
+  return e instanceof SecurityError ? e.code : e === null ? 'resolved' : `not a SecurityError: ${inspect(e)}`;
 };
 
 describe('active-file path checks', () => {
