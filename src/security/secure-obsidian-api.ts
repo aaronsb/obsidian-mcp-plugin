@@ -26,6 +26,12 @@ interface SecurePluginRef {
 	manifest?: { dir?: string };
 }
 
+/** The file open in the editor, as the vault-info resource reports it. */
+export interface VaultInfoFiles {
+	activeFile: { name: string; path: string; basename: string; extension: string } | null;
+	files: { total: number; markdown: number; attachments: number };
+}
+
 /**
  * Secure wrapper for ObsidianAPI that enforces path validation and operation permissions
  * This class intercepts all file operations and validates them through the security manager
@@ -336,6 +342,59 @@ export class SecureObsidianAPI extends ObsidianAPI {
 		});
 
 		return super.openFile(validated.path!);
+	}
+
+	/**
+	 * What the obsidian://vault-info resource reports about the vault's files.
+	 *
+	 * The resource used to read the active file straight from the workspace,
+	 * outside every check above, so the path of an .mcpignore-excluded note or a
+	 * config-directory file open in the editor was handed to any client. The
+	 * active file is now checked as a vault.read of its path would be. If that
+	 * check refuses it, `activeFile` is null: the file is left out, because its
+	 * name and path are the very thing the rule hides. No error is raised, since
+	 * the rest of the resource is still fine to show.
+	 *
+	 * File counts leave out .mcpignore-excluded paths, as listFiles does.
+	 * Otherwise the totals would still say how much the ignore file hides.
+	 */
+	async getVaultInfoFiles(): Promise<VaultInfoFiles> {
+		const app = this.getApp();
+
+		// Read once: the fields returned are the ones that were checked, even if
+		// the user switches notes while the check is awaited.
+		const active = app.workspace.getActiveFile();
+		let activeFile: VaultInfoFiles['activeFile'] = null;
+		if (active) {
+			try {
+				await this.security.validateOperation({
+					type: OperationType.READ,
+					path: active.path,
+					context: { method: 'getVaultInfoFiles' }
+				});
+				activeFile = {
+					name: active.name,
+					path: active.path,
+					basename: active.basename,
+					extension: active.extension
+				};
+			} catch (error) {
+				if (!(error instanceof SecurityError)) {
+					throw error;
+				}
+				Debug.log(`vault-info: active file left out (${error.code})`);
+			}
+		}
+
+		const ignoreManager = this.getIgnoreManager();
+		const isVisible = (file: { path: string }): boolean => !ignoreManager?.isExcluded(file.path);
+		const total = app.vault.getAllLoadedFiles().filter(isVisible).length;
+		const markdown = app.vault.getMarkdownFiles().filter(isVisible).length;
+
+		return {
+			activeFile,
+			files: { total, markdown, attachments: total - markdown }
+		};
 	}
 
 	// Note: These methods don't exist in base ObsidianAPI:
