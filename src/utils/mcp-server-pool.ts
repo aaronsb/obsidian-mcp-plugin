@@ -215,7 +215,7 @@ export class MCPServerPool extends EventEmitter {
 
     // Create session-specific API instance
     // Always create SecureObsidianAPI if the main API has security settings
-    let sessionAPI: ObsidianAPI | SecureObsidianAPI;
+    let sessionAPI: SecureObsidianAPI;
     if (this.obsidianAPI instanceof SecureObsidianAPI) {
       // Without a plugin reference the session API has no settings to read, so
       // read-only cannot be enforced on it — while path validation still can,
@@ -348,33 +348,24 @@ export class MCPServerPool extends EventEmitter {
     });
 
     // Read resource handler
-    server.setRequestHandler(ReadResourceRequestSchema, (request) => {
+    server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
       const { uri } = request.params;
       Debug.log(`📖 [Session ${sessionId}] Reading resource: ${uri}`);
 
       if (uri === 'obsidian://vault-info') {
         const app = this.obsidianAPI.getApp();
         const vaultName = app.vault.getName();
-        const activeFile = app.workspace.getActiveFile();
-        const allFiles = app.vault.getAllLoadedFiles();
-        const markdownFiles = app.vault.getMarkdownFiles();
+        // The active file and the file counts come through the security layer:
+        // an excluded or config-directory note open in the editor is left out.
+        const { activeFile, files } = await sessionAPI.getVaultInfoFiles();
 
         const vaultInfo = {
           vault: {
             name: vaultName,
             path: (app.vault.adapter as unknown as { basePath?: string }).basePath ?? 'Unknown'
           },
-          activeFile: activeFile ? {
-            name: activeFile.name,
-            path: activeFile.path,
-            basename: activeFile.basename,
-            extension: activeFile.extension
-          } : null,
-          files: {
-            total: allFiles.length,
-            markdown: markdownFiles.length,
-            attachments: allFiles.length - markdownFiles.length
-          },
+          activeFile,
+          files,
           plugin: {
             version: getVersion(),
             status: 'Connected and operational',
